@@ -1,0 +1,60 @@
+# .roadmap.hexa_codex — repo-overall tracker
+
+> Cross-cutting state: invariant lattice, release cadence, cycle history,
+> deadlines, pointers. Sister of `anima` / `hexa-brain` / `honesty-monitor`
+> under `need-singularity` org.
+
+**Last sync**: 2026-05-06 · **Current release**: v1.0.0 · **Branch**: `main`
+
+---
+
+## §0 Terminal goal — AI 17-verb 도서관 (4 그룹 모두 working spec)
+
+hexa-codex 도착지 = **AI 17-verb 도서관 (safety + economics + ops + substrate) 모두 working spec + falsifier preregister + 1+ verb wired eval pipeline .hexa**.
+
+DoD:
+1. `safety` 그룹 alignment + interpretability eval pipeline .hexa.
+2. `economics` 그룹 training-cost / inference-cost n=6 scaling fit (GPT-4 vs Claude 4.7).
+3. `ops` 그룹 deploy + agent-serving 통합 .hexa.
+4. `substrate` 그룹 multimodal + cog-arch + causal + RLHF 통합 eval.
+
+## §A.1 Invariant lattice (n=6)
+
+```
+σ(6) · φ(6) = n · τ(6) = J₂ = 24
+   12   ·   2  =  6  ·   4  = 24
+```
+
+| Symbol | Value | Role | AI projection |
+|--------|-------|------|---------------|
+| σ(6)   | 12    | sigma — cardinality bin | 12 capability dimensions (HELM bench bin) |
+| τ(6)   | 4     | tau — state quartet | 4 lifecycle phases (pretrain / SFT / RLHF / deploy) |
+| φ(6)   | 2     | phi — verdict bit | helpful / harmless |
+| J₂     | 24    | Mathieu / Leech | training cost ∝ N^J₂ scaling stratum |
+
+## §A.2 Release cadence
+
+| Version | Date | Status | Highlights |
+|---------|------|--------|------------|
+| v1.0.0 | 2026-05-06 | RELEASED | 17 verb 시드 + 4 그룹 표 |
+| v1.1.0 | ~2026-08 (TARGET) | planned | `safety` 그룹 alignment + interpretability eval pipeline .hexa |
+| v1.2.0 | ~2026-10 | planned | `economics` 그룹 training/inference cost n=6 scaling fit |
+| v1.3.0 | ~2026-12 | planned | `ops` 그룹 deploy + agent-serving 통합 .hexa |
+| v2.0.0 | ~2027-Q2 | ASPIRATIONAL | `substrate` 그룹 multimodal + cog-arch + causal + RLHF 통합 |
+
+## §A.3 Cycle history
+
+- **Cycle 0 (2026-05-06)** — v1.0.0 initial extraction from n6-architecture@c0f1f570. Commit `63e8283`. 17 verb / 4 그룹 cp -R.
+
+## §A.4 Falsifier preregister
+
+- **F-CODEX-1** — training-cost ∝ N^σ·φ = N^24 closed-form, Chinchilla scaling law 일치?
+- **F-CODEX-2** — inference-cost ∝ context^τ = context^4, 실측 latency fit (Claude 4.7 1M ctx)?
+- **F-CODEX-3** — alignment eval n=6 axis (helpfulness · harmlessness · honesty · ...) 통합 score, HELM 비교?
+- **F-CODEX-4** — interpretability circuit count σ-φ=10 motif 통계, Anthropic dictionary-learning fit?
+
+## §A.5 Pending decisions
+
+- AI safety vs welfare 의 verb 분리 강도 (둘 다 cognitive/ai-* 였으나 의미 결?).
+- anima (consciousness) 와의 cross-link 강도 — anima는 별도 자체 substrate.
+- honesty-monitor (이미 standalone) 와의 verb 중복 (cognitive/ai-honesty 가 cog-arch에 합류).
