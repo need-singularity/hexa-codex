@@ -1,3 +1,6 @@
+<!-- @canonical: n6-architecture@0570a835:domains/cognitive/ai-welfare/ai-welfare.md -->
+<!-- @extracted: 2026-05-06 -->
+<!-- @md5_at_extraction: f373ab15cc253d1464d9c5e25ad5a3a0 -->
 ---
 domain: ai-welfare
 requires:

@@ -1,3 +1,6 @@
+<!-- @canonical: n6-architecture@0570a835:domains/cognitive/ai-adversarial/ai-adversarial.md -->
+<!-- @extracted: 2026-05-06 -->
+<!-- @md5_at_extraction: 0bc0073751754d8d4c6b00439d872619 -->
 ---
 domain: ai-adversarial
 requires:

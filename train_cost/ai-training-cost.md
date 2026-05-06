@@ -1,3 +1,6 @@
+<!-- @canonical: n6-architecture@0570a835:domains/cognitive/ai-training-cost/ai-training-cost.md -->
+<!-- @extracted: 2026-05-06 -->
+<!-- @md5_at_extraction: fdf50d9548a2012dd5a86c93eb9f7396 -->
 ---
 domain: ai-training-cost
 requires:

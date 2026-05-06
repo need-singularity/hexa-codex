@@ -1,3 +1,6 @@
+<!-- @canonical: n6-architecture@0570a835:domains/cognitive/ai-enterprise-custom/ai-enterprise-custom.md -->
+<!-- @extracted: 2026-05-06 -->
+<!-- @md5_at_extraction: 00c026e85a4823fadfa4860e9b57e3d2 -->
 ---
 domain: ai-enterprise-custom
 requires:

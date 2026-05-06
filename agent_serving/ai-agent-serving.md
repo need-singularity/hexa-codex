@@ -1,3 +1,6 @@
+<!-- @canonical: n6-architecture@0570a835:domains/cognitive/ai-agent-serving/ai-agent-serving.md -->
+<!-- @extracted: 2026-05-06 -->
+<!-- @md5_at_extraction: 3bbed6c391862e1b089d02ffac57600a -->
 ---
 domain: ai-agent-serving
 requires:

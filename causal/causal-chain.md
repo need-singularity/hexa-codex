@@ -1,3 +1,6 @@
+<!-- @canonical: n6-architecture@0570a835:domains/cognitive/causal-chain/causal-chain.md -->
+<!-- @extracted: 2026-05-06 -->
+<!-- @md5_at_extraction: 8bee3d5c116050c57ede4f83fb81bcfc -->
 <!-- gold-standard: shared/harness/sample.md -->
 ---
 domain: causal-chain

@@ -1,3 +1,6 @@
+<!-- @canonical: n6-architecture@0570a835:domains/cognitive/ai-alignment/ai-alignment.md -->
+<!-- @extracted: 2026-05-06 -->
+<!-- @md5_at_extraction: 19d9484fd13e875d0e3d55716b4383f6 -->
 ---
 domain: ai-alignment
 requires:

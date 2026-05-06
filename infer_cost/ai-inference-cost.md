@@ -1,3 +1,6 @@
+<!-- @canonical: n6-architecture@0570a835:domains/cognitive/ai-inference-cost/ai-inference-cost.md -->
+<!-- @extracted: 2026-05-06 -->
+<!-- @md5_at_extraction: b447074e878d91878813a258ff31cbb0 -->
 ---
 domain: ai-inference-cost
 requires:
