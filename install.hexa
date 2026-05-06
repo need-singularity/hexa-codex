@@ -1,0 +1,65 @@
+// install.hexa — hx build hook for hexa-codex.
+//
+// Invoked by `hx install hexa-codex` (hexa-lang package manager) right after
+// the GitHub checkout (or symlink from /Users/ghost/core/hexa-codex) lands in
+// $HX_PKG_DIR. hx passes:
+//   HX_PKG_DIR     — absolute path to the package root
+//   HX_BIN_DIR     — ~/.hx/bin
+//   HX_PKG_NAME    — "hexa-codex"
+//   HX_HOOK_PHASE  — "pre" | "post" | "both" (default: "both")
+//
+// Mirrors hexa-bio/install.hexa pattern.
+//
+// Responsibilities (each idempotent, raw#9 STRICT — pure-hexa only):
+//   1. Pre-install: nothing to do (spec-first; no python deps at v1.0).
+//   2. Post-install: run `hexa-codex selftest` to count 17 verb specs.
+//      Non-PASS = warn-only (not a blocker).
+//
+// raw#9 hexa-only, raw#11 snake_case, raw#15 no-hardcode.
+// raw#10 honest C3: see hexa-codex/README.md "Status" section.
+
+fn run_quick_selftest(root: str) -> bool {
+    let cli = root + "/cli/hexa-codex.hexa"
+    let exists = exec("[ -f \"" + cli + "\" ] && echo y || echo n").trim()
+    if exists != "y" {
+        eprintln("[hexa-codex/install] WARN: cli/hexa-codex.hexa missing — skip selftest")
+        return false
+    }
+    println("[hexa-codex/install] [post] running quick selftest (17-verb spec count)")
+    let cmd = "HEXA_CODEX_ROOT=\"" + root + "\" hexa run \"" + cli + "\" selftest 2>&1"
+    let raw = exec(cmd)
+    if raw.contains("__HEXA_CODEX_SELFTEST__ PASS") {
+        println("[hexa-codex/install]   selftest PASS — 17/17 verb specs present")
+        return true
+    }
+    eprintln("[hexa-codex/install] WARN: selftest non-PASS (warn-only, not a blocker)")
+    eprintln("  hint: missing verb spec — see README §Status")
+    return false
+}
+
+fn main() -> void {
+    let mut root = env("HX_PKG_DIR")
+    if root == "" { root = exec("pwd").trim() }
+    let phase = env("HX_HOOK_PHASE")
+    let mut p = phase
+    if p == "" { p = "both" }
+    println("[hexa-codex/install] HX_PKG_DIR=" + root + " phase=" + p)
+
+    let entry = root + "/cli/hexa-codex.hexa"
+    let entry_ok = exec("[ -f \"" + entry + "\" ] && echo y || echo n").trim()
+    if entry_ok != "y" {
+        eprintln("[hexa-codex/install] ERROR: canonical entry missing: " + entry)
+        exit(1)
+    }
+    println("[hexa-codex/install] canonical entry OK: cli/hexa-codex.hexa")
+
+    if p == "pre" || p == "both" {
+        println("[hexa-codex/install] [pre] no python deps required (spec-first v1.0)")
+    }
+
+    if p == "post" || p == "both" {
+        let _ = run_quick_selftest(root)  // warn-only
+    }
+
+    println("[hexa-codex/install] done — hx will generate " + env("HX_BIN_DIR") + "/hexa-codex shim")
+}

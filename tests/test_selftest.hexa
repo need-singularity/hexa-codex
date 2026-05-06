@@ -1,0 +1,30 @@
+#!hexa strict
+// tests/test_selftest.hexa — 17-verb spec-presence harness
+//
+// Pass criterion: __HEXA_CODEX_SELFTEST__ PASS sentinel present.
+// Cost: $0 (orchestrates the placeholder dispatcher's selftest path).
+
+fn main() {
+    let root = env("HEXA_CODEX_ROOT")
+    let mut p = "cli/hexa-codex.hexa"
+    if root.len() > 0 { p = root + "/cli/hexa-codex.hexa" }
+
+    let raw = exec("HEXA_CODEX_ROOT=" + root + " hexa run " + p + " selftest 2>&1")
+    if raw.contains("__HEXA_CODEX_SELFTEST__ PASS") == false {
+        println("test_selftest: FAIL (sentinel missing)")
+        println(raw.trim())
+        exit(1)
+    }
+    // Verify the explicit verb count is 17 (4 groups: 6 + 3 + 4 + 4).
+    if raw.contains("total verbs: 17") == false {
+        println("test_selftest: FAIL (verb count != 17)")
+        println(raw.trim())
+        exit(1)
+    }
+    if raw.contains("present:     17/17") == false {
+        println("test_selftest: FAIL (presence count != 17/17)")
+        println(raw.trim())
+        exit(1)
+    }
+    println("test_selftest: PASS — 17/17 verb specs (4 groups) present")
+}

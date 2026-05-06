@@ -1,0 +1,346 @@
+#!hexa strict
+// hexa-codex/cli/hexa-codex.hexa — standalone hexa-codex CLI router (placeholder)
+//
+// 17-verb AI knowledge substrate dispatcher organized in 4 groups:
+//   safety     — alignment / safety / welfare / adversarial / consciousness / interpret
+//   economics  — train_cost / infer_cost / quality_scale
+//   ops        — deploy / enterprise / agent_serving / eval
+//   substrate  — multimodal / rlhf / cog_arch / causal
+//
+// Plus utility subcmds:
+//   list        — full 17-verb table grouped by 4 groups
+//   selftest    — verify all 17 verb specs are on disk
+//   help        — this help
+//   --version   — print version
+//
+// Status (v1.0.0): spec-first — verb invocations print the path of the
+// candidate spec .md and a placeholder note. Working .hexa modules + falsifier
+// sandboxes deferred to post-v1.0 cycles.
+//
+// Root resolution: $HEXA_CODEX_ROOT env, else inferred from $0 dirname.
+//
+// Constraints:
+//   raw#9   — hexa-only orchestration; no python deps at v1.0
+//   raw#15  — write-confined (audit log only)
+//   raw#10  — honest C3 caveat embedded (codex == spec catalog)
+//
+// Cost: $0 (Mac local; pure spec catalog read).
+//
+// @no-lock-needed
+// @resolver-bypass(reason="Pure local CLI router; spec library reads .md only.")
+
+let VERSION = "1.0.0"
+
+// ─── env / path resolve ───
+
+let HOME = env("HOME")
+let HEXA_CODEX_ROOT_ENV = env("HEXA_CODEX_ROOT")
+
+fn hexa_codex_root() -> str {
+    if HEXA_CODEX_ROOT_ENV.len() > 0 { return HEXA_CODEX_ROOT_ENV }
+    let inferred = exec("dirname \"$(dirname \"$0\")\" 2>/dev/null || true").trim()
+    if inferred.len() > 0 { return inferred }
+    return HOME + "/.hexa-codex"  // @allow-devpath
+}
+
+let HC = hexa_codex_root()
+let LOG_PATH = HC + "/state/hexa_codex_cli.log"
+
+// ─── verb → spec-path map (17 verb / 4 group) ───
+
+fn verb_spec(verb: str) -> str {
+    // safety group
+    if verb == "alignment"     { return HC + "/alignment/ai-alignment.md" }
+    if verb == "safety"        { return HC + "/safety/ai-safety.md" }
+    if verb == "welfare"       { return HC + "/welfare/ai-welfare.md" }
+    if verb == "adversarial"   { return HC + "/adversarial/ai-adversarial.md" }
+    if verb == "consciousness" { return HC + "/consciousness/ai-consciousness.md" }
+    if verb == "interpret"     { return HC + "/interpret/ai-interpretability.md" }
+    // economics group
+    if verb == "train_cost"    { return HC + "/train_cost/ai-training-cost.md" }
+    if verb == "infer_cost"    { return HC + "/infer_cost/ai-inference-cost.md" }
+    if verb == "quality_scale" { return HC + "/quality_scale/ai-quality-scale.md" }
+    // ops group
+    if verb == "deploy"        { return HC + "/deploy/ai-deployment.md" }
+    if verb == "enterprise"    { return HC + "/enterprise/ai-enterprise-custom.md" }
+    if verb == "agent_serving" { return HC + "/agent_serving/ai-agent-serving.md" }
+    if verb == "eval"          { return HC + "/eval/ai-eval-pipeline.md" }
+    // substrate group
+    if verb == "multimodal"    { return HC + "/multimodal/ai-multimodal.md" }
+    if verb == "rlhf"          { return HC + "/rlhf/youth-ai-labeling-rlhf-hub.md" }
+    if verb == "cog_arch"      { return HC + "/cog_arch/cognitive-architecture.md" }
+    if verb == "causal"        { return HC + "/causal/causal-chain.md" }
+    return ""
+}
+
+let VERBS_SAFETY    = ["alignment", "safety", "welfare", "adversarial", "consciousness", "interpret"]
+let VERBS_ECONOMICS = ["train_cost", "infer_cost", "quality_scale"]
+let VERBS_OPS       = ["deploy", "enterprise", "agent_serving", "eval"]
+let VERBS_SUBSTRATE = ["multimodal", "rlhf", "cog_arch", "causal"]
+
+fn group_of(verb: str) -> str {
+    for v in VERBS_SAFETY    { if v == verb { return "safety" } }
+    for v in VERBS_ECONOMICS { if v == verb { return "economics" } }
+    for v in VERBS_OPS       { if v == verb { return "ops" } }
+    for v in VERBS_SUBSTRATE { if v == verb { return "substrate" } }
+    return ""
+}
+
+// ─── arg helpers ───
+
+fn shq(s: str) -> str {
+    return "'" + s.replace("'", "'\\''") + "'"
+}
+
+fn has_flag(a: [str], flag: str) -> bool {
+    for x in a {
+        if x == flag { return true }
+    }
+    return false
+}
+
+fn json_mode(a: [str]) -> bool {
+    return has_flag(a, "--json")
+}
+
+// ─── audit log (jsonl) ───
+
+fn _ts_now() -> str {
+    return exec("date -u '+%Y-%m-%dT%H:%M:%SZ'").trim()
+}
+
+fn _audit(subcmd: str, args_str: str, exit_code: int) {
+    let line = "{\"ts\":\"" + _ts_now() + "\",\"caller\":\"hexa_codex_standalone\",\"subcmd\":\"hexa-codex " +
+               subcmd + "\",\"args\":\"" + args_str.replace("\"", "\\\"") +
+               "\",\"exit_code\":" + str(exit_code) + ",\"version\":\"" + VERSION + "\"}"
+    exec("mkdir -p " + shq(HC + "/state") + " 2>/dev/null")
+    exec("echo " + shq(line) + " >> " + shq(LOG_PATH) + " 2>/dev/null")
+}
+
+fn _file_exists(p: str) -> bool {
+    let r = exec("[ -f " + shq(p) + " ] && echo yes || echo no").trim()
+    return r == "yes"
+}
+
+// ─── caveat printer (raw#10 honest C3) ───
+
+fn _print_caveats() {
+    println("")
+    println("--- caveats (raw#10 C3) ---")
+    println("  1. SPEC_CATALOG_ONLY at v1.0.0. 0/17 verbs ship a working .hexa")
+    println("     module; each verb is a single .md spec (closed-form candidate +")
+    println("     falsifier preregister) imported from n6-architecture@c0f1f570.")
+    println("  2. Falsifier deadlines + thresholds in each verb spec are")
+    println("     INITIAL-GUESS — revision planned alongside per-verb sandboxes.")
+    println("  3. Group taxonomy (safety / economics / ops / substrate) is a")
+    println("     librarian's grouping for navigation only — it does NOT imply")
+    println("     verb-internal cross-validation or shared lattice invariants.")
+    println("  4. No model training, inference SaaS, RLHF labeling pipeline, or")
+    println("     regulatory claim is made — write-side spec library only.")
+}
+
+// ─── subcommand: list (verb table by group) ───
+
+fn cmd_list(a: [str]) {
+    if json_mode(a) {
+        let mut js = "{\"hexa_codex\":\"" + VERSION + "\",\"verbs_total\":17,\"groups_total\":4,"
+        js = js + "\"groups\":{"
+        js = js + "\"safety\":[\"alignment\",\"safety\",\"welfare\",\"adversarial\",\"consciousness\",\"interpret\"],"
+        js = js + "\"economics\":[\"train_cost\",\"infer_cost\",\"quality_scale\"],"
+        js = js + "\"ops\":[\"deploy\",\"enterprise\",\"agent_serving\",\"eval\"],"
+        js = js + "\"substrate\":[\"multimodal\",\"rlhf\",\"cog_arch\",\"causal\"]"
+        js = js + "},\"verdict\":\"SPEC_CATALOG_ONLY\"}"
+        println(js)
+        return
+    }
+
+    println("hexa-codex " + VERSION + " — 17-verb AI knowledge substrate (4 groups)")
+    println("")
+    println("  SAFETY (6):     alignment  safety  welfare  adversarial  consciousness  interpret")
+    println("  ECONOMICS (3):  train_cost  infer_cost  quality_scale")
+    println("  OPS (4):        deploy  enterprise  agent_serving  eval")
+    println("  SUBSTRATE (4):  multimodal  rlhf  cog_arch  causal")
+    println("")
+    println("  total: 17 verb specs (codex == library; spec-first, working .hexa modules TBD)")
+    println("")
+    println("  to read a verb spec:")
+    println("    hexa-codex <verb>            (prints verb spec path + first lines)")
+    println("    hexa-codex selftest          (17-verb spec presence sweep)")
+    _print_caveats()
+}
+
+// ─── subcommand: <verb> (read spec) ───
+
+fn cmd_verb(verb: str, a: [str]) {
+    let spec = verb_spec(verb)
+    let grp  = group_of(verb)
+    if spec == "" {
+        eprintln("hexa-codex: unknown verb '" + verb + "'")
+        eprintln("run 'hexa-codex list' for the 17-verb table")
+        _audit(verb, "unknown_verb", 2)
+        exit(2)
+    }
+    let present = _file_exists(spec)
+    println("hexa-codex " + verb + " — group: " + grp + " (v" + VERSION + " spec)")
+    println("  spec_path: " + spec)
+    if present == false {
+        eprintln("  status: MISSING (spec file not found — run from repo root or set HEXA_CODEX_ROOT)")
+        if json_mode(a) {
+            println("{\"hexa_codex\":\"" + VERSION + "\",\"verb\":\"" + verb + "\",\"group\":\"" + grp + "\",\"present\":false}")
+        }
+        _audit(verb, "missing", 1)
+        exit(1)
+    }
+    println("  status: PRESENT")
+    println("  --- first 20 lines ---")
+    let head = exec("head -20 " + shq(spec) + " 2>/dev/null")
+    println(head.trim())
+    println("  ----------------------")
+    println("  (full spec at " + spec + ")")
+    if json_mode(a) {
+        println("{\"hexa_codex\":\"" + VERSION + "\",\"verb\":\"" + verb + "\",\"group\":\"" + grp + "\",\"present\":true,\"status\":\"spec_only\"}")
+    }
+    _audit(verb, "", 0)
+}
+
+// ─── subcommand: selftest (17-verb presence sweep) ───
+
+fn cmd_selftest(a: [str]) {
+    let all = VERBS_SAFETY + VERBS_ECONOMICS + VERBS_OPS + VERBS_SUBSTRATE
+    let mut ok = 0
+    let mut miss: [str] = []
+    for v in all {
+        let spec = verb_spec(v)
+        if _file_exists(spec) { ok = ok + 1 } else { miss = miss + [v] }
+    }
+    let total = len(all)
+    println("hexa-codex selftest — verb-spec presence sweep")
+    println("  total verbs: " + str(total))
+    println("  groups:      4 (safety / economics / ops / substrate)")
+    println("  present:     " + str(ok) + "/" + str(total))
+    if ok == total {
+        println("__HEXA_CODEX_SELFTEST__ PASS")
+        if json_mode(a) {
+            println("{\"hexa_codex\":\"" + VERSION + "\",\"subcmd\":\"selftest\",\"verdict\":\"PASS\",\"present\":" + str(ok) + ",\"total\":" + str(total) + "}")
+        }
+        _print_caveats()
+        _audit("selftest", "", 0)
+        return
+    }
+    println("__HEXA_CODEX_SELFTEST__ FAIL")
+    for m in miss { println("  missing: " + m) }
+    if json_mode(a) {
+        println("{\"hexa_codex\":\"" + VERSION + "\",\"subcmd\":\"selftest\",\"verdict\":\"FAIL\",\"present\":" + str(ok) + ",\"total\":" + str(total) + "}")
+    }
+    _print_caveats()
+    _audit("selftest", "", 1)
+    exit(1)
+}
+
+// ─── version ───
+
+fn cmd_version() {
+    println("hexa-codex " + VERSION)
+    println("standalone AI knowledge substrate (HEXA family — extracted from n6-architecture@c0f1f570 on 2026-05-06)")
+    println("license: MIT")
+    println("repo:    https://github.com/need-singularity/hexa-codex")
+}
+
+// ─── help ───
+
+fn cmd_help() {
+    println("hexa-codex " + VERSION + " — standalone AI knowledge substrate CLI (17 verb / 4 group)")
+    println("")
+    println("usage: hexa-codex <subcmd> [flags...]")
+    println("")
+    println("verb subcommands (organized by 4 groups):")
+    println("  SAFETY:")
+    println("    alignment       AI alignment spec")
+    println("    safety          AI safety spec")
+    println("    welfare         AI welfare spec")
+    println("    adversarial     AI adversarial spec")
+    println("    consciousness   AI consciousness spec")
+    println("    interpret       AI interpretability spec")
+    println("  ECONOMICS:")
+    println("    train_cost      AI training cost spec")
+    println("    infer_cost      AI inference cost spec")
+    println("    quality_scale   AI quality-scaling spec")
+    println("  OPS:")
+    println("    deploy          AI deployment spec")
+    println("    enterprise      AI enterprise-custom spec")
+    println("    agent_serving   AI agent-serving spec")
+    println("    eval            AI eval-pipeline spec")
+    println("  SUBSTRATE:")
+    println("    multimodal      AI multimodal spec")
+    println("    rlhf            youth AI labeling / RLHF hub spec")
+    println("    cog_arch        cognitive architecture spec")
+    println("    causal          causal chain spec")
+    println("")
+    println("utility subcommands:")
+    println("  list            17-verb table grouped by 4 groups")
+    println("  selftest        17-verb spec presence sweep")
+    println("")
+    println("global flags:")
+    println("  --version       show version")
+    println("  --json          machine-parseable JSON tail")
+    println("  --help, -h      this help")
+    println("")
+    println("env:")
+    println("  HEXA_CODEX_ROOT       override repo root (default: inferred from $0)")
+    println("")
+    println("cost estimate (Mac local): $0 — spec library read-only at v1.0.")
+}
+
+// ─── main ───
+
+fn main() {
+    let _raw = args()
+    let mut _sidx = -1
+    let mut _i = 0
+    while _i < _raw.len() {
+        if _raw[_i].ends_with(".hexa") { _sidx = _i; break }
+        _i = _i + 1
+    }
+    let mut _user_start = 2
+    if _sidx >= 0 { _user_start = _sidx + 1 }
+
+    let mut a: [str] = ["hexa_codex_cli", "hexa_codex_router"]
+    let mut _ua = _user_start
+    while _ua < _raw.len() {
+        a = a + [_raw[_ua]]
+        _ua = _ua + 1
+    }
+    let n = len(a)
+
+    if n < 3 {
+        cmd_help()
+        return
+    }
+
+    let sub = a[2]
+
+    if sub == "--version" || sub == "-V" || sub == "version" {
+        cmd_version()
+        return
+    }
+
+    if has_flag(a, "--help") || has_flag(a, "-h") {
+        cmd_help()
+        return
+    }
+
+    if sub == "help" { cmd_help(); return }
+    if sub == "list" { cmd_list(a); return }
+    if sub == "selftest" { cmd_selftest(a); return }
+
+    // verb dispatch
+    if verb_spec(sub) != "" {
+        cmd_verb(sub, a)
+        return
+    }
+
+    eprintln("hexa-codex: unknown subcommand '" + sub + "'")
+    eprintln("run 'hexa-codex help' or 'hexa-codex list' for usage")
+    _audit(sub, "", 2)
+    exit(2)
+}
