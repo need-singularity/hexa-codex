@@ -1,4 +1,4 @@
-# hexa-codex — AI knowledge substrate (HEXA family) 📚
+# 📚 hexa-codex — AI knowledge substrate (HEXA family)
 
 > 17-verb AI knowledge substrate organized in **4 groups**: safety + economics
 > + ops + substrate. A library-style (codex) spec catalog — each verb ships
