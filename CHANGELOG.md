@@ -360,16 +360,53 @@ exit 0 with empty stdout. Bypass with `RESOURCE_LOCAL_HEXA=1`.
 - `hexa run tests/test_all.hexa` — 13/13 PASS (where remote routing works).
 - `python3 -m pytest tests/ -m auto -q` — 83 passed (no regression).
 
-### F-CODEX closure status (after iter 12)
+### Added (2026-05-08 — 13th RSC iteration: numerics_alignment_parity / F-CODEX-3 T2 #2)
+
+- `verify/numerics_alignment_parity.hexa` — F-CODEX-3 T2 published-ref
+  parity (10 checks via `math_pure`): n=6 σ=12-axis mean vs 4 frontier
+  HELM-Core 2024-class composites:
+
+  | # | Model            | Composite | Drift  | Verdict           |
+  |--:|:-----------------|----------:|-------:|:------------------|
+  | 1 | Llama-3 70B      | 0.65     | 0.00   | exact baseline    |
+  | 2 | Gemini 1.5 Pro   | 0.72     | 0.07   | within tol        |
+  | 3 | GPT-4 (gpt-4o)   | 0.74     | 0.09   | within tol        |
+  | 4 | Claude 3 Opus    | 0.78     | 0.13   | aspirational      |
+
+  Verified:
+  - All 4 composites in [0, 1].
+  - Ranking: Llama-3 < Gemini 1.5 < GPT-4 < Claude 3 Opus.
+  - HELM drift partition: 3 of 4 within ±0.10 tolerance.
+  - Llama-3 70B = baseline 0.65 EXACT (open-frontier reference).
+  - Claude 3 Opus aspirational ceiling: drift 0.13 > tol.
+  - Frontier-class mean 0.7225 > baseline 0.65.
+  - Range max−min = 0.13 ≤ 0.20.
+  - Mean linearity: 1.5·mean(s) = mean(1.5·s) within 1e-12.
+  - Stddev = 0.047 finite + bounded (< 0.10).
+  - Spec anchor: ai-alignment.md ships preference + RLHF + DPO.
+
+- `tests/test_numerics_alignment_parity.hexa` — regression wrapper.
+- `tests/test_all.hexa` — CASES += parity test (now 14).
+- `cli/hexa-codex.hexa` — `verify numerics-alignment-parity` routes.
+- `hexa.toml` — entries + `[closure].runnable_hexa_iter13` marker.
+
+### Verified (iter 13)
+
+- `RESOURCE_LOCAL_HEXA=1 hexa run verify/numerics_alignment_parity.hexa` — 10/10 PASS.
+- `hexa run tests/test_all.hexa` — 14/14 PASS.
+- `python3 -m pytest tests/ -m auto -q` — 83 passed (no regression).
+
+### F-CODEX closure status (after iter 13)
 
 | Falsifier  | T1 (algebraic)                | T2 #1 (numerics)         | T2 #2 (parity)               | T2 #3 (solver) | T3 |
 |:-----------|:------------------------------|:-------------------------|:-----------------------------|:--------------:|:--:|
 | F-CODEX-1  | lattice + calc_train_cost ✓ ✓ | numerics_train_cost ✓    | numerics_train_cost_parity ✓ | TBD            | – |
 | F-CODEX-2  | lattice + calc_infer_cost ✓ ✓ | numerics_infer_cost ✓    | numerics_infer_cost_parity ✓ | TBD            | – |
-| F-CODEX-3  | lattice + calc_alignment ✓ ✓  | numerics_alignment ✓     | TBD                          | TBD            | – |
+| F-CODEX-3  | lattice + calc_alignment ✓ ✓  | numerics_alignment ✓     | numerics_alignment_parity ✓  | TBD            | – |
 | F-CODEX-4  | lattice + calc_interpret ✓ ✓  | numerics_interpret ✓     | TBD                          | TBD            | – |
 
-F-CODEX-1/2 T2 stack: 2 of 3 (parity ✓ ; solver/cross-pillar TBD).
+F-CODEX-1/2/3 T2 stack: 2 of 3 (parity ✓ ; solver/cross-pillar TBD).
+F-CODEX-4 T2 stack: 1 of 3 — parity (interpret motif published-ref) is next.
 
 ### F-CODEX T2 ROW: COMPLETE after iter 10
 

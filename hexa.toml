@@ -39,6 +39,7 @@ files = [
     "tests/test_numerics_interpret.hexa",
     "tests/test_numerics_train_cost_parity.hexa",
     "tests/test_numerics_infer_cost_parity.hexa",
+    "tests/test_numerics_alignment_parity.hexa",
     "tests/test_all.hexa",
 ]
 
@@ -123,6 +124,7 @@ verify = [
     "verify/numerics_interpret.hexa",  # F-CODEX-4 T2 numerics (.hexa, recipe §7.4 priority 4; math_pure)
     "verify/numerics_train_cost_parity.hexa", # F-CODEX-1 T2 stack #2 published-ref parity (.hexa, recipe §7.4 priority 5)
     "verify/numerics_infer_cost_parity.hexa", # F-CODEX-2 T2 stack #2 published-ref parity (.hexa, recipe §7.4 priority 5)
+    "verify/numerics_alignment_parity.hexa",  # F-CODEX-3 T2 stack #2 published-ref parity (.hexa, recipe §7.4 priority 5)
 ]
 build = [
     "build/Makefile",               # verify + test + ci + per-verb pdf fan-out
@@ -192,6 +194,7 @@ runnable_hexa_iter9 = "2026-05-08 (verify/numerics_alignment.hexa 10/10 PASS —
 runnable_hexa_iter10 = "2026-05-08 (verify/numerics_interpret.hexa 10/10 PASS — recipe §7.4 priority 4 final; F-CODEX-4 T2 numerical re-derivation; σ-φ=10 motif statistics, 6-obs mean+stddev, log decomposition; T2 ROW COMPLETE — all 4 falsifiers at 67% closure)"
 runnable_hexa_iter11 = "2026-05-08 (verify/numerics_train_cost_parity.hexa 10/10 PASS — recipe §7.4 priority 5; F-CODEX-1 T2 stack #2 published-ref parity vs Chinchilla 70B / GPT-3 175B / Llama-2 70B / PaLM 540B; Chinchilla optimum D/N=20 verified, GPT-3 under-trained flagged)"
 runnable_hexa_iter12 = "2026-05-08 (verify/numerics_infer_cost_parity.hexa 10/10 PASS — recipe §7.4 priority 5; F-CODEX-2 T2 stack #2 published-ref parity vs GPT-3.5 16k / Claude 2 100k / Gemini 1.5 1M / Claude 4.7 1M; 1M-ctx KV mem 171.8GB > 80GB threshold, n6/approx ratio = 128^2.5 EXACT)"
+runnable_hexa_iter13 = "2026-05-08 (verify/numerics_alignment_parity.hexa 10/10 PASS — recipe §7.4 priority 5; F-CODEX-3 T2 stack #2 published-ref parity vs Llama-3 70B / Gemini 1.5 Pro / GPT-4 / Claude 3 Opus HELM-Core composites; Llama-3 = baseline 0.65 EXACT, Claude 3 Opus aspirational ceiling)"
 
 # ── Scope honesty (raw#10 C3) ─────────────────────────────
 [scope]
