@@ -37,11 +37,12 @@ VERIFY_DIR = Path(__file__).resolve().parent
 ROOT = VERIFY_DIR.parent
 
 CHECKS: list[tuple[str, str, str]] = [
-    ("n6",         "n6_arithmetic.py",  "n=6 lattice arithmetic identity"),
-    ("inventory",  "spec_inventory.py", "17-verb spec presence + headers"),
-    ("group",      "group_audit.py",    "4-group / 17-verb consistency audit"),
-    ("release",    "release_ladder.py", "release ladder v1.0→v2.0 monotonicity"),
-    ("falsifiers", "falsifier_check.py","F-CODEX-1..4 arithmetic-floor checklist"),
+    ("n6",         "n6_arithmetic.py",      "n=6 lattice arithmetic identity"),
+    ("inventory",  "spec_inventory.py",     "17-verb spec presence + headers"),
+    ("group",      "group_audit.py",        "4-group / 17-verb consistency audit"),
+    ("release",    "release_ladder.py",     "release ladder v1.0→v2.0 monotonicity"),
+    ("falsifiers", "falsifier_check.py",    "F-CODEX-1..4 arithmetic-floor checklist"),
+    ("reference",  "reference_inventory.py","papers/ + formal/ reference annex audit"),
 ]
 SCRIPT_FOR = {name: script for name, script, _ in CHECKS}
 LABEL_FOR  = {name: label  for name, _, label  in CHECKS}

@@ -8,9 +8,10 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 [![Version](https://img.shields.io/badge/version-1.0.0-informational.svg)](CHANGELOG.md)
 [![Verbs: 17 / 4 groups](https://img.shields.io/badge/verbs-17_(4_groups)-blue.svg)](#verbs)
-[![Verify: 5/5](https://img.shields.io/badge/verify-5%2F5-brightgreen.svg)](#runnable-surface)
-[![Tests: 62 passed](https://img.shields.io/badge/tests-62_passed-brightgreen.svg)](#runnable-surface)
+[![Verify: 6/6](https://img.shields.io/badge/verify-6%2F6-brightgreen.svg)](#runnable-surface)
+[![Tests: 73 passed](https://img.shields.io/badge/tests-73_passed-brightgreen.svg)](#runnable-surface)
 [![Falsifiers: 4/4 floor](https://img.shields.io/badge/falsifiers-4%2F4_floor-brightgreen.svg)](#falsifier-preregister)
+[![Lean4 proof: σ(6)=12](https://img.shields.io/badge/Lean4-σ(6)%3D12_PROVEN-brightgreen.svg)](formal/README.md)
 [![n=6 lattice](https://img.shields.io/badge/n=6-σ·φ_=_n·τ_=_24-blue.svg)](#n6-master-identity)
 
 ---
@@ -163,6 +164,7 @@ runnable verification surface that mirrors the
 | `group`        | `verify/group_audit.py`               | 4-group / 17-verb consistency across 6 surfaces   |
 | `release`      | `verify/release_ladder.py`            | v1.0→v2.0 monotonicity (verbs_wired ↑, evals ↑)   |
 | `falsifiers`   | `verify/falsifier_check.py`           | F-CODEX-1..4 arithmetic floors                    |
+| `reference`    | `verify/reference_inventory.py`       | papers/ + formal/ md5 + canonical-header audit    |
 
 ```bash
 python3 verify/cli.py all          # 5/5 PASS in <2s
@@ -213,13 +215,53 @@ make -C build everything    # ci + selftest + hexa-tests
 In addition to `list` / `selftest` / `<verb>`, the CLI now routes:
 
 ```bash
-hexa-codex verify [check]      # n6 / inventory / group / release / falsifiers / all
+hexa-codex verify [check]      # n6 / inventory / group / release / falsifiers / reference / all
 hexa-codex calc <metric>       # train_cost / infer_cost / alignment / interpret / quality_scale
 hexa-codex inventory           # spec presence + canonical-header audit
 hexa-codex lattice [n]         # n=k lattice explorer
 hexa-codex test [mark]         # pytest tests/ -m {auto|hexa}
 hexa-codex status              # one-shot health JSON
 ```
+
+---
+
+## Reference annexes
+
+Two cross-cutting AI-technique atlases absorbed from `n6-architecture/papers/`
+(provenance commit `0c65155a`, extracted 2026-05-07):
+
+| Paper | What it does |
+|-------|--------------|
+| [`papers/n6-ai-17-techniques-experimental-paper.md`](papers/n6-ai-17-techniques-experimental-paper.md) | Maps **hexa-codex's exact 17 verbs** onto the σ·φ=n·τ=24 coordinate space (atlas.n6 192/192 EXACT) |
+| [`papers/n6-ai-techniques-68-integrated-paper.md`](papers/n6-ai-techniques-68-integrated-paper.md) | Wider **68-technique** atlas; situates the 17 verbs inside the broader landscape |
+
+These are reference annexes — they coordinatize the existing 17 verbs onto
+the n=6 lattice, they do not introduce new specs or falsifiers. See
+[`papers/README.md`](papers/README.md) for the full relationship.
+
+---
+
+## Formal substrate (Lean 4)
+
+The σ-invariant cardinality at the heart of every F-CODEX-N falsifier is
+**kernel-checked** in Lean 4:
+
+| File | Theorem | Status |
+|------|---------|--------|
+| [`formal/lean4/N6/InvariantLattice/SigmaLatticeCard.lean`](formal/lean4/N6/InvariantLattice/SigmaLatticeCard.lean) | `theorem sigma_lattice_card : sigma 6 = 12 := rfl` | **PROVEN** (no sorry) — F-CL-FORMAL-1 |
+| [`formal/lean4/N6/InvariantLattice/Sigma.lean`](formal/lean4/N6/InvariantLattice/Sigma.lean) | `def sigma (n : Nat) : Nat` (computable) | DEFINITION |
+
+Implications for hexa-codex falsifiers:
+
+- F-CODEX-1 (training_cost ∝ N^**24**) ← σ(6)·φ(6) = 24, where σ(6) = 12 is **Lean-proven**
+- F-CODEX-2 (inference_cost ∝ context^**4**) ← τ(6) = 4 (corollary of divisor count)
+- F-CODEX-3 (alignment over **12** axes) ← σ(6) = 12 directly (this proof)
+- F-CODEX-4 (motif count = **10**) ← σ(6) − φ(6) = 10 (corollary)
+
+`verify/n6_arithmetic.py` is the runtime witness; `SigmaLatticeCard.lean`
+is the mathematical bedrock. Lean 4 toolchain is **not required** to use
+hexa-codex — the formal proof is a reference annex. See
+[`formal/README.md`](formal/README.md) for build instructions.
 
 ---
 
@@ -244,11 +286,13 @@ What works at v1.0:
 - `hexa-codex list` prints the full 4-group table.
 - `hexa-codex <verb>` prints the spec path + first 20 lines.
 - `hexa-codex selftest` confirms 17/17 spec presence.
-- **`hexa-codex verify all` runs 5 verifiers** (n6 / inventory / group /
-  release / falsifiers) — 5/5 PASS in <2s.
+- **`hexa-codex verify all` runs 6 verifiers** (n6 / inventory / group /
+  release / falsifiers / reference) — 6/6 PASS in <6s.
 - **`hexa-codex calc <metric>`** runs F-CODEX-1..4 closed-form calculators.
-- **`make -C build ci`** runs verify + 62 pytest cases (all auto, no
+- **`make -C build ci`** runs verify + 73 pytest cases (all auto, no
   bench equipment / external SDK / pip install required).
+- **σ(6) = 12 mechanically proven** in Lean 4 (`SigmaLatticeCard.lean`,
+  `:= rfl`, no `sorry`).
 
 What is **out of scope** at v1.0:
 

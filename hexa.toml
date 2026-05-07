@@ -90,6 +90,7 @@ verify = [
     "verify/release_ladder.py",     # v1.0..v2.0 ladder monotonicity
     "verify/release_params.py",     # per-version parameter registry
     "verify/falsifier_check.py",    # F-CODEX-1..4 arithmetic floors
+    "verify/reference_inventory.py",# papers/ + formal/ md5 + provenance audit
     "verify/calc_train_cost.py",    # F-CODEX-1 closed form
     "verify/calc_infer_cost.py",    # F-CODEX-2 closed form
     "verify/calc_alignment.py",     # F-CODEX-3 axis aggregator
@@ -100,6 +101,16 @@ verify = [
 ]
 build = [
     "build/Makefile",               # verify + test + ci + per-verb pdf fan-out
+]
+papers = [
+    "papers/README.md",                                       # reference-annex index
+    "papers/n6-ai-17-techniques-experimental-paper.md",       # P1: 17 verb σ·φ=24 map
+    "papers/n6-ai-techniques-68-integrated-paper.md",         # P2: wider 68-tech atlas
+]
+formal = [
+    "formal/README.md",                                       # formal-substrate index
+    "formal/lean4/N6/InvariantLattice/Sigma.lean",            # σ(n) Nat definition
+    "formal/lean4/N6/InvariantLattice/SigmaLatticeCard.lean", # F-CL-FORMAL-1 PROVEN
 ]
 
 # ── Dependencies ───────────────────────────────────────────
@@ -128,12 +139,15 @@ verbs_total       = 17
 groups_total      = 4
 verbs_wired       = 0
 verbs_spec        = 17
-verifiers_pass    = "5/5"
-acceptance_pass   = "61/61 pytest auto + 17/17 verb spec presence (.hexa selftest)"
+papers_absorbed   = 2     # n6-ai-17-techniques + n6-ai-techniques-68
+formal_proofs     = 1     # F-CL-FORMAL-1 σ(6)=12 PROVEN (Lean 4)
+verifiers_pass    = "6/6"
+acceptance_pass   = "62/62 pytest auto + 17/17 verb spec presence (.hexa selftest)"
 falsifier_floor   = "4/4 arithmetic-floor PASS (empirical evals land v1.1+)"
-verdict           = "SPEC_CATALOG_ONLY + RUNNABLE_VERIFICATION_SURFACE"
+verdict           = "SPEC_CATALOG_ONLY + RUNNABLE_VERIFICATION_SURFACE + FORMAL_PROOF_ANCHOR"
 extracted_from    = "n6-architecture@c0f1f570 on 2026-05-06"
 runnable_added_on = "2026-05-07 (verify/ + build/ + python tests/, mirroring hexa-sscb pattern)"
+references_added_on = "2026-05-07 (papers/ + formal/ from n6-architecture@0c65155a, P1+P2+P3)"
 
 # ── Scope honesty (raw#10 C3) ─────────────────────────────
 [scope]
