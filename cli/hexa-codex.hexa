@@ -246,6 +246,8 @@ fn _verify_hexa_script(target: str) -> str {
     if target == "numerics_infer_cost_solver" { return HC + "/verify/numerics_infer_cost_solver.hexa" }
     if target == "numerics-alignment-solver"  { return HC + "/verify/numerics_alignment_solver.hexa" }
     if target == "numerics_alignment_solver"  { return HC + "/verify/numerics_alignment_solver.hexa" }
+    if target == "numerics-interpret-solver"  { return HC + "/verify/numerics_interpret_solver.hexa" }
+    if target == "numerics_interpret_solver"  { return HC + "/verify/numerics_interpret_solver.hexa" }
     return ""
 }
 
@@ -456,6 +458,7 @@ fn cmd_help() {
     println("                  · 'numerics-train_cost-solver' → verify/numerics_train_cost_solver.hexa (.hexa, recipe §7.4 priority 6; F-CODEX-1 T2 ODE solver — Euler/midpoint/RK4 cascade)")
     println("                  · 'numerics-infer_cost-solver' → verify/numerics_infer_cost_solver.hexa (.hexa, recipe §7.4 priority 6; F-CODEX-2 T2 ODE solver — τ=4 steeper cascade)")
     println("                  · 'numerics-alignment-solver'  → verify/numerics_alignment_solver.hexa  (.hexa, recipe §7.4 priority 6; F-CODEX-3 T2 ODE solver — leapfrog/Verlet harmonic oscillator)")
+    println("                  · 'numerics-interpret-solver'  → verify/numerics_interpret_solver.hexa  (.hexa, recipe §7.4 priority 6 final; F-CODEX-4 T2 ODE solver — gradient-flow + Lyapunov)")
     println("  inventory       17-verb spec inventory + canonical-header audit")
     println("  lattice [n]     n=k lattice explorer (σ·φ vs n·τ identity)")
     println("  calc <metric>   F-CODEX-1..4 calculators (train_cost/infer_cost/alignment/interpret/quality_scale)")

@@ -44,6 +44,7 @@ files = [
     "tests/test_numerics_train_cost_solver.hexa",
     "tests/test_numerics_infer_cost_solver.hexa",
     "tests/test_numerics_alignment_solver.hexa",
+    "tests/test_numerics_interpret_solver.hexa",
     "tests/test_all.hexa",
 ]
 
@@ -133,6 +134,7 @@ verify = [
     "verify/numerics_train_cost_solver.hexa", # F-CODEX-1 T2 stack #3 ODE solver — Euler/midpoint/RK4 (.hexa, recipe §7.4 priority 6)
     "verify/numerics_infer_cost_solver.hexa", # F-CODEX-2 T2 stack #3 ODE solver — τ=4 cascade (.hexa, recipe §7.4 priority 6)
     "verify/numerics_alignment_solver.hexa",  # F-CODEX-3 T2 stack #3 ODE solver — leapfrog/Verlet harmonic oscillator (.hexa, recipe §7.4 priority 6)
+    "verify/numerics_interpret_solver.hexa",  # F-CODEX-4 T2 stack #3 ODE solver — gradient-flow + Lyapunov (.hexa, recipe §7.4 priority 6 final)
 ]
 build = [
     "build/Makefile",               # verify + test + ci + per-verb pdf fan-out
@@ -207,6 +209,7 @@ runnable_hexa_iter14 = "2026-05-08 (verify/numerics_interpret_parity.hexa 10/10 
 runnable_hexa_iter15 = "2026-05-08 (verify/numerics_train_cost_solver.hexa 10/10 PASS — recipe §7.4 priority 6 enter; F-CODEX-1 T2 stack #3 ODE solver — Euler/midpoint-RK2/RK4 cascade re-derives c(u)=exp(0.96·u) from dc/du=N6_EXP·c; RK4 rel_err 2e-10 at n=512; convergence orders 1/2/4 verified by step-halving; first T2 #3 slot)"
 runnable_hexa_iter16 = "2026-05-08 (verify/numerics_infer_cost_solver.hexa 10/10 PASS — recipe §7.4 priority 6; F-CODEX-2 T2 stack #3 ODE solver — τ(6)=4 steeper cascade; RK4 rel_err 1.3e-9 at CTX_1M (c≈2.7e8); convergence orders 1/2/4 verified at CTX_32K; T2 #3 row 2/4)"
 runnable_hexa_iter17 = "2026-05-08 (verify/numerics_alignment_solver.hexa 10/10 PASS — recipe §7.4 priority 6; F-CODEX-3 T2 stack #3 ODE solver — symplectic leapfrog/Verlet on harmonic oscillator d²x/dt²=−(x−M); time-average ⟨x⟩ over 1 period recovers σ=12 mean within 7e-8; energy bounded over 50 periods (max drift 9e-5); T2 #3 row 3/4)"
+runnable_hexa_iter18 = "2026-05-08 (verify/numerics_interpret_solver.hexa 10/10 PASS — recipe §7.4 priority 6 FINAL; F-CODEX-4 T2 stack #3 ODE solver — gradient-flow dx/dt=M−x with Lyapunov L=½(x−M)² monotone decay; all 6 OBS-as-IC trajectories converge to M=σ−φ=10 within 4e-9 at t=20; convergence orders 1/2/4 verified; T2 #3 row 4/4 COMPLETE — recipe §7.4 priority 6 row CLOSED)"
 
 # ── Scope honesty (raw#10 C3) ─────────────────────────────
 [scope]

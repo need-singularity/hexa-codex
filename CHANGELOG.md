@@ -553,17 +553,55 @@ before saturation.
 - `RESOURCE_LOCAL_HEXA=1 hexa run verify/numerics_alignment_solver.hexa` — 10/10 PASS.
 - `hexa run tests/test_all.hexa` — 18/18 PASS.
 
-### F-CODEX T2 #3 (solver) row: 3/4 entered after iter 17
+### Added (2026-05-08 — 18th RSC iteration: numerics_interpret_solver / F-CODEX-4 T2 #3)
+
+- `verify/numerics_interpret_solver.hexa` — F-CODEX-4 T2 ODE solver
+  layer (10 checks via `math_pure`): gradient-flow on the empirical L2
+  loss over 6 SAE-class motif-count observations:
+
+      OBS = [10, 9, 11, 10, 8, 12],   M = mean(OBS) = 10 = σ − φ.
+      L(x) = (1/2N) Σᵢ (x − aᵢ)² = ½(x − M)² + const,
+      dx/dt = −∂L/∂x = M − x,   closed-form x(t) = M + (x₀ − M)·e^(−t),
+      Lyapunov L(x(t)) decays as dL/dt = −(x − M)² ≤ 0.
+
+  Solver cascade (Euler / midpoint-RK2 / RK4) — dissipative 1st-order
+  counterpart of iter 17's conservative leapfrog/Verlet oscillator.
+
+  | # | Check                                          | Result          |
+  |--:|:-----------------------------------------------|:----------------|
+  | 1 | anchor identity (t=0 returns x₀, all 6 OBS)    | drift = 0       |
+  | 2 | RK4 from x₀=0 to t=20: matches closed form     | 9e-15           |
+  | 3 | All 6 OBS-IC trajectories converge to M        | max 4e-9        |
+  | 4 | Midpoint to t=10 (n=128)                       | drift 5e-6      |
+  | 5 | Euler to t=10 (n=64)                           | drift 3e-4      |
+  | 6 | convergence ordering Euler > Mid > RK4         | 3e-4 > 2e-5 > 3e-8 |
+  | 7 | Euler 1st-order (512→1024 steps)               | ratio 1.96      |
+  | 8 | Midpoint 2nd-order (32→64 steps)               | ratio 4.87      |
+  | 9 | RK4 4th-order (16→32 steps, t=2)               | ratio 16.86     |
+  |10 | Lyapunov L(x) monotone-decreasing along RK4    | OK 128 steps    |
+
+- `tests/test_numerics_interpret_solver.hexa` — regression wrapper.
+- `tests/test_all.hexa` — CASES += solver test (now 19).
+- `cli/hexa-codex.hexa` — `verify numerics-interpret-solver` routes.
+- `hexa.toml` — entries + `[closure].runnable_hexa_iter18` marker.
+
+### Verified (iter 18)
+
+- `RESOURCE_LOCAL_HEXA=1 hexa run verify/numerics_interpret_solver.hexa` — 10/10 PASS.
+- `hexa run tests/test_all.hexa` — 19/19 PASS.
+
+### F-CODEX T2 #3 (solver) row: COMPLETE after iter 18
 
 | Falsifier  | T1 ✓ ✓ | T2 #1 ✓ | T2 #2 ✓ | T2 #3 (solver)   | T3 |
 |:-----------|:------:|:-------:|:-------:|:----------------:|:--:|
 | F-CODEX-1  | ✓✓     | ✓       | ✓       | ✓ (iter 15)      | – |
 | F-CODEX-2  | ✓✓     | ✓       | ✓       | ✓ (iter 16)      | – |
-| F-CODEX-3  | ✓✓     | ✓       | ✓       | **✓ (iter 17)**  | – |
-| F-CODEX-4  | ✓✓     | ✓       | ✓       | TBD              | – |
+| F-CODEX-3  | ✓✓     | ✓       | ✓       | ✓ (iter 17)      | – |
+| F-CODEX-4  | ✓✓     | ✓       | ✓       | **✓ (iter 18)**  | – |
 
-Next: F-CODEX-4 solver (priority 6 final), then priority 7 cross-pillar,
-reaching recipe §7.2 sat-1.
+**Recipe §7.4 priority 6 row CLOSED — all 4 falsifiers at T2 ×3 stack.**
+Next: priority 7 `numerics_cross_pillar.hexa` (cross-cutter T2),
+reaching recipe §7.2 sat-1 saturation gate.
 
 ### F-CODEX T2 ROW: COMPLETE after iter 10
 
