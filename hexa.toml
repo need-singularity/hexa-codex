@@ -32,6 +32,7 @@ files = [
     "tests/test_calc_train_cost.hexa",
     "tests/test_calc_infer_cost.hexa",
     "tests/test_calc_alignment.hexa",
+    "tests/test_calc_interpret.hexa",
     "tests/test_all.hexa",
 ]
 
@@ -109,6 +110,7 @@ verify = [
     "verify/calc_train_cost.hexa",  # F-CODEX-1 T1 calc (.hexa, recipe §7.4 priority 3)
     "verify/calc_infer_cost.hexa",  # F-CODEX-2 T1 calc (.hexa, recipe §7.4 priority 3)
     "verify/calc_alignment.hexa",   # F-CODEX-3 T1 calc (.hexa, recipe §7.4 priority 3)
+    "verify/calc_interpret.hexa",   # F-CODEX-4 T1 calc (.hexa, recipe §7.4 priority 3)
 ]
 build = [
     "build/Makefile",               # verify + test + ci + per-verb pdf fan-out
@@ -171,6 +173,7 @@ runnable_hexa_iter2 = "2026-05-07 (verify/cross_doc_audit.hexa 15/15 PASS — re
 runnable_hexa_iter3 = "2026-05-07 (verify/calc_train_cost.hexa 8/8 PASS — recipe §7.4 priority 3; F-CODEX-1 T1 calc; J₂=σ·φ=24, exp 24/25=0.96 Chinchilla-comparable)"
 runnable_hexa_iter4 = "2026-05-07 (verify/calc_infer_cost.hexa 9/9 PASS — recipe §7.4 priority 3; F-CODEX-2 T1 calc; context^τ=context^4, σ·τ=48 serving-channel link)"
 runnable_hexa_iter5 = "2026-05-07 (verify/calc_alignment.hexa 9/9 PASS — recipe §7.4 priority 3; F-CODEX-3 T1 calc; mean over σ=12 axes, HELM-drift ≤ 0.10 tolerance)"
+runnable_hexa_iter6 = "2026-05-07 (verify/calc_interpret.hexa 10/10 PASS — recipe §7.4 priority 3 final; F-CODEX-4 T1 calc; motif count = σ−φ = 10, T1 row complete for all 4 falsifiers)"
 
 # ── Scope honesty (raw#10 C3) ─────────────────────────────
 [scope]

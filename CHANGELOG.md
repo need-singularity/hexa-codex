@@ -150,6 +150,48 @@ versions follow [SemVer](https://semver.org/spec/v2.0.0.html).
 - `hexa run tests/test_all.hexa` — 6/6 PASS.
 - `python3 -m pytest tests/ -m auto -q` — 83 passed (no regression).
 
+### Added (2026-05-07 — 6th RSC iteration: calc_interpret / F-CODEX-4)
+
+- `verify/calc_interpret.hexa` — F-CODEX-4 T1 algebraic calculator (10 checks):
+  - σ(6) − φ(6) = 10 motif-count identity.
+  - PREDICTED_MOTIFS = σ−φ = 10.
+  - Motif catalog cardinality = predicted (10 entries: induction-head,
+    suppression-head, name-mover, backup/negative name-mover, duplicate-token
+    detector, previous-token-head, refusal-circuit, factual-recall-head,
+    in-context pattern-matcher).
+  - (σ−φ) + φ = σ : motif row + verdict row = σ closure.
+  - Drift |observed − predicted| ≤ 3 (default observed = 10, drift 0).
+  - Tolerance < φ·2 = 4 (non-trivial falsifier).
+  - Spec anchor: SAE / circuit / dictionary-learning tokens.
+  - Spec anchor: TransformerLens / SAELens + Bricken / Cunningham refs.
+  - interpret ∈ safety group; |safety| = 6 = N.
+  - F-CODEX-3 σ axes (12) − F-CODEX-4 σ−φ motifs (10) = φ : verdict-bit drop.
+  - Sentinel `__HEXA_CODEX_CALC_INTERPRET__ PASS`. Closes T1 for F-CODEX-4 —
+    completes the **T1 row for all 4 falsifiers**.
+- `tests/test_calc_interpret.hexa` — regression wrapper.
+- `tests/test_all.hexa` — CASES += `test_calc_interpret`.
+- `cli/hexa-codex.hexa` — `verify interpret` routes to .hexa.
+- `hexa.toml` — `[test] files` += `test_calc_interpret.hexa`;
+  `verify =` += `verify/calc_interpret.hexa`;
+  `[closure].runnable_hexa_iter6` marker.
+
+### Verified (iter 6)
+
+- `hexa run verify/calc_interpret.hexa` — 10/10 PASS.
+- `hexa run tests/test_all.hexa` — 7/7 PASS.
+- `python3 -m pytest tests/ -m auto -q` — 83 passed (no regression).
+
+### F-CODEX T1 row: COMPLETE after iter 6
+
+| Falsifier  | T1 anchors                                | T2 (numerics) | T3 (empirical) |
+|:-----------|:------------------------------------------|:-------------:|:--------------:|
+| F-CODEX-1  | lattice_check + calc_train_cost           | TBD           | TBD            |
+| F-CODEX-2  | lattice_check + calc_infer_cost           | TBD           | TBD            |
+| F-CODEX-3  | lattice_check + calc_alignment            | TBD           | TBD            |
+| F-CODEX-4  | lattice_check + calc_interpret            | TBD           | TBD            |
+
+Next: numerics_*.hexa T2 layer (recipe §7.4 priority 4).
+
 ## [1.0.0] — 2026-05-06
 
 ### Added

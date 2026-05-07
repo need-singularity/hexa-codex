@@ -223,6 +223,7 @@ fn _verify_hexa_script(target: str) -> str {
     if target == "infer_cost"  { return HC + "/verify/calc_infer_cost.hexa" }
     if target == "infer-cost"  { return HC + "/verify/calc_infer_cost.hexa" }
     if target == "alignment"   { return HC + "/verify/calc_alignment.hexa" }
+    if target == "interpret"   { return HC + "/verify/calc_interpret.hexa" }
     return ""
 }
 
@@ -421,6 +422,7 @@ fn cmd_help() {
     println("                  · 'train_cost' → verify/calc_train_cost.hexa (.hexa, recipe §7.4 T1 calc; F-CODEX-1)")
     println("                  · 'infer_cost' → verify/calc_infer_cost.hexa (.hexa, recipe §7.4 T1 calc; F-CODEX-2)")
     println("                  · 'alignment'  → verify/calc_alignment.hexa  (.hexa, recipe §7.4 T1 calc; F-CODEX-3)")
+    println("                  · 'interpret'  → verify/calc_interpret.hexa  (.hexa, recipe §7.4 T1 calc; F-CODEX-4)")
     println("  inventory       17-verb spec inventory + canonical-header audit")
     println("  lattice [n]     n=k lattice explorer (σ·φ vs n·τ identity)")
     println("  calc <metric>   F-CODEX-1..4 calculators (train_cost/infer_cost/alignment/interpret/quality_scale)")
