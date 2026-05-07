@@ -21,6 +21,10 @@ REFERENCE_FILES = [
     "papers/n6-ai-techniques-68-integrated-paper.md",
     "formal/lean4/N6/InvariantLattice/Sigma.lean",
     "formal/lean4/N6/InvariantLattice/SigmaLatticeCard.lean",
+    "papers/n6-ai-ethics-governance-paper.md",
+    "papers/n6-governance-safety-urban-paper.md",
+    "consciousness/measurement-protocol.md",
+    "consciousness/red-team-failure.md",
 ]
 
 
@@ -59,8 +63,35 @@ def test_papers_referenced_in_papers_README():
     p = ROOT / "papers/README.md"
     assert p.exists()
     text = p.read_text(encoding="utf-8")
-    assert "n6-ai-17-techniques-experimental-paper.md" in text
-    assert "n6-ai-techniques-68-integrated-paper.md" in text
+    for name in [
+        "n6-ai-17-techniques-experimental-paper.md",
+        "n6-ai-techniques-68-integrated-paper.md",
+        "n6-ai-ethics-governance-paper.md",
+        "n6-governance-safety-urban-paper.md",
+    ]:
+        assert name in text, f"{name} missing from papers/README.md"
+
+
+@pytest.mark.auto
+def test_consciousness_deepdives_listed_in_papers_README():
+    """measurement-protocol + red-team-failure are referenced in papers/README.md."""
+    p = ROOT / "papers/README.md"
+    text = p.read_text(encoding="utf-8")
+    assert "measurement-protocol.md" in text
+    assert "red-team-failure.md" in text
+
+
+@pytest.mark.auto
+def test_consciousness_deepdive_quality_markers():
+    """Both consciousness deep-dives carry their grade-tracking markers
+    (BT-19 reference + verdict)."""
+    pp = ROOT / "consciousness/measurement-protocol.md"
+    rt = ROOT / "consciousness/red-team-failure.md"
+    pp_text = pp.read_text(encoding="utf-8")
+    rt_text = rt.read_text(encoding="utf-8")
+    assert "BT-19" in pp_text and "BT-19" in rt_text
+    # red-team explicitly downgrades [7?] CONJECTURE → [5] MISS
+    assert "MISS" in rt_text or "downgrade" in rt_text.lower()
 
 
 @pytest.mark.auto

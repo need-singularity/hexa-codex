@@ -104,13 +104,19 @@ build = [
 ]
 papers = [
     "papers/README.md",                                       # reference-annex index
-    "papers/n6-ai-17-techniques-experimental-paper.md",       # P1: 17 verb σ·φ=24 map
+    "papers/n6-ai-17-techniques-experimental-paper.md",       # P1: 17 verb σ·φ=24 map (192/192 EXACT)
     "papers/n6-ai-techniques-68-integrated-paper.md",         # P2: wider 68-tech atlas
+    "papers/n6-ai-ethics-governance-paper.md",                # P4: ai-ethics+governance overlay (0/24 EXACT, MATURITY=LOW)
+    "papers/n6-governance-safety-urban-paper.md",             # P5: governance+safety+urban (58/58 EXACT, MATURITY=HIGH)
 ]
 formal = [
     "formal/README.md",                                       # formal-substrate index
     "formal/lean4/N6/InvariantLattice/Sigma.lean",            # σ(n) Nat definition
     "formal/lean4/N6/InvariantLattice/SigmaLatticeCard.lean", # F-CL-FORMAL-1 PROVEN
+]
+deepdive = [
+    "consciousness/measurement-protocol.md",                  # BT-19 α_IIT·α_GWT=1 reproducible EEG/fMRI protocol
+    "consciousness/red-team-failure.md",                      # BT-19 red-team refutation — falsifier discipline demo
 ]
 
 # ── Dependencies ───────────────────────────────────────────
@@ -139,8 +145,9 @@ verbs_total       = 17
 groups_total      = 4
 verbs_wired       = 0
 verbs_spec        = 17
-papers_absorbed   = 2     # n6-ai-17-techniques + n6-ai-techniques-68
+papers_absorbed   = 4     # P1+P2 (ai-techniques) + P4 (ai-ethics-governance) + P5 (governance-safety-urban)
 formal_proofs     = 1     # F-CL-FORMAL-1 σ(6)=12 PROVEN (Lean 4)
+deepdives         = 2     # consciousness/measurement-protocol + red-team-failure
 verifiers_pass    = "6/6"
 acceptance_pass   = "62/62 pytest auto + 17/17 verb spec presence (.hexa selftest)"
 falsifier_floor   = "4/4 arithmetic-floor PASS (empirical evals land v1.1+)"

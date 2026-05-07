@@ -9,9 +9,10 @@
 [![Version](https://img.shields.io/badge/version-1.0.0-informational.svg)](CHANGELOG.md)
 [![Verbs: 17 / 4 groups](https://img.shields.io/badge/verbs-17_(4_groups)-blue.svg)](#verbs)
 [![Verify: 6/6](https://img.shields.io/badge/verify-6%2F6-brightgreen.svg)](#runnable-surface)
-[![Tests: 73 passed](https://img.shields.io/badge/tests-73_passed-brightgreen.svg)](#runnable-surface)
+[![Tests: 83 passed](https://img.shields.io/badge/tests-83_passed-brightgreen.svg)](#runnable-surface)
 [![Falsifiers: 4/4 floor](https://img.shields.io/badge/falsifiers-4%2F4_floor-brightgreen.svg)](#falsifier-preregister)
 [![Lean4 proof: σ(6)=12](https://img.shields.io/badge/Lean4-σ(6)%3D12_PROVEN-brightgreen.svg)](formal/README.md)
+[![Papers: 4 + Lean1 + 2 deep-dive](https://img.shields.io/badge/refs-4P_+_Lean1_+_2DD-blue.svg)](#reference-annexes)
 [![n=6 lattice](https://img.shields.io/badge/n=6-σ·φ_=_n·τ_=_24-blue.svg)](#n6-master-identity)
 
 ---
@@ -227,17 +228,31 @@ hexa-codex status              # one-shot health JSON
 
 ## Reference annexes
 
-Two cross-cutting AI-technique atlases absorbed from `n6-architecture/papers/`
-(provenance commit `0c65155a`, extracted 2026-05-07):
+Cross-cutting AI/governance atlases absorbed from `n6-architecture/papers/`:
 
-| Paper | What it does |
-|-------|--------------|
-| [`papers/n6-ai-17-techniques-experimental-paper.md`](papers/n6-ai-17-techniques-experimental-paper.md) | Maps **hexa-codex's exact 17 verbs** onto the σ·φ=n·τ=24 coordinate space (atlas.n6 192/192 EXACT) |
-| [`papers/n6-ai-techniques-68-integrated-paper.md`](papers/n6-ai-techniques-68-integrated-paper.md) | Wider **68-technique** atlas; situates the 17 verbs inside the broader landscape |
+| Paper | What it does | Maturity |
+|-------|--------------|----------|
+| [`papers/n6-ai-17-techniques-experimental-paper.md`](papers/n6-ai-17-techniques-experimental-paper.md) | Maps **hexa-codex's exact 17 verbs** onto σ·φ=n·τ=24 coordinate space | atlas.n6 **192/192 EXACT** |
+| [`papers/n6-ai-techniques-68-integrated-paper.md`](papers/n6-ai-techniques-68-integrated-paper.md) | Wider **68-technique** atlas; situates 17 verbs in broader landscape | extension |
+| [`papers/n6-ai-ethics-governance-paper.md`](papers/n6-ai-ethics-governance-paper.md) | **AI ethics + governance** σ·φ=24 overlay (P4) | atlas.n6 0/24, MATURITY=LOW |
+| [`papers/n6-governance-safety-urban-paper.md`](papers/n6-governance-safety-urban-paper.md) | **Governance + safety + urban planning** overlay (P5) | atlas.n6 **58/58 EXACT, MATURITY=HIGH** |
 
-These are reference annexes — they coordinatize the existing 17 verbs onto
-the n=6 lattice, they do not introduce new specs or falsifiers. See
-[`papers/README.md`](papers/README.md) for the full relationship.
+These are reference annexes — they coordinatize the 17 verbs onto the
+n=6 lattice without introducing new verbs or falsifiers. See
+[`papers/README.md`](papers/README.md) for the full relationship + per-verb
+deep-dive sub-files.
+
+### consciousness deep-dive (BT-19 falsifier-in-action)
+
+| File | Concern |
+|------|---------|
+| [`consciousness/measurement-protocol.md`](consciousness/measurement-protocol.md) | BT-19 α_IIT·α_GWT=1 reproducible EEG/fMRI protocol (PAPER-P8-2) |
+| [`consciousness/red-team-failure.md`](consciousness/red-team-failure.md) | BT-19 red-team refutation — verdict **MISS**, [7?] CONJECTURE → [5] downgrade |
+
+These 2 files demonstrate the falsifier-preregister discipline at work: a
+CONJECTURE was preregistered, independently red-teamed, and downgraded.
+This is the *reason* hexa-codex calls itself a falsifier-preregister
+library, not just a spec catalog.
 
 ---
 

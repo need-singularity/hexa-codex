@@ -53,6 +53,30 @@ REFERENCES = [
         "lean",
         "P3b: F-CL-FORMAL-1 — σ(6)=12 PROVEN (rfl, no sorry)",
     ),
+    (
+        "papers/n6-ai-ethics-governance-paper.md",
+        "8cb6ae2ddbf503aa5597b1e853cf3258",
+        "paper",
+        "P4: ai-ethics+governance σ·φ=24 overlay (atlas.n6 0/24 EXACT, MATURITY=LOW)",
+    ),
+    (
+        "papers/n6-governance-safety-urban-paper.md",
+        "cf976a760eb0128f19372060ce57960f",
+        "paper",
+        "P5: governance+safety+urban σ·φ=24 overlay (atlas.n6 58/58 EXACT, MATURITY=HIGH)",
+    ),
+    (
+        "consciousness/measurement-protocol.md",
+        "89486e86358b5896a78508328b13e1b1",
+        "verb-deepdive",
+        "consciousness deep-dive — BT-19 α_IIT·α_GWT=1 reproducible EEG/fMRI protocol (PAPER-P8-2)",
+    ),
+    (
+        "consciousness/red-team-failure.md",
+        "3fe1ec4b5b8d4a92a2772aa4e2b423cf",
+        "verb-deepdive",
+        "consciousness deep-dive — BT-19 red-team refutation (verdict MISS, [7?]→[5] downgrade, falsifier discipline demo)",
+    ),
 ]
 
 

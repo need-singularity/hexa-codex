@@ -54,6 +54,17 @@ VERB_TABLE = [
 GROUP_EXPECTED = {"safety": 6, "economics": 3, "ops": 4, "substrate": 4}
 TOTAL_EXPECTED = sum(GROUP_EXPECTED.values())
 
+# Per-verb deep-dive sub-files (extensions to a verb's seed spec — absorbed
+# from n6-architecture papers/ when a verb has falsifier or measurement-
+# protocol material that is too long for the seed spec). Optional — verbs
+# without sub-files just have their seed spec.
+VERB_DEEPDIVES = {
+    "consciousness": [
+        "consciousness/measurement-protocol.md",   # BT-19 α_IIT·α_GWT=1 reproducible EEG/fMRI protocol
+        "consciousness/red-team-failure.md",       # BT-19 red-team refutation (falsifier-in-action)
+    ],
+}
+
 
 def evaluate() -> dict:
     rows = []
@@ -86,6 +97,24 @@ def evaluate() -> dict:
         if r["present"]:
             group_counts[r["group"]] += 1
 
+    # Per-verb deep-dive presence (optional sub-files)
+    deepdives = []
+    for verb, files in VERB_DEEPDIVES.items():
+        for relpath in files:
+            path = ROOT / relpath
+            present = path.exists()
+            has_canonical = False
+            lines = 0
+            if present:
+                head = path.read_text(encoding="utf-8")
+                has_canonical = "@canonical" in head[:1024]
+                lines = head.count("\n")
+            deepdives.append({
+                "verb": verb, "path": relpath,
+                "present": present, "lines": lines,
+                "has_canonical_header": has_canonical,
+            })
+
     checks = {
         "all_17_present":            all(r["present"] for r in rows),
         "every_present_has_h1":      all(r["has_h1_header"] for r in rows if r["present"]),
@@ -93,14 +122,20 @@ def evaluate() -> dict:
             r["has_canonical_header"] for r in rows if r["present"]
         ),
         "group_counts_match":        group_counts == GROUP_EXPECTED,
+        "all_deepdives_present":     all(d["present"] for d in deepdives),
+        "every_deepdive_has_canonical": all(
+            d["has_canonical_header"] for d in deepdives if d["present"]
+        ),
     }
 
     return {
         "rows": rows,
+        "deepdives": deepdives,
         "group_counts": group_counts,
         "group_expected": GROUP_EXPECTED,
         "total_present": sum(1 for r in rows if r["present"]),
         "total_expected": TOTAL_EXPECTED,
+        "deepdive_count": len(deepdives),
         "checks": checks,
         "all_ok": all(checks.values()),
     }
@@ -131,6 +166,13 @@ def _print_human(result: dict, table_only: bool) -> int:
         got = result["group_counts"][g]
         mark = "ok" if got == exp else "FAIL"
         print(f"    [{mark:>4}] {g:<10}  {got}/{exp}")
+    if result["deepdives"]:
+        print()
+        print(f"  per-verb deep-dives ({result['deepdive_count']}):")
+        for d in result["deepdives"]:
+            canon = "✓" if d["has_canonical_header"] else "·"
+            present = "PRES" if d["present"] else "MISS"
+            print(f"    [{present}] {d['verb']:<14} canon={canon}  {d['lines']:>4}L  {d['path']}")
     print()
     print(f"  checks:")
     for k, ok in result["checks"].items():
@@ -139,7 +181,8 @@ def _print_human(result: dict, table_only: bool) -> int:
     print("=" * 78)
     if result["all_ok"]:
         total_lines = sum(r["lines"] for r in result["rows"])
-        print(f"  17/17 verb specs present.  total lines: {total_lines}")
+        deep_lines = sum(d["lines"] for d in result["deepdives"])
+        print(f"  17/17 verb specs present.  total lines: {total_lines} + {deep_lines} deep-dive")
         return 0
     print("  spec inventory has missing or malformed entries.")
     return 1
