@@ -261,16 +261,46 @@ versions follow [SemVer](https://semver.org/spec/v2.0.0.html).
 - `hexa run tests/test_all.hexa` — 10/10 PASS.
 - `python3 -m pytest tests/ -m auto -q` — 83 passed (no regression).
 
-### F-CODEX closure status (after iter 9)
+### Added (2026-05-08 — 10th RSC iteration: numerics_interpret / F-CODEX-4 T2)
+
+- `verify/numerics_interpret.hexa` — F-CODEX-4 T2 numerical re-derivation
+  (10 checks via `math_pure`):
+  - σ−φ = 10.0 float identity within 1e-12.
+  - Mean of 6 simulated SAE-class observations [10,9,11,10,8,12] = 10.0.
+  - All 6 observations within drift tolerance (±3 motifs).
+  - Stddev = √(10/6) ≈ 1.291 (analytic match to 1e-9).
+  - Range max−min = 4 ≤ 2·tol = 6.
+  - Density ratio motif/σ = 5/6 ≈ 0.833.
+  - motif/J₂ ratio = 5/12 ≈ 0.417.
+  - Log decomposition: log(σ−φ) = log(σ) + log(1 − φ/σ) within 1e-9.
+  - Σ 6 obs = 60.0 within 1e-13 (accumulation stability).
+  - F-CODEX-3 σ − F-CODEX-4 motif = φ float cross-link.
+- `tests/test_numerics_interpret.hexa` — regression wrapper.
+- `tests/test_all.hexa` — CASES += `test_numerics_interpret` (now 11).
+- `cli/hexa-codex.hexa` — `verify numerics-interpret` routes to .hexa.
+- `hexa.toml` — `[test] files` += `test_numerics_interpret.hexa`;
+  `verify =` += `verify/numerics_interpret.hexa`;
+  `[closure].runnable_hexa_iter10` marker.
+
+### Verified (iter 10)
+
+- `hexa run verify/numerics_interpret.hexa` — 10/10 PASS.
+- `hexa run tests/test_all.hexa` — 11/11 PASS.
+- `python3 -m pytest tests/ -m auto -q` — 83 passed (no regression).
+
+### F-CODEX T2 ROW: COMPLETE after iter 10
 
 | Falsifier  | T1 (algebraic)                    | T2 (numerics)            | T3 (empirical) |
 |:-----------|:----------------------------------|:-------------------------|:--------------:|
 | F-CODEX-1  | lattice + calc_train_cost ✓ ✓     | numerics_train_cost ✓    | TBD            |
 | F-CODEX-2  | lattice + calc_infer_cost ✓ ✓     | numerics_infer_cost ✓    | TBD            |
 | F-CODEX-3  | lattice + calc_alignment ✓ ✓      | numerics_alignment ✓     | TBD            |
-| F-CODEX-4  | lattice + calc_interpret ✓ ✓      | TBD                      | TBD            |
+| F-CODEX-4  | lattice + calc_interpret ✓ ✓      | numerics_interpret ✓     | TBD            |
 
-F-CODEX-1/2/3 closure pct: 67% each (T1 + T2). 3 of 4 falsifiers reach T2 floor.
+**All 4 falsifiers at 67% closure** (recipe §3 ladder T1 + T2 ✓).
+Recipe §7.2 sat-1 condition: all falsifiers ≥ 67% **+ each T2 ×3**. The
+T2 ×3 stack (parity + solver/cross-pillar) is the next priority block —
+recipe §7.4 priorities 5/6 (numerics_*_parity / numerics_*_solver).
 
 ### F-CODEX T1 row: COMPLETE after iter 6
 

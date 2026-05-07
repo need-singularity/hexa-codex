@@ -34,6 +34,7 @@ let CASES = [
     "test_numerics_train_cost.hexa|__HEXA_CODEX_TEST_NUMERICS_TRAIN_COST__ PASS",
     "test_numerics_infer_cost.hexa|__HEXA_CODEX_TEST_NUMERICS_INFER_COST__ PASS",
     "test_numerics_alignment.hexa|__HEXA_CODEX_TEST_NUMERICS_ALIGNMENT__ PASS",
+    "test_numerics_interpret.hexa|__HEXA_CODEX_TEST_NUMERICS_INTERPRET__ PASS",
 ]
 
 fn shq(s: str) -> str {
