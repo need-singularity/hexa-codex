@@ -1,0 +1,40 @@
+#!hexa strict
+// hexa-codex/tests/test_numerics_infer_cost_parity.hexa — F-CODEX-2 T2 parity regression.
+
+let HOME = env("HOME")
+
+fn _root() -> str {
+    let r = env("HEXA_CODEX_ROOT")
+    if r.len() > 0 { return r }
+    let pwd = exec("pwd").trim()
+    if pwd.len() > 0 { return pwd }
+    return HOME + "/core/hexa-codex"
+}
+
+let ROOT = _root()
+let SCRIPT = ROOT + "/verify/numerics_infer_cost_parity.hexa"
+let HEXA = HOME + "/.hx/bin/hexa"
+
+fn shq(s: str) -> str {
+    return "'" + s.replace("'", "'\\''") + "'"
+}
+
+fn main() {
+    println("[test_numerics_infer_cost_parity] script: " + SCRIPT)
+    let cmd = "HEXA_CODEX_ROOT=" + shq(ROOT) + " " + shq(HEXA) + " run " + shq(SCRIPT)
+    let r = exec_with_status(cmd)
+    let out = to_string(r[0])
+    let code = r[1]
+    let has_pass = out.find("__HEXA_CODEX_NUMERICS_INFER_COST_PARITY__ PASS") >= 0
+    let pass = code == 0 && has_pass
+    if pass {
+        println("[test_numerics_infer_cost_parity] PASS — exit 0 + sentinel found")
+        println("__HEXA_CODEX_TEST_NUMERICS_INFER_COST_PARITY__ PASS")
+        exit(0)
+    }
+    eprintln("[test_numerics_infer_cost_parity] FAIL — exit=" + str(code) + " sentinel=" + str(has_pass))
+    eprintln("--- stdout ---")
+    eprintln(out)
+    eprintln("__HEXA_CODEX_TEST_NUMERICS_INFER_COST_PARITY__ FAIL")
+    exit(1)
+}

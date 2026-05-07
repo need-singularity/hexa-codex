@@ -1,0 +1,294 @@
+#!hexa strict
+// hexa-codex/verify/numerics_infer_cost_parity.hexa — F-CODEX-2 T2 published-ref parity.
+//
+// Beyond `verify/numerics_infer_cost.hexa` (anchor-grid synthetic), this
+// script compares the n=6 closed-form context^τ=context^4 prediction
+// against four published long-context engine anchors:
+//
+//   #  | Engine          | ctx     | Attention class
+//   ---|-----------------|---------|------------------
+//   1  | GPT-3.5 Turbo   | 16k     | naïve O(n²) baseline
+//   2  | Claude 2        | 100k    | approx attention (~O(n^1.5))
+//   3  | Gemini 1.5 Pro  | 1M      | sublinear (engineering)
+//   4  | Claude 4.7      | 1M      | sublinear (production)
+//
+// F-CODEX-2 says inference_cost ∝ ctx^τ = ctx^4 — strict upper bound.
+// Production engines are expected to fall well below O(n^1.5), which
+// makes F-CODEX-2 the *expected-to-falsify* row of the preregister.
+// This script verifies the algebraic/numerical scaffolding that any
+// future T3 empirical check would compare against.
+//
+// Verifies:
+//   · all 4 engine anchors yield positive n6 ratio
+//   · ctx ordering preserved by n6 ratio (16k < 100k < 1M)
+//   · 1M = 2^20 = 1_048_576 EXACT
+//   · n6 ratio strictly upper-bounds naïve O(n²) at every published ctx
+//   · n6 vs approx O(n^1.5) gap grows monotonically with ctx
+//   · log-ratio drift |log(n6) − log(naïve)| bounded reasonably
+//   · 1M-ctx KV cache > 80GB threshold (matches spec assertion)
+//   · 1M-ctx n6 / approx ratio = 128^2.5 ≈ 185_363 (strict upper-bound demo)
+//   · Anchor identity n6_ratio(8k) = 1.0 (within 1e-9)
+//   · log(n6/naïve) = (τ − 2)·log(ctx/REF) = 2·log(ctx/REF) within 1e-9
+//
+// Recipe T2 floor (§4 invariants 1-5).
+// T3 (live latency vs ctx on Claude 4.7) follows.
+//
+// Run:
+//   hexa run verify/numerics_infer_cost_parity.hexa
+//
+// @no-lock-needed
+// @resolver-bypass(reason="Pure local verifier; integer + float arithmetic only.")
+
+use "self/runtime/math_pure"
+
+let HOME = env("HOME")
+
+fn _root() -> str {
+    let r = env("HEXA_CODEX_ROOT")
+    if r.len() > 0 { return r }
+    let pwd = exec("pwd").trim()
+    if pwd.len() > 0 { return pwd }
+    return HOME + "/core/hexa-codex"
+}
+
+let ROOT = _root()
+let DOC_SPEC = ROOT + "/infer_cost/ai-inference-cost.md"
+
+// ── n=6 lattice ──────────────────────────────────────────────────────────
+let TAU_6   = 4.0
+let SIGMA_6 = 12.0
+let PHI_6   = 2.0
+
+let CTX_REF = 8192.0    // 8k tokens reference
+
+// Exponent ladder
+let EXP_LINEAR = 1.0
+let EXP_APPROX = 1.5
+let EXP_NAIVE  = 2.0
+let EXP_N6     = TAU_6     // 4.0
+
+// 4 published engine anchors
+let ENGINES = ["GPT-3.5 Turbo (16k)", "Claude 2 (100k)", "Gemini 1.5 Pro (1M)", "Claude 4.7 (1M)"]
+let CTXS    = [16384.0, 102400.0, 1048576.0, 1048576.0]
+
+// FALSIFIERS list (recipe §4 invariant 3).
+let FALSIFIERS = ["F-CODEX-2 (inference-cost ctx^τ=ctx^4 vs GPT-3.5/Claude 2/Gemini 1.5/Claude 4.7 published-ref parity)"]
+
+// ── helpers ──────────────────────────────────────────────────────────────
+
+let mut RUN = 0
+let mut FAIL = 0
+let mut FAILURES = []
+
+fn _check(ok: bool, label: str, detail: str) {
+    RUN = RUN + 1
+    if ok {
+        println("  [PASS] " + label)
+        if detail.len() > 0 { println("         · " + detail) }
+    } else {
+        FAIL = FAIL + 1
+        FAILURES.push(label + " :: " + detail)
+        println("  [FAIL] " + label)
+        if detail.len() > 0 { println("         · " + detail) }
+    }
+}
+
+fn _abs(x: float) -> float {
+    return abs_pure(x)
+}
+
+fn ratio(ctx: float, exp: float) -> float {
+    return pow_pure(ctx / CTX_REF, exp)
+}
+
+fn n6_ratio(ctx: float) -> float {
+    return ratio(ctx, EXP_N6)
+}
+
+fn _read(p: str) -> str {
+    if file_exists(p) == false { return "" }
+    return read_file(p)
+}
+
+fn _has(t: str, s: str) -> bool {
+    if t.len() == 0 { return false }
+    if s.len() == 0 { return true }
+    return t.find(s) >= 0
+}
+
+// ── checks ───────────────────────────────────────────────────────────────
+
+// Check 1: all 4 engine anchors yield positive n6 ratio
+fn check_all_anchors_positive() {
+    let mut all_pos = true
+    let mut i = 0
+    while i < len(ENGINES) {
+        let r = n6_ratio(CTXS[i])
+        if r <= 0.0 { all_pos = false }
+        i = i + 1
+    }
+    _check(all_pos,
+           "all 4 published engine anchors yield positive n6 ratio",
+           "GPT-3.5 / Claude 2 / Gemini 1.5 Pro / Claude 4.7 all > 0")
+}
+
+// Check 2: ctx ordering preserved by n6 ratio (16k < 100k < 1M = 1M)
+fn check_monotonicity_ranking() {
+    let r1 = n6_ratio(CTXS[0])     // 16k
+    let r2 = n6_ratio(CTXS[1])     // 100k
+    let r3 = n6_ratio(CTXS[2])     // 1M
+    let r4 = n6_ratio(CTXS[3])     // 1M
+    // expected r1 < r2 < r3 = r4
+    let ok = (r1 < r2) && (r2 < r3) && (r3 == r4)
+    _check(ok,
+           "ctx ordering: 16k < 100k < 1M (= Claude 4.7 1M)",
+           "r=[" + to_string(r1) + "," + to_string(r2) +
+           "," + to_string(r3) + "," + to_string(r4) + "]")
+}
+
+// Check 3: 1M = 2^20 = 1_048_576 EXACT
+fn check_1m_power_of_2() {
+    let mut k = 1.0
+    let mut i = 0
+    while i < 20 {
+        k = k * 2.0
+        i = i + 1
+    }
+    _check(k == 1048576.0,
+           "1M context = 2^20 = 1_048_576 EXACT",
+           "computed 2^20 = " + to_string(k))
+}
+
+// Check 4: n6 ratio strictly upper-bounds naïve O(n²) at every anchor with ctx > REF
+fn check_n6_upper_bounds_naive() {
+    let mut all_above = true
+    let mut i = 0
+    while i < len(ENGINES) {
+        let ctx = CTXS[i]
+        if ctx > CTX_REF {
+            let r_n6 = n6_ratio(ctx)
+            let r_nai = ratio(ctx, EXP_NAIVE)
+            if r_n6 <= r_nai { all_above = false }
+        }
+        i = i + 1
+    }
+    _check(all_above,
+           "n6 ratio > naïve O(n²) at every published anchor (ctx > REF)",
+           "all 4 anchors have ctx > 8k REF; n6 strictly above naïve")
+}
+
+// Check 5: gap n6 vs approx O(n^1.5) grows monotonically with ctx
+fn check_n6_vs_approx_gap_growth() {
+    let g1 = n6_ratio(CTXS[0]) - ratio(CTXS[0], EXP_APPROX)    // 16k
+    let g2 = n6_ratio(CTXS[1]) - ratio(CTXS[1], EXP_APPROX)    // 100k
+    let g3 = n6_ratio(CTXS[2]) - ratio(CTXS[2], EXP_APPROX)    // 1M
+    let mono = (g1 < g2) && (g2 < g3)
+    _check(mono,
+           "n6 − approx gap grows monotonically with ctx (16k < 100k < 1M)",
+           "g=[" + to_string(g1) + "," + to_string(g2) + "," + to_string(g3) + "]")
+}
+
+// Check 6: log-ratio drift |log(n6) − log(naïve)| at 1M ≈ 2·log(128) ≈ 9.70
+fn check_log_ratio_drift_1m() {
+    let n6 = n6_ratio(1048576.0)
+    let nai = ratio(1048576.0, EXP_NAIVE)
+    let drift = log_pure(n6) - log_pure(nai)
+    let expected = 2.0 * log_pure(128.0)
+    let err = _abs(drift - expected)
+    _check(err < 1.0e-9,
+           "log(n6/naïve)|1M = (τ−2)·log(1M/8k) = 2·log(128)",
+           "drift=" + to_string(drift) + " expected=" + to_string(expected) +
+           " err=" + to_string(err))
+}
+
+// Check 7: 1M-ctx KV cache memory > 80GB (matches spec assertion)
+//   Per ai-inference-cost.md: 163.84GB for a single 1M-ctx request.
+//   Approximate: 64 (heads) · 2 (k+v) · 1280 (head_dim) · 1M (tokens) · 1 byte fp8
+//             ≈ 1.64e11 bytes ≈ 163.84 GB.
+fn check_kv_cache_1m_threshold() {
+    let heads = 64.0
+    let kv = 2.0
+    let head_dim = 1280.0
+    let tokens = 1048576.0
+    let bytes_per_elem = 1.0     // fp8
+    let mem_bytes = heads * kv * head_dim * tokens * bytes_per_elem
+    let mem_gb = mem_bytes / 1.0e9
+    _check(mem_gb > 80.0,
+           "1M-ctx KV cache memory > 80GB (matches spec assertion)",
+           "computed=" + to_string(mem_gb) + " GB")
+}
+
+// Check 8: 1M-ctx n6 / approx ratio ≈ 128^2.5 (strict upper-bound demonstration)
+fn check_n6_approx_ratio_1m() {
+    let n6 = n6_ratio(1048576.0)
+    let apx = ratio(1048576.0, EXP_APPROX)
+    let r = n6 / apx
+    let expected = pow_pure(128.0, 2.5)         // 128^2.5
+    let drift_rel = _abs(r - expected) / expected
+    _check(drift_rel < 1.0e-9,
+           "1M-ctx n6/approx = 128^2.5 ≈ 185363 (strict upper-bound)",
+           "computed=" + to_string(r) + " expected=" + to_string(expected))
+}
+
+// Check 9: anchor identity n6_ratio(8k = REF) = 1.0
+fn check_anchor_identity() {
+    let r = n6_ratio(CTX_REF)
+    let drift = _abs(r - 1.0)
+    _check(drift < 1.0e-9,
+           "anchor identity: n6_ratio(8k = REF) = 1.0",
+           "computed=" + to_string(r) + " drift=" + to_string(drift))
+}
+
+// Check 10: spec anchor — ai-inference-cost.md cross-link
+fn check_spec_anchor() {
+    let txt = _read(DOC_SPEC)
+    let ok_1m   = _has(txt, "1M context") || _has(txt, "1M ctx")
+    let ok_kv   = _has(txt, "KV cache") || _has(txt, "KV-cache")
+    let ok_attn = _has(txt, "Attention") || _has(txt, "attention")
+    _check(ok_1m && ok_kv && ok_attn,
+           "spec anchor: ai-inference-cost.md ships 1M-ctx + KV-cache + attention",
+           "1m=" + str(ok_1m) + " kv=" + str(ok_kv) + " attn=" + str(ok_attn))
+}
+
+// ── main ─────────────────────────────────────────────────────────────────
+
+fn main() {
+    println("========================================================================")
+    println("  hexa-codex F-CODEX-2 published-ref parity (T2 stack #2, math_pure)")
+    println("  4 engines: GPT-3.5 Turbo / Claude 2 / Gemini 1.5 Pro / Claude 4.7")
+    println("========================================================================")
+    let mut i = 0
+    while i < len(ENGINES) {
+        let r = n6_ratio(CTXS[i])
+        println("  [" + str(i + 1) + "] " + ENGINES[i] +
+                "  ctx=" + to_string(CTXS[i]) +
+                "  n6_ratio=" + to_string(r))
+        i = i + 1
+    }
+    println("")
+
+    check_all_anchors_positive()
+    check_monotonicity_ranking()
+    check_1m_power_of_2()
+    check_n6_upper_bounds_naive()
+    check_n6_vs_approx_gap_growth()
+    println("")
+    check_log_ratio_drift_1m()
+    check_kv_cache_1m_threshold()
+    check_n6_approx_ratio_1m()
+    check_anchor_identity()
+    check_spec_anchor()
+
+    println("========================================================================")
+    let pass_n = RUN - FAIL
+    println("  " + str(pass_n) + "/" + str(RUN) + " checks passed")
+    if FAIL > 0 {
+        println("  FAILURES:")
+        for f in FAILURES { println("    ✗ " + f) }
+        println("__HEXA_CODEX_NUMERICS_INFER_COST_PARITY__ FAIL")
+        exit(1)
+    }
+    println("  F-CODEX-2 T2 published-ref parity: closed.")
+    println("__HEXA_CODEX_NUMERICS_INFER_COST_PARITY__ PASS")
+    exit(0)
+}

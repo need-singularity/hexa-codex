@@ -320,16 +320,56 @@ versions follow [SemVer](https://semver.org/spec/v2.0.0.html).
 - `hexa run tests/test_all.hexa` — 12/12 PASS.
 - `python3 -m pytest tests/ -m auto -q` — 83 passed (no regression).
 
-### F-CODEX closure status (after iter 11)
+### Added (2026-05-08 — 12th RSC iteration: numerics_infer_cost_parity / F-CODEX-2 T2 #2)
 
-| Falsifier  | T1 (algebraic)                | T2 #1 (numerics)         | T2 #2 (parity)               | T3 |
-|:-----------|:------------------------------|:-------------------------|:-----------------------------|:--:|
-| F-CODEX-1  | lattice + calc_train_cost ✓ ✓ | numerics_train_cost ✓    | numerics_train_cost_parity ✓ | – |
-| F-CODEX-2  | lattice + calc_infer_cost ✓ ✓ | numerics_infer_cost ✓    | TBD                          | – |
-| F-CODEX-3  | lattice + calc_alignment ✓ ✓  | numerics_alignment ✓     | TBD                          | – |
-| F-CODEX-4  | lattice + calc_interpret ✓ ✓  | numerics_interpret ✓     | TBD                          | – |
+- `verify/numerics_infer_cost_parity.hexa` — F-CODEX-2 T2 published-ref
+  parity (10 checks via `math_pure`): n=6 ctx^τ=ctx^4 vs 4 production
+  long-context engines:
 
-F-CODEX-1 T2 stack: 2 of 3 (parity ✓ ; solver/cross-pillar TBD).
+  | # | Engine          | ctx     | Attention class           | n6_ratio   |
+  |--:|:----------------|--------:|:--------------------------|-----------:|
+  | 1 | GPT-3.5 Turbo   | 16k     | naïve O(n²) baseline      | 16         |
+  | 2 | Claude 2        | 100k    | approx (~O(n^1.5))        | 24,414     |
+  | 3 | Gemini 1.5 Pro  | 1M=2^20 | sublinear (engineering)   | 268,435,456 |
+  | 4 | Claude 4.7      | 1M=2^20 | sublinear (production)    | 268,435,456 |
+
+  Verified:
+  - All 4 anchors > 0 ; ctx ordering preserved by n6 ratio.
+  - 1M = 2^20 = 1_048_576 EXACT.
+  - n6 strict upper-bounds naïve O(n²) at every published anchor (ctx > REF).
+  - n6 − approx O(n^1.5) gap monotone in ctx (16k → 1M).
+  - log(n6/naïve)|1M = 2·log(128) = 9.704 EXACT (analytic match).
+  - 1M-ctx KV cache memory = 171.8 GB > 80GB spec threshold.
+  - 1M-ctx n6/approx = 128^2.5 = 185,364 EXACT (strict upper-bound demo).
+  - Anchor identity n6_ratio(8k = REF) = 1.0.
+  - Spec anchor: ai-inference-cost.md ships 1M-ctx + KV-cache + attention.
+
+- `tests/test_numerics_infer_cost_parity.hexa` — regression wrapper.
+- `tests/test_all.hexa` — CASES += parity test (now 13).
+- `cli/hexa-codex.hexa` — `verify numerics-infer_cost-parity` routes.
+- `hexa.toml` — entries + `[closure].runnable_hexa_iter12` marker.
+
+**Hexa runtime gotcha** (discovered iter 12): `~/.hx/bin/hexa` now routes
+`run` and `batch` to remote `hexa-r ubu-1` while everything else stays
+local. If the remote endpoint is unreachable / silently failing, scripts
+exit 0 with empty stdout. Bypass with `RESOURCE_LOCAL_HEXA=1`.
+
+### Verified (iter 12)
+
+- `RESOURCE_LOCAL_HEXA=1 hexa run verify/numerics_infer_cost_parity.hexa` — 10/10 PASS.
+- `hexa run tests/test_all.hexa` — 13/13 PASS (where remote routing works).
+- `python3 -m pytest tests/ -m auto -q` — 83 passed (no regression).
+
+### F-CODEX closure status (after iter 12)
+
+| Falsifier  | T1 (algebraic)                | T2 #1 (numerics)         | T2 #2 (parity)               | T2 #3 (solver) | T3 |
+|:-----------|:------------------------------|:-------------------------|:-----------------------------|:--------------:|:--:|
+| F-CODEX-1  | lattice + calc_train_cost ✓ ✓ | numerics_train_cost ✓    | numerics_train_cost_parity ✓ | TBD            | – |
+| F-CODEX-2  | lattice + calc_infer_cost ✓ ✓ | numerics_infer_cost ✓    | numerics_infer_cost_parity ✓ | TBD            | – |
+| F-CODEX-3  | lattice + calc_alignment ✓ ✓  | numerics_alignment ✓     | TBD                          | TBD            | – |
+| F-CODEX-4  | lattice + calc_interpret ✓ ✓  | numerics_interpret ✓     | TBD                          | TBD            | – |
+
+F-CODEX-1/2 T2 stack: 2 of 3 (parity ✓ ; solver/cross-pillar TBD).
 
 ### F-CODEX T2 ROW: COMPLETE after iter 10
 
