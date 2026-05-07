@@ -20,7 +20,7 @@
 ## Why hexa-codex?
 
 `hexa-codex` is a **standalone AI knowledge substrate** — a *codex*
-(library) of AI-domain specs that the rest of the `need-singularity` stack
+(library) of AI-domain specs that the rest of the `dancinlab` stack
 imports declaratively. Each verb is a single closed-form spec markdown
 extracted unchanged from `n6-architecture/domains/cognitive/`, organized
 into four orthogonal groups so that consumers can navigate by concern.
@@ -154,7 +154,7 @@ python3 verify/release_params.py  # full per-version parameter table
 
 v1.0.0 ships the **codex** (markdown spec library) **plus** a stdlib-only
 runnable verification surface that mirrors the
-[hexa-sscb](https://github.com/need-singularity/hexa-sscb) pattern.
+[hexa-sscb](https://github.com/dancinlab/hexa-sscb) pattern.
 
 ### verify/ — 5 verifiers, Python stdlib only
 
@@ -341,7 +341,7 @@ hx install /path/to/hexa-codex --entry cli/hexa-codex.hexa --as hexa-codex
 ### Via git clone
 
 ```bash
-git clone https://github.com/need-singularity/hexa-codex.git ~/.hexa-codex
+git clone https://github.com/dancinlab/hexa-codex.git ~/.hexa-codex
 export HEXA_CODEX_ROOT=~/.hexa-codex
 cd $HEXA_CODEX_ROOT
 
@@ -362,26 +362,26 @@ hexa-codex calc train_cost --N 7e9 --D 1.4e12
 
 ## Cross-link
 
-Sister repos in the `need-singularity` HEXA family:
+Sister repos in the `dancinlab` HEXA family:
 
 ### Cognitive substrate rollups (sister-libraries)
 
-- 👁️ [need-singularity/hexa-senses](https://github.com/need-singularity/hexa-senses) —
+- 👁️ [dancinlab/hexa-senses](https://github.com/dancinlab/hexa-senses) —
   **5-verb sensory substrate** (dream + ear + empath + olfact + voice).
   voice is formulaic-only, learned TTS FORBIDDEN.
-- 🧠 [need-singularity/hexa-mind](https://github.com/need-singularity/hexa-mind) —
+- 🧠 [dancinlab/hexa-mind](https://github.com/dancinlab/hexa-mind) —
   **7-verb mental substrate** (mind + neuro + oracle + hexa_telepathy +
   telepathy + mind_upload + superpowers). 4/7 SPECULATIVE (preregister honesty).
 
 ### Domain-specific siblings
 
-- 👻 [need-singularity/anima](https://github.com/need-singularity/anima) —
+- 👻 [dancinlab/anima](https://github.com/dancinlab/anima) —
   consciousness / soul cousin (phenomenal grounding adjacent to `consciousness`).
-- 🧬 [need-singularity/hexa-brain](https://github.com/need-singularity/hexa-brain) —
+- 🧬 [dancinlab/hexa-brain](https://github.com/dancinlab/hexa-brain) —
   BCI sister (read-side neural substrate counterpart).
-- ⚖️ [need-singularity/honesty-monitor](https://github.com/need-singularity/honesty-monitor) —
+- ⚖️ [dancinlab/honesty-monitor](https://github.com/dancinlab/honesty-monitor) —
   AI honesty-bit falsifier sister (write-side validator for the SAFETY group).
-- 🌱 [need-singularity/hexa-bio](https://github.com/need-singularity/hexa-bio) —
+- 🌱 [dancinlab/hexa-bio](https://github.com/dancinlab/hexa-bio) —
   4-verb molecular toolkit (same HEXA-family pattern, biology domain).
 
 The 17 + 5 + 7 = **29 verbs across cognitive sister-libraries** all derive

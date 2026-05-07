@@ -381,4 +381,4 @@ Next: numerics_*.hexa T2 layer (recipe §7.4 priority 4).
 spec `.md` file plus a falsifier preregister; working `.hexa` falsifier
 sandboxes are deferred to post-v1.0 cycles.
 
-[1.0.0]: https://github.com/need-singularity/hexa-codex/releases/tag/v1.0.0
+[1.0.0]: https://github.com/dancinlab/hexa-codex/releases/tag/v1.0.0

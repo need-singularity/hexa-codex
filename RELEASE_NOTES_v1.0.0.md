@@ -11,7 +11,7 @@
 
 - **17-verb AI knowledge substrate** organized in **4 groups**
   (safety + economics + ops + substrate) lands as a standalone
-  `need-singularity/hexa-codex` repo.
+  `dancinlab/hexa-codex` repo.
 - Each verb is the unchanged closed-form spec `.md` from
   `n6-architecture/domains/cognitive/`, preserved verbatim under a
   group-relevant directory name (`alignment/`, `train_cost/`, etc).
@@ -49,10 +49,10 @@ What does **not** ship:
 
 ## Cross-link
 
-- `need-singularity/anima` — consciousness / soul cousin.
-- `need-singularity/hexa-brain` — BCI sister.
-- `need-singularity/honesty-monitor` — AI honesty falsifier sister.
-- `need-singularity/hexa-bio` — molecular HEXA-family sister (4 verb).
+- `dancinlab/anima` — consciousness / soul cousin.
+- `dancinlab/hexa-brain` — BCI sister.
+- `dancinlab/honesty-monitor` — AI honesty falsifier sister.
+- `dancinlab/hexa-bio` — molecular HEXA-family sister (4 verb).
 
 ## Caveats (raw#10 honest C3)
 
