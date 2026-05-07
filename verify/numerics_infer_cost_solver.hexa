@@ -1,0 +1,315 @@
+#!hexa strict
+// hexa-codex/verify/numerics_infer_cost_solver.hexa — F-CODEX-2 T2 ODE solver layer.
+//
+// Beyond `verify/numerics_infer_cost.hexa` (anchor-grid closed-form) and
+// `verify/numerics_infer_cost_parity.hexa` (published-ref parity), this
+// script re-derives the n=6 inference-cost prediction by NUMERICALLY
+// INTEGRATING the underlying first-order ODE with a cascade of solvers
+// (Euler / midpoint-RK2 / RK4) and verifying:
+//
+//   · the closed-form cost_ratio(ctx) = (ctx / CTX_REF)^τ(6) arises from
+//
+//         dc/du = τ(6) · c,   u = log(ctx / CTX_REF),   c(0) = 1
+//
+//     (separable; analytic solution c(u) = exp(τ(6) · u) = (ctx/8k)^4)
+//
+//   · RK4 reproduces the closed-form at multiple anchor points within
+//     tight tolerance after enough steps (high exponent ⇒ steep curve)
+//   · Midpoint reproduces within looser tolerance, Euler within loose
+//   · convergence ordering at fixed h: |err_euler| > |err_mid| > |err_rk4|
+//   · halving the step h scales errors as 2 / 4 / 16 (orders 1 / 2 / 4)
+//   · forward (u > 0, ctx > REF) and backward (u < 0, ctx < REF)
+//     integration agree
+//   · all solver outputs are positive and finite
+//
+// PASS criterion (T2 solver floor): 10 checks pass.
+//
+// Recipe T2 floor: §1 row 7 — `numerics_<pillar2>_solver.hexa`.
+// Pillar-2 inference-cost is τ(6)=4 exponent, vs pillar-1's 0.96, so
+// the c-curve is much steeper and convergence-rate verification needs
+// finer h; we exercise that explicitly.
+//
+// Run:
+//   hexa run verify/numerics_infer_cost_solver.hexa
+//
+// @no-lock-needed
+// @resolver-bypass(reason="Pure local verifier; integer + float arithmetic only.")
+
+use "self/runtime/math_pure"
+
+let HOME = env("HOME")
+
+fn _root() -> str {
+    let r = env("HEXA_CODEX_ROOT")
+    if r.len() > 0 { return r }
+    let pwd = exec("pwd").trim()
+    if pwd.len() > 0 { return pwd }
+    return HOME + "/core/hexa-codex"
+}
+
+let ROOT = _root()
+
+// ── n=6 lattice ──────────────────────────────────────────────────────────
+let TAU_6   = 4.0                    // τ(6) = 4 (n=6 exponent for inference cost)
+let CTX_REF = 8192.0                 // 8k tokens default window
+
+// FALSIFIERS list (recipe §4 invariant 3).
+let FALSIFIERS = ["F-CODEX-2 (inference-cost ODE solver re-derivation, Euler/midpoint/RK4 cascade)"]
+
+// ── helpers ──────────────────────────────────────────────────────────────
+
+let mut RUN = 0
+let mut FAIL = 0
+let mut FAILURES = []
+
+fn _check(ok: bool, label: str, detail: str) {
+    RUN = RUN + 1
+    if ok {
+        println("  [PASS] " + label)
+        if detail.len() > 0 { println("         · " + detail) }
+    } else {
+        FAIL = FAIL + 1
+        FAILURES.push(label + " :: " + detail)
+        println("  [FAIL] " + label)
+        if detail.len() > 0 { println("         · " + detail) }
+    }
+}
+
+fn _abs(x: float) -> float {
+    return abs_pure(x)
+}
+
+// Closed-form: c(u) = exp(τ(6) · u)
+fn closed_form(u: float) -> float {
+    return exp_pure(TAU_6 * u)
+}
+
+// ODE rhs: dc/du = τ(6) · c
+fn rhs(c: float) -> float {
+    return TAU_6 * c
+}
+
+// ── solvers ──────────────────────────────────────────────────────────────
+
+fn euler_step(c: float, h: float) -> float {
+    return c + h * rhs(c)
+}
+
+fn midpoint_step(c: float, h: float) -> float {
+    let k1 = rhs(c)
+    let k2 = rhs(c + 0.5 * h * k1)
+    return c + h * k2
+}
+
+fn rk4_step(c: float, h: float) -> float {
+    let k1 = rhs(c)
+    let k2 = rhs(c + 0.5 * h * k1)
+    let k3 = rhs(c + 0.5 * h * k2)
+    let k4 = rhs(c + h * k3)
+    return c + (h / 6.0) * (k1 + 2.0 * k2 + 2.0 * k3 + k4)
+}
+
+fn integrate(step_id: int, u_target: float, n_steps: int) -> float {
+    let h = u_target / to_float(n_steps)
+    let mut c = 1.0
+    let mut i = 0
+    while i < n_steps {
+        if step_id == 0 {
+            c = euler_step(c, h)
+        } else {
+            if step_id == 1 {
+                c = midpoint_step(c, h)
+            } else {
+                c = rk4_step(c, h)
+            }
+        }
+        i = i + 1
+    }
+    return c
+}
+
+// ── anchor grid: 1k, 8k (REF), 32k, 128k, 1M ─────────────────────────────
+let CTX_1K   = 1024.0          // u = log(1/8) ≈ -2.079
+let CTX_8K   = 8192.0          // u = 0
+let CTX_32K  = 32768.0         // u = log(4)   ≈ +1.386
+let CTX_128K = 131072.0        // u = log(16)  ≈ +2.773
+let CTX_1M   = 1048576.0       // u = log(128) ≈ +4.852
+
+fn u_of(ctx: float) -> float {
+    return log_pure(ctx / CTX_REF)
+}
+
+// ── checks ───────────────────────────────────────────────────────────────
+
+// Check 1: anchor identity — integrating to u=0 returns c=1 across all 3 solvers
+fn check_anchor_identity() {
+    let c_eul = integrate(0, 0.0, 8)
+    let c_mid = integrate(1, 0.0, 8)
+    let c_rk4 = integrate(2, 0.0, 8)
+    let drift = max_pure(_abs(c_eul - 1.0),
+                         max_pure(_abs(c_mid - 1.0), _abs(c_rk4 - 1.0)))
+    _check(drift < 1.0e-15,
+           "anchor identity: integrate(u=0) = 1.0 across all 3 solvers",
+           "Eul=" + to_string(c_eul) + " Mid=" + to_string(c_mid) +
+           " RK4=" + to_string(c_rk4) + " max_drift=" + to_string(drift))
+}
+
+// Check 2: RK4 forward to CTX_128K within 1e-9 of closed-form (n=2048)
+//   τ=4 exponent → c⁽⁵⁾ ∝ 1024·c, so we need finer h than pillar-1's solver.
+fn check_rk4_forward_128k() {
+    let u = u_of(CTX_128K)
+    let c_solver = integrate(2, u, 2048)
+    let c_ref = closed_form(u)
+    let drift = _abs(c_solver - c_ref) / c_ref
+    _check(drift < 1.0e-9,
+           "RK4 forward to CTX_128K: relative error < 1e-9 (n=2048 steps)",
+           "solver=" + to_string(c_solver) + " ref=" + to_string(c_ref) +
+           " rel_err=" + to_string(drift))
+}
+
+// Check 3: RK4 backward to CTX_1K within 1e-9 of closed-form (n=2048)
+fn check_rk4_backward_1k() {
+    let u = u_of(CTX_1K)             // negative
+    let c_solver = integrate(2, u, 2048)
+    let c_ref = closed_form(u)
+    let drift = _abs(c_solver - c_ref) / c_ref
+    _check(drift < 1.0e-9,
+           "RK4 backward to CTX_1K: relative error < 1e-9 (n=2048 steps)",
+           "solver=" + to_string(c_solver) + " ref=" + to_string(c_ref) +
+           " rel_err=" + to_string(drift))
+}
+
+// Check 4: RK4 forward to CTX_1M (steepest anchor) within 1e-6 — looser
+//   tolerance because c grows to ≈ 2.2e8 at u≈4.85.
+fn check_rk4_forward_1m() {
+    let u = u_of(CTX_1M)
+    let c_solver = integrate(2, u, 2048)
+    let c_ref = closed_form(u)
+    let drift = _abs(c_solver - c_ref) / c_ref
+    _check(drift < 1.0e-6,
+           "RK4 forward to CTX_1M: relative error < 1e-6 (n=2048 steps, steep)",
+           "solver=" + to_string(c_solver) + " ref=" + to_string(c_ref) +
+           " rel_err=" + to_string(drift))
+}
+
+// Check 5: Midpoint reaches CTX_32K within 1e-3 of closed-form (n=512)
+fn check_midpoint_32k() {
+    let u = u_of(CTX_32K)
+    let c_solver = integrate(1, u, 512)
+    let c_ref = closed_form(u)
+    let drift = _abs(c_solver - c_ref) / c_ref
+    _check(drift < 1.0e-3,
+           "Midpoint forward to CTX_32K: relative error < 1e-3 (n=512 steps)",
+           "solver=" + to_string(c_solver) + " ref=" + to_string(c_ref) +
+           " rel_err=" + to_string(drift))
+}
+
+// Check 6: convergence ordering at fixed h: |err_euler| > |err_mid| > |err_rk4|
+fn check_convergence_ordering() {
+    let u = u_of(CTX_32K)            // mild slope, all 3 give finite errors
+    let n = 64
+    let c_ref = closed_form(u)
+    let e_eul = _abs(integrate(0, u, n) - c_ref)
+    let e_mid = _abs(integrate(1, u, n) - c_ref)
+    let e_rk4 = _abs(integrate(2, u, n) - c_ref)
+    _check((e_eul > e_mid) && (e_mid > e_rk4),
+           "convergence ordering: |Euler| > |Midpoint| > |RK4| at h fixed",
+           "Euler=" + to_string(e_eul) + " Mid=" + to_string(e_mid) +
+           " RK4=" + to_string(e_rk4))
+}
+
+// Check 7: Euler 1st-order convergence — error ratio ≈ 2 on halving h.
+//   Use CTX_32K so step error stays in linear regime.
+fn check_euler_order_one() {
+    let u = u_of(CTX_32K)
+    let c_ref = closed_form(u)
+    let e_coarse = _abs(integrate(0, u, 4096) - c_ref)
+    let e_fine   = _abs(integrate(0, u, 8192) - c_ref)
+    let ratio = e_coarse / e_fine
+    _check((ratio > 1.5) && (ratio < 2.5),
+           "Euler 1st-order convergence: error ratio ≈ 2 on halving h",
+           "4096→8192 steps, ratio=" + to_string(ratio))
+}
+
+// Check 8: Midpoint 2nd-order convergence — error ratio ≈ 4.
+fn check_midpoint_order_two() {
+    let u = u_of(CTX_32K)
+    let c_ref = closed_form(u)
+    let e_coarse = _abs(integrate(1, u, 256) - c_ref)
+    let e_fine   = _abs(integrate(1, u, 512) - c_ref)
+    let ratio = e_coarse / e_fine
+    _check((ratio > 3.0) && (ratio < 5.0),
+           "Midpoint 2nd-order convergence: error ratio ≈ 4 on halving h",
+           "256→512 steps, ratio=" + to_string(ratio))
+}
+
+// Check 9: RK4 4th-order convergence — error ratio ≈ 16.
+//   At τ=4 the error has steeper |c⁽⁵⁾| but the local-error-vs-h scaling
+//   should still hold. Use CTX_32K with moderate steps.
+fn check_rk4_order_four() {
+    let u = u_of(CTX_32K)
+    let c_ref = closed_form(u)
+    let e_coarse = _abs(integrate(2, u, 16) - c_ref)
+    let e_fine   = _abs(integrate(2, u, 32) - c_ref)
+    let ratio = e_coarse / e_fine
+    _check((ratio > 10.0) && (ratio < 22.0),
+           "RK4 4th-order convergence: error ratio ≈ 16 on halving h",
+           "16→32 steps, ratio=" + to_string(ratio))
+}
+
+// Check 10: positivity & finiteness — RK4 outputs positive finite values
+//   over the full 5-anchor grid.
+fn check_positivity_finiteness() {
+    let mut all_ok = true
+    let ctxs = [CTX_1K, 4096.0, CTX_8K, CTX_32K, CTX_128K, CTX_1M]
+    let mut i = 0
+    while i < len(ctxs) {
+        let u = u_of(ctxs[i])
+        let c = integrate(2, u, 2048)
+        // Finite iff c == c (NaN-trap), bounded, positive
+        let bounded = (c == c) && (_abs(c) < 1.0e30) && (c > 0.0)
+        if bounded == false { all_ok = false }
+        i = i + 1
+    }
+    _check(all_ok,
+           "all RK4 outputs over 6-point grid are positive and finite",
+           "1k / 4k / 8k / 32k / 128k / 1M all > 0, |c|<1e30, no NaN")
+}
+
+// ── main ─────────────────────────────────────────────────────────────────
+
+fn main() {
+    println("========================================================================")
+    println("  hexa-codex F-CODEX-2 inference-cost solver (T2 stack #3, ODE cascade)")
+    println("  ODE: dc/du = τ(6) · c,  c(0)=1,  closed-form c(u)=exp(4·u)=(ctx/8k)^4")
+    println("========================================================================")
+    println("  τ(6)     = " + to_string(TAU_6))
+    println("  CTX_REF  = " + to_string(CTX_REF))
+    println("  solvers  = Euler (1st) | Midpoint-RK2 (2nd) | RK4 (4th)")
+    println("")
+
+    check_anchor_identity()
+    check_rk4_forward_128k()
+    check_rk4_backward_1k()
+    check_rk4_forward_1m()
+    check_midpoint_32k()
+    println("")
+    check_convergence_ordering()
+    check_euler_order_one()
+    check_midpoint_order_two()
+    check_rk4_order_four()
+    check_positivity_finiteness()
+
+    println("========================================================================")
+    let pass_n = RUN - FAIL
+    println("  " + str(pass_n) + "/" + str(RUN) + " checks passed")
+    if FAIL > 0 {
+        println("  FAILURES:")
+        for f in FAILURES { println("    ✗ " + f) }
+        println("__HEXA_CODEX_NUMERICS_INFER_COST_SOLVER__ FAIL")
+        exit(1)
+    }
+    println("  F-CODEX-2 T2 ODE solver layer: closed.")
+    println("__HEXA_CODEX_NUMERICS_INFER_COST_SOLVER__ PASS")
+    exit(0)
+}

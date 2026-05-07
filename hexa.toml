@@ -42,6 +42,7 @@ files = [
     "tests/test_numerics_alignment_parity.hexa",
     "tests/test_numerics_interpret_parity.hexa",
     "tests/test_numerics_train_cost_solver.hexa",
+    "tests/test_numerics_infer_cost_solver.hexa",
     "tests/test_all.hexa",
 ]
 
@@ -129,6 +130,7 @@ verify = [
     "verify/numerics_alignment_parity.hexa",  # F-CODEX-3 T2 stack #2 published-ref parity (.hexa, recipe §7.4 priority 5)
     "verify/numerics_interpret_parity.hexa",  # F-CODEX-4 T2 stack #2 published-ref parity (.hexa, recipe §7.4 priority 5)
     "verify/numerics_train_cost_solver.hexa", # F-CODEX-1 T2 stack #3 ODE solver — Euler/midpoint/RK4 (.hexa, recipe §7.4 priority 6)
+    "verify/numerics_infer_cost_solver.hexa", # F-CODEX-2 T2 stack #3 ODE solver — τ=4 cascade (.hexa, recipe §7.4 priority 6)
 ]
 build = [
     "build/Makefile",               # verify + test + ci + per-verb pdf fan-out
@@ -201,6 +203,7 @@ runnable_hexa_iter12 = "2026-05-08 (verify/numerics_infer_cost_parity.hexa 10/10
 runnable_hexa_iter13 = "2026-05-08 (verify/numerics_alignment_parity.hexa 10/10 PASS — recipe §7.4 priority 5; F-CODEX-3 T2 stack #2 published-ref parity vs Llama-3 70B / Gemini 1.5 Pro / GPT-4 / Claude 3 Opus HELM-Core composites; Llama-3 = baseline 0.65 EXACT, Claude 3 Opus aspirational ceiling)"
 runnable_hexa_iter14 = "2026-05-08 (verify/numerics_interpret_parity.hexa 10/10 PASS — recipe §7.4 priority 5 final; F-CODEX-4 T2 stack #2 published-ref parity vs Olsson 2022 / Cunningham 2023 / Bricken 2023 / Anthropic 2024 SAE motif counts; Anthropic 2024 = J₂ − (σ−φ) = 14 EXACT lattice match; ALL 4 falsifiers at T2 ×2 stack)"
 runnable_hexa_iter15 = "2026-05-08 (verify/numerics_train_cost_solver.hexa 10/10 PASS — recipe §7.4 priority 6 enter; F-CODEX-1 T2 stack #3 ODE solver — Euler/midpoint-RK2/RK4 cascade re-derives c(u)=exp(0.96·u) from dc/du=N6_EXP·c; RK4 rel_err 2e-10 at n=512; convergence orders 1/2/4 verified by step-halving; first T2 #3 slot)"
+runnable_hexa_iter16 = "2026-05-08 (verify/numerics_infer_cost_solver.hexa 10/10 PASS — recipe §7.4 priority 6; F-CODEX-2 T2 stack #3 ODE solver — τ(6)=4 steeper cascade; RK4 rel_err 1.3e-9 at CTX_1M (c≈2.7e8); convergence orders 1/2/4 verified at CTX_32K; T2 #3 row 2/4)"
 
 # ── Scope honesty (raw#10 C3) ─────────────────────────────
 [scope]

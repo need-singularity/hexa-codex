@@ -481,17 +481,52 @@ before saturation.
 - `RESOURCE_LOCAL_HEXA=1 hexa run verify/numerics_train_cost_solver.hexa` — 10/10 PASS.
 - `hexa run tests/test_all.hexa` — 16/16 PASS.
 
-### F-CODEX T2 #3 (solver) row: 1/4 entered after iter 15
+### Added (2026-05-08 — 16th RSC iteration: numerics_infer_cost_solver / F-CODEX-2 T2 #3)
 
-| Falsifier  | T1 ✓ ✓ | T2 #1 ✓ | T2 #2 ✓ | T2 #3 (solver) | T3 |
-|:-----------|:------:|:-------:|:-------:|:--------------:|:--:|
-| F-CODEX-1  | ✓✓     | ✓       | ✓       | **✓ (iter 15)** | – |
-| F-CODEX-2  | ✓✓     | ✓       | ✓       | TBD            | – |
-| F-CODEX-3  | ✓✓     | ✓       | ✓       | TBD            | – |
-| F-CODEX-4  | ✓✓     | ✓       | ✓       | TBD            | – |
+- `verify/numerics_infer_cost_solver.hexa` — F-CODEX-2 T2 ODE solver
+  layer (10 checks via `math_pure`): same Euler/midpoint-RK2/RK4 cascade
+  as iter 15 but with the inference-cost ODE
 
-Next: F-CODEX-2/3/4 solvers (priority 6 — fill remaining T2 #3 slots),
-then priority 7 cross-pillar, reaching recipe §7.2 sat-1.
+      dc/du = τ(6) · c,  u = log(ctx / CTX_REF),  c(0) = 1
+
+  with closed-form `c(u) = exp(4·u) = (ctx/8k)^4`. The τ=4 exponent
+  produces a much steeper c-curve (c reaches ≈ 2.7e8 at ctx=1M), so
+  finer h is required for the same accuracy class:
+
+  | # | Check                                         | Result          |
+  |--:|:----------------------------------------------|:----------------|
+  | 1 | anchor identity (u=0 → c=1)                   | drift = 0       |
+  | 2 | RK4 forward to CTX_128K (n=2048)              | rel_err 8e-11   |
+  | 3 | RK4 backward to CTX_1K (n=2048)               | rel_err 2e-11   |
+  | 4 | RK4 forward to CTX_1M, c≈2.7e8 (n=2048)       | rel_err 1.3e-9  |
+  | 5 | Midpoint forward to CTX_32K (n=512)           | rel_err 1.1e-4  |
+  | 6 | convergence ordering Euler > Mid > RK4        | 52 > 1.7 > 6e-4 |
+  | 7 | Euler 1st-order (4096→8192 steps)             | ratio 1.997     |
+  | 8 | Midpoint 2nd-order (256→512 steps)            | ratio 3.97      |
+  | 9 | RK4 4th-order (16→32 steps)                   | ratio 13.86     |
+  |10 | RK4 outputs positive + finite over 6-grid     | 1k..1M OK       |
+
+- `tests/test_numerics_infer_cost_solver.hexa` — regression wrapper.
+- `tests/test_all.hexa` — CASES += solver test (now 17).
+- `cli/hexa-codex.hexa` — `verify numerics-infer_cost-solver` routes.
+- `hexa.toml` — entries + `[closure].runnable_hexa_iter16` marker.
+
+### Verified (iter 16)
+
+- `RESOURCE_LOCAL_HEXA=1 hexa run verify/numerics_infer_cost_solver.hexa` — 10/10 PASS.
+- `hexa run tests/test_all.hexa` — 17/17 PASS.
+
+### F-CODEX T2 #3 (solver) row: 2/4 entered after iter 16
+
+| Falsifier  | T1 ✓ ✓ | T2 #1 ✓ | T2 #2 ✓ | T2 #3 (solver)   | T3 |
+|:-----------|:------:|:-------:|:-------:|:----------------:|:--:|
+| F-CODEX-1  | ✓✓     | ✓       | ✓       | ✓ (iter 15)      | – |
+| F-CODEX-2  | ✓✓     | ✓       | ✓       | **✓ (iter 16)**  | – |
+| F-CODEX-3  | ✓✓     | ✓       | ✓       | TBD              | – |
+| F-CODEX-4  | ✓✓     | ✓       | ✓       | TBD              | – |
+
+Next: F-CODEX-3/4 solvers (priority 6), then priority 7 cross-pillar,
+reaching recipe §7.2 sat-1.
 
 ### F-CODEX T2 ROW: COMPLETE after iter 10
 
