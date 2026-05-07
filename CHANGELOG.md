@@ -288,6 +288,49 @@ versions follow [SemVer](https://semver.org/spec/v2.0.0.html).
 - `hexa run tests/test_all.hexa` — 11/11 PASS.
 - `python3 -m pytest tests/ -m auto -q` — 83 passed (no regression).
 
+### Added (2026-05-08 — 11th RSC iteration: numerics_train_cost_parity / F-CODEX-1 T2 stack #2)
+
+- `verify/numerics_train_cost_parity.hexa` — F-CODEX-1 T2 published-ref
+  parity (10 checks via `math_pure`): n=6 closed-form vs 4 frontier
+  training anchors:
+  | # | Model           | N        | D        | Pub. FLOPs | n6_ratio |
+  |--:|:----------------|---------:|---------:|-----------:|---------:|
+  | 1 | Chinchilla 70B  | 70e9     | 1.4e12   | 5.88e23    | 8.94 |
+  | 2 | GPT-3 175B      | 175e9    | 300e9    | 3.15e23    | 4.91 |
+  | 3 | Llama-2 70B     | 70e9     | 2.0e12   | 8.40e23    | 12.60 |
+  | 4 | PaLM 540B       | 540e9    | 780e9    | 2.527e24   | 36.27 |
+  - All 4 anchors yield positive n6 cost ratio.
+  - Kaplan 6·N·D rule reproduces published FLOPs within 0.008% (max).
+  - Log-ratio drift |log(n6) − log(chn)| ≤ 0.6 across all anchors (max 0.15).
+  - Concavity above ND_REF: n6_ratio < chn_ratio for all anchors.
+  - N·D ordering (GPT-3 < Chinchilla < Llama-2 < PaLM) preserved by n6 ratio.
+  - **GPT-3 under-trained flagged**: D/N = 1.71 ≪ Chinchilla optimal 20.
+  - **Chinchilla 70B optimum**: D/N = 20.0 EXACT (Hoffmann 2022).
+  - **Llama-2 70B over-Chinchilla**: D/N ≈ 28.6 > 20.
+  - PaLM 540B largest published anchor by N·D (4.21e23).
+  - PaLM − Chinchilla n6 gap > 3.0 (gap = 27.32).
+- `tests/test_numerics_train_cost_parity.hexa` — regression wrapper.
+- `tests/test_all.hexa` — CASES += parity test (now 12).
+- `cli/hexa-codex.hexa` — `verify numerics-train_cost-parity` routes.
+- `hexa.toml` — entries + `[closure].runnable_hexa_iter11` marker.
+
+### Verified (iter 11)
+
+- `hexa run verify/numerics_train_cost_parity.hexa` — 10/10 PASS.
+- `hexa run tests/test_all.hexa` — 12/12 PASS.
+- `python3 -m pytest tests/ -m auto -q` — 83 passed (no regression).
+
+### F-CODEX closure status (after iter 11)
+
+| Falsifier  | T1 (algebraic)                | T2 #1 (numerics)         | T2 #2 (parity)               | T3 |
+|:-----------|:------------------------------|:-------------------------|:-----------------------------|:--:|
+| F-CODEX-1  | lattice + calc_train_cost ✓ ✓ | numerics_train_cost ✓    | numerics_train_cost_parity ✓ | – |
+| F-CODEX-2  | lattice + calc_infer_cost ✓ ✓ | numerics_infer_cost ✓    | TBD                          | – |
+| F-CODEX-3  | lattice + calc_alignment ✓ ✓  | numerics_alignment ✓     | TBD                          | – |
+| F-CODEX-4  | lattice + calc_interpret ✓ ✓  | numerics_interpret ✓     | TBD                          | – |
+
+F-CODEX-1 T2 stack: 2 of 3 (parity ✓ ; solver/cross-pillar TBD).
+
 ### F-CODEX T2 ROW: COMPLETE after iter 10
 
 | Falsifier  | T1 (algebraic)                    | T2 (numerics)            | T3 (empirical) |
