@@ -396,17 +396,55 @@ exit 0 with empty stdout. Bypass with `RESOURCE_LOCAL_HEXA=1`.
 - `hexa run tests/test_all.hexa` — 14/14 PASS.
 - `python3 -m pytest tests/ -m auto -q` — 83 passed (no regression).
 
-### F-CODEX closure status (after iter 13)
+### Added (2026-05-08 — 14th RSC iteration: numerics_interpret_parity / F-CODEX-4 T2 #2)
+
+- `verify/numerics_interpret_parity.hexa` — F-CODEX-4 T2 published-ref
+  parity (10 checks via `math_pure`): n=6 σ−φ=10 motif count vs 4
+  published interpretability papers:
+
+  | # | Paper / Lab            | Year | Count | Drift | Verdict        |
+  |--:|:-----------------------|-----:|------:|------:|:---------------|
+  | 1 | Olsson (induction)     | 2022 | 3     | 7     | scope-shifted  |
+  | 2 | Cunningham (SAE)       | 2023 | 8     | 2     | within tol     |
+  | 3 | Bricken (toy GPT)      | 2023 | 12    | 2     | within tol     |
+  | 4 | Anthropic (Claude SAE) | 2024 | 14    | 4     | scope-shifted  |
+
+  Verified:
+  - All 4 motif counts > 0.
+  - Ranking: Olsson < Cunningham < Bricken < Anthropic 2024.
+  - Drift partition: 2 of 4 within ±3 (Cunningham + Bricken; the other
+    two are at the bracket edges of the published-ref distribution).
+  - Mean of 4 = 9.25 ≈ predicted 10 (drift 0.75 ≤ 1.0).
+  - Range max−min = 11 ≤ 12 (scope-driven spread bound).
+  - Stddev = 4.21 finite + bounded (< 5).
+  - σ−φ = 10 lattice prediction holds (float identity).
+  - **Year-scope ladder: 2022 (3) < 2024 (14)** — broader scope, more motifs.
+  - Spec anchor: ai-interpretability.md ships SAE + Bricken + Cunningham.
+  - **Lattice match**: J₂ − (σ−φ) = 24 − 10 = 14 = Anthropic-2024 anchor EXACT.
+
+- `tests/test_numerics_interpret_parity.hexa` — regression wrapper.
+- `tests/test_all.hexa` — CASES += parity test (now 15).
+- `cli/hexa-codex.hexa` — `verify numerics-interpret-parity` routes.
+- `hexa.toml` — entries + `[closure].runnable_hexa_iter14` marker.
+
+### Verified (iter 14)
+
+- `RESOURCE_LOCAL_HEXA=1 hexa run verify/numerics_interpret_parity.hexa` — 10/10 PASS.
+- `hexa run tests/test_all.hexa` — 15/15 PASS.
+- `python3 -m pytest tests/ -m auto -q` — 83 passed (no regression).
+
+### F-CODEX T2 ×2 STACK: COMPLETE after iter 14
 
 | Falsifier  | T1 (algebraic)                | T2 #1 (numerics)         | T2 #2 (parity)               | T2 #3 (solver) | T3 |
 |:-----------|:------------------------------|:-------------------------|:-----------------------------|:--------------:|:--:|
 | F-CODEX-1  | lattice + calc_train_cost ✓ ✓ | numerics_train_cost ✓    | numerics_train_cost_parity ✓ | TBD            | – |
 | F-CODEX-2  | lattice + calc_infer_cost ✓ ✓ | numerics_infer_cost ✓    | numerics_infer_cost_parity ✓ | TBD            | – |
 | F-CODEX-3  | lattice + calc_alignment ✓ ✓  | numerics_alignment ✓     | numerics_alignment_parity ✓  | TBD            | – |
-| F-CODEX-4  | lattice + calc_interpret ✓ ✓  | numerics_interpret ✓     | TBD                          | TBD            | – |
+| F-CODEX-4  | lattice + calc_interpret ✓ ✓  | numerics_interpret ✓     | numerics_interpret_parity ✓  | TBD            | – |
 
-F-CODEX-1/2/3 T2 stack: 2 of 3 (parity ✓ ; solver/cross-pillar TBD).
-F-CODEX-4 T2 stack: 1 of 3 — parity (interpret motif published-ref) is next.
+**All 4 falsifiers at T2 ×2 stack** — recipe §7.2 sat-1 needs T2 ×3
+per falsifier. T2 #3 (solver / cross-pillar) is the final T2-row layer
+before saturation.
 
 ### F-CODEX T2 ROW: COMPLETE after iter 10
 

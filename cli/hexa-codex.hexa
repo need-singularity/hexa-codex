@@ -238,6 +238,8 @@ fn _verify_hexa_script(target: str) -> str {
     if target == "numerics_infer_cost_parity" { return HC + "/verify/numerics_infer_cost_parity.hexa" }
     if target == "numerics-alignment-parity"  { return HC + "/verify/numerics_alignment_parity.hexa" }
     if target == "numerics_alignment_parity"  { return HC + "/verify/numerics_alignment_parity.hexa" }
+    if target == "numerics-interpret-parity"  { return HC + "/verify/numerics_interpret_parity.hexa" }
+    if target == "numerics_interpret_parity"  { return HC + "/verify/numerics_interpret_parity.hexa" }
     return ""
 }
 
@@ -444,6 +446,7 @@ fn cmd_help() {
     println("                  · 'numerics-train_cost-parity' → verify/numerics_train_cost_parity.hexa (.hexa, recipe §7.4 priority 5; F-CODEX-1 T2 published-ref parity)")
     println("                  · 'numerics-infer_cost-parity' → verify/numerics_infer_cost_parity.hexa (.hexa, recipe §7.4 priority 5; F-CODEX-2 T2 published-ref parity)")
     println("                  · 'numerics-alignment-parity'  → verify/numerics_alignment_parity.hexa  (.hexa, recipe §7.4 priority 5; F-CODEX-3 T2 published-ref parity)")
+    println("                  · 'numerics-interpret-parity'  → verify/numerics_interpret_parity.hexa  (.hexa, recipe §7.4 priority 5; F-CODEX-4 T2 published-ref parity)")
     println("  inventory       17-verb spec inventory + canonical-header audit")
     println("  lattice [n]     n=k lattice explorer (σ·φ vs n·τ identity)")
     println("  calc <metric>   F-CODEX-1..4 calculators (train_cost/infer_cost/alignment/interpret/quality_scale)")
