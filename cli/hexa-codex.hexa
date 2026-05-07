@@ -248,6 +248,8 @@ fn _verify_hexa_script(target: str) -> str {
     if target == "numerics_alignment_solver"  { return HC + "/verify/numerics_alignment_solver.hexa" }
     if target == "numerics-interpret-solver"  { return HC + "/verify/numerics_interpret_solver.hexa" }
     if target == "numerics_interpret_solver"  { return HC + "/verify/numerics_interpret_solver.hexa" }
+    if target == "numerics-cross-pillar"      { return HC + "/verify/numerics_cross_pillar.hexa" }
+    if target == "numerics_cross_pillar"      { return HC + "/verify/numerics_cross_pillar.hexa" }
     return ""
 }
 
@@ -459,6 +461,7 @@ fn cmd_help() {
     println("                  · 'numerics-infer_cost-solver' → verify/numerics_infer_cost_solver.hexa (.hexa, recipe §7.4 priority 6; F-CODEX-2 T2 ODE solver — τ=4 steeper cascade)")
     println("                  · 'numerics-alignment-solver'  → verify/numerics_alignment_solver.hexa  (.hexa, recipe §7.4 priority 6; F-CODEX-3 T2 ODE solver — leapfrog/Verlet harmonic oscillator)")
     println("                  · 'numerics-interpret-solver'  → verify/numerics_interpret_solver.hexa  (.hexa, recipe §7.4 priority 6 final; F-CODEX-4 T2 ODE solver — gradient-flow + Lyapunov)")
+    println("                  · 'numerics-cross-pillar'      → verify/numerics_cross_pillar.hexa      (.hexa, recipe §7.4 priority 7; cross-cutter T2 over all 4 F-CODEX pillars)")
     println("  inventory       17-verb spec inventory + canonical-header audit")
     println("  lattice [n]     n=k lattice explorer (σ·φ vs n·τ identity)")
     println("  calc <metric>   F-CODEX-1..4 calculators (train_cost/infer_cost/alignment/interpret/quality_scale)")

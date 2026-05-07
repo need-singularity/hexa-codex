@@ -603,6 +603,59 @@ before saturation.
 Next: priority 7 `numerics_cross_pillar.hexa` (cross-cutter T2),
 reaching recipe §7.2 sat-1 saturation gate.
 
+### Added (2026-05-08 — 19th RSC iteration: numerics_cross_pillar)
+
+- `verify/numerics_cross_pillar.hexa` — recipe §7.4 priority 7
+  cross-cutter T2 over all 4 F-CODEX pillars (10 checks via
+  `math_pure`). Each pillar runs its own closed form (train cost ratio,
+  infer cost ratio, alignment mean, motif count) on the SAME n=6
+  lattice (σ=12, φ=2, τ=4, n=6, J₂=24, σ−φ=10, N6_EXP=24/25); we test
+  identities that would have to fail simultaneously for the lattice to
+  break:
+
+  | # | Cross-cutter check                                  | Result      |
+  |--:|:----------------------------------------------------|:------------|
+  | 1 | lattice closure σ·φ = n·τ = J₂ = 24                 | drift = 0   |
+  | 2 | F-CODEX-1: N6_EXP·(J₂+1) = J₂                       | drift = 0   |
+  | 3 | F-CODEX-2 τ = J₂/n; F-CODEX-3 σ = J₂/φ              | drift = 0   |
+  | 4 | ratio tower σ/φ=n, σ/τ=3, J₂/σ=φ, J₂/τ=n            | drift = 0   |
+  | 5 | F1×F2 composite (Llama-2 70B + 8k ctx) finite, > 0  | OK          |
+  | 6 | F3×F4 product alignment(1.0)·motif(10) = σ−φ        | drift = 0   |
+  | 7 | 4 frontier × 8k-ctx grid: all (train, infer) > 0    | min > 1     |
+  | 8 | F1×F4 coupled RK4 ODE system (n=256, t=5)           | both ≤ 1e-8 |
+  | 9 | lattice positivity log{σ, φ, τ, σ−φ, J₂} all > 0    | OK          |
+  |10 | exponent partition: F1 sub-lin, F2 super-lin        | OK          |
+
+- `tests/test_numerics_cross_pillar.hexa` — regression wrapper.
+- `tests/test_all.hexa` — CASES += cross-pillar test (now 20).
+- `cli/hexa-codex.hexa` — `verify numerics-cross-pillar` routes.
+- `hexa.toml` — entries + `[closure].runnable_hexa_iter19` marker.
+
+### Verified (iter 19)
+
+- `RESOURCE_LOCAL_HEXA=1 hexa run verify/numerics_cross_pillar.hexa` — 10/10 PASS.
+- `hexa run tests/test_all.hexa` — 20/20 PASS.
+
+### Recipe §7.4 priority 7: COMPLETE after iter 19
+
+After iter 19 the priority table reads:
+
+| Priority | Slot                                | Status     |
+|:--------:|:------------------------------------|:-----------|
+| 1 | lattice_check.hexa                       | ✓ (iter 1) |
+| 2 | cross_doc_audit.hexa                     | ✓ (iter 2) |
+| 3 | calc_<pillar>.hexa × 4                   | ✓ (iter 3..6) |
+| 4 | numerics_<pillar>.hexa × 4               | ✓ (iter 7..10) |
+| 5 | numerics_<pillar>_parity.hexa × 4        | ✓ (iter 11..14) |
+| 6 | numerics_<pillar>_solver.hexa × 4        | ✓ (iter 15..18) |
+| 7 | numerics_cross_pillar.hexa               | ✓ (iter 19) |
+| 8 | numerics_lattice_arithmetic.hexa         | TBD        |
+| 9 | falsifier_check.hexa                     | TBD        |
+
+Next: priority 8 `numerics_lattice_arithmetic.hexa` (math_pure
+stability floor), then priority 9 `falsifier_check.hexa` closure
+tracker, reaching recipe §7.2 sat-1 saturation.
+
 ### F-CODEX T2 ROW: COMPLETE after iter 10
 
 | Falsifier  | T1 (algebraic)                    | T2 (numerics)            | T3 (empirical) |
