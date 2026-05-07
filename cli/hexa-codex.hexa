@@ -215,7 +215,9 @@ fn cmd_verb(verb: str, a: [str]) {
 // falsifiers / reference). Optional --json flag passes through to python only.
 
 fn _verify_hexa_script(target: str) -> str {
-    if target == "lattice" { return HC + "/verify/lattice_check.hexa" }
+    if target == "lattice"   { return HC + "/verify/lattice_check.hexa" }
+    if target == "cross-doc" { return HC + "/verify/cross_doc_audit.hexa" }
+    if target == "cross_doc" { return HC + "/verify/cross_doc_audit.hexa" }
     return ""
 }
 
@@ -408,8 +410,9 @@ fn cmd_help() {
     println("utility subcommands:")
     println("  list            17-verb table grouped by 4 groups")
     println("  selftest        17-verb spec presence sweep")
-    println("  verify [check]  unified verifier dispatcher (lattice/n6/inventory/group/release/falsifiers/reference/all)")
-    println("                  · 'lattice' → verify/lattice_check.hexa (.hexa, recipe §7.4 T1)")
+    println("  verify [check]  unified verifier dispatcher (lattice/cross-doc/n6/inventory/group/release/falsifiers/reference/all)")
+    println("                  · 'lattice'   → verify/lattice_check.hexa   (.hexa, recipe §7.4 T1)")
+    println("                  · 'cross-doc' → verify/cross_doc_audit.hexa (.hexa, recipe §7.4 cross-cutter)")
     println("  inventory       17-verb spec inventory + canonical-header audit")
     println("  lattice [n]     n=k lattice explorer (σ·φ vs n·τ identity)")
     println("  calc <metric>   F-CODEX-1..4 calculators (train_cost/infer_cost/alignment/interpret/quality_scale)")

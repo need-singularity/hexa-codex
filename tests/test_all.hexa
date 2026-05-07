@@ -26,6 +26,7 @@ let HEXA = HOME + "/.hx/bin/hexa"
 let CASES = [
     "test_selftest.hexa|test_selftest: PASS",
     "test_lattice.hexa|__HEXA_CODEX_TEST_LATTICE__ PASS",
+    "test_cross_doc.hexa|__HEXA_CODEX_TEST_CROSS_DOC__ PASS",
 ]
 
 fn shq(s: str) -> str {

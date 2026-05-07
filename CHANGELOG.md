@@ -33,6 +33,41 @@ versions follow [SemVer](https://semver.org/spec/v2.0.0.html).
 - `hexa run tests/test_all.hexa` — 2/2 PASS (selftest + lattice).
 - `python3 -m pytest tests/ -m auto -q` — 83 passed (no regression).
 
+### Added (2026-05-07 — 2nd RSC iteration: cross_doc_audit)
+
+- `verify/cross_doc_audit.hexa` — cross-document anchor audit (15 checks):
+  - Taxonomy: 17 verb names + 4-group section headers consistent across
+    `hexa.toml [modules]`, CLI `verb_spec()` + `VERBS_*` arrays, and the
+    `README.md` verb table.
+  - Falsifier prefix: F-CODEX-1..4 appear in roadmap §A.4 + hexa.toml
+    `[falsifiers]` + README's preregister table.
+  - Provenance: `n6-architecture@c0f1f570` cited in hexa.toml + README +
+    CHANGELOG.
+  - Master identity string `σ(6)·φ(6)=n·τ(6)=J₂=24` agrees across roadmap +
+    hexa.toml + README.
+  - Release ladder: roadmap §A.2 lists v1.0.0..v2.0.0 (5 versions, RELEASED)
+    + CHANGELOG `[1.0.0]` anchor.
+  - Lifecycle quartet (pretrain/SFT/RLHF/deploy) enumerated in roadmap §A.1.
+  - HELM 12-dim capability bin in roadmap + hexa.toml + README.
+  - Paper provenance: 4 papers each have `@canonical` / `@md5_at_extraction`
+    / `@absorbed_into` headers.
+  - Formal anchor: `formal/lean4/N6/InvariantLattice/Sigma.lean` exists +
+    `formal/README.md` + main README cross-link the σ(6)=12 PROVEN badge.
+  - CHANGELOG visibility: RSC port marker + [1.0.0] anchor present.
+  - Sentinel: `__HEXA_CODEX_CROSS_DOC__ PASS`.
+- `tests/test_cross_doc.hexa` — regression wrapper for the verifier above.
+- `tests/test_all.hexa` — CASES += `test_cross_doc`.
+- `cli/hexa-codex.hexa` — `verify cross-doc` (and `cross_doc`) routes to .hexa.
+- `hexa.toml` — `[test] files` += `test_cross_doc.hexa`;
+  `verify =` += `verify/cross_doc_audit.hexa`;
+  `[closure].runnable_hexa_iter2` marker.
+
+### Verified (iter 2)
+
+- `hexa run verify/cross_doc_audit.hexa` — 15/15 PASS.
+- `hexa run tests/test_all.hexa` — 3/3 PASS (selftest + lattice + cross_doc).
+- `python3 -m pytest tests/ -m auto -q` — 83 passed (no regression).
+
 ## [1.0.0] — 2026-05-06
 
 ### Added

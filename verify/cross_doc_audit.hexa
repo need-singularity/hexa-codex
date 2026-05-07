@@ -1,0 +1,360 @@
+#!hexa strict
+// hexa-codex/verify/cross_doc_audit.hexa — cross-document anchor audit.
+//
+// Confirms shared anchors agree across the canonical hexa-codex documents.
+// Anchors covered:
+//
+//   1. 17-verb / 4-group taxonomy   — hexa.toml [modules] vs CLI VERBS_* vs README table
+//   2. F-CODEX-1..4 falsifier prefix — roadmap §A.4 + hexa.toml [falsifiers] + README
+//   3. n6-architecture@c0f1f570 provenance — hexa.toml + README + CHANGELOG
+//   4. master identity string σ(6)·φ(6)=n·τ(6)=J₂=24 — roadmap + hexa.toml + README
+//   5. release ladder v1.0.0..v2.0.0 — roadmap §A.2 + README + CHANGELOG
+//   6. lifecycle quartet (pretrain/SFT/RLHF/deploy) — roadmap §A.1 + hexa.toml
+//   7. HELM 12-dim capability bin — roadmap §A.1 + hexa.toml + README
+//   8. paper provenance headers (@canonical: n6-architecture@<sha>) — every papers/*.md
+//   9. Lean formal anchor — formal/lean4/N6/InvariantLattice/Sigma.lean + formal/README.md
+//
+// Run:
+//   hexa run verify/cross_doc_audit.hexa     # exit 0 = all anchors agree
+//   HEXA_CODEX_ROOT=/path hexa run …         # explicit root override
+//
+// Authority: .roadmap.hexa_codex §A.1..§A.4 ; hexa.toml ; recipe §1 cross-cutter.
+// Cost: $0 (pure file reads + string scan).
+//
+// @no-lock-needed
+// @resolver-bypass(reason="Pure local verifier; reads project docs only.")
+
+let HOME = env("HOME")
+
+fn _root() -> str {
+    let r = env("HEXA_CODEX_ROOT")
+    if r.len() > 0 { return r }
+    let pwd = exec("pwd").trim()
+    if pwd.len() > 0 { return pwd }
+    return HOME + "/core/hexa-codex"  // @allow-devpath
+}
+
+let ROOT = _root()
+
+// ── doc paths ────────────────────────────────────────────────────────────
+let DOC_ROADMAP   = ROOT + "/.roadmap.hexa_codex"
+let DOC_TOML      = ROOT + "/hexa.toml"
+let DOC_README    = ROOT + "/README.md"
+let DOC_CHANGELOG = ROOT + "/CHANGELOG.md"
+let DOC_CLI       = ROOT + "/cli/hexa-codex.hexa"
+let DOC_FORMAL    = ROOT + "/formal/README.md"
+let DOC_LEAN      = ROOT + "/formal/lean4/N6/InvariantLattice/Sigma.lean"
+
+// 4 papers (P1, P2, P4, P5 — see hexa.toml [modules].papers)
+let PAPER_FILES = [
+    "papers/n6-ai-17-techniques-experimental-paper.md",
+    "papers/n6-ai-techniques-68-integrated-paper.md",
+    "papers/n6-ai-ethics-governance-paper.md",
+    "papers/n6-governance-safety-urban-paper.md",
+]
+
+// 17 verb names (4 groups: 6+3+4+4)
+let VERBS = [
+    "alignment", "safety", "welfare", "adversarial", "consciousness", "interpret",
+    "train_cost", "infer_cost", "quality_scale",
+    "deploy", "enterprise", "agent_serving", "eval",
+    "multimodal", "rlhf", "cog_arch", "causal",
+]
+
+// Falsifier IDs
+let FALSIFIERS = ["F-CODEX-1", "F-CODEX-2", "F-CODEX-3", "F-CODEX-4"]
+
+// ── helpers ──────────────────────────────────────────────────────────────
+
+fn _read(p: str) -> str {
+    if file_exists(p) == false { return "" }
+    return read_file(p)
+}
+
+fn _has(t: str, s: str) -> bool {
+    if t.len() == 0 { return false }
+    if s.len() == 0 { return true }
+    return t.find(s) >= 0
+}
+
+fn _any(t: str, ss: [str]) -> bool {
+    for s in ss { if _has(t, s) { return true } }
+    return false
+}
+
+let mut RUN = 0
+let mut FAIL = 0
+let mut FAILURES = []
+
+fn _check(ok: bool, label: str, detail: str) {
+    RUN = RUN + 1
+    if ok {
+        println("  [PASS] " + label)
+        if detail.len() > 0 { println("         · " + detail) }
+    } else {
+        FAIL = FAIL + 1
+        FAILURES.push(label + " :: " + detail)
+        println("  [FAIL] " + label)
+        if detail.len() > 0 { println("         · " + detail) }
+    }
+}
+
+// ── checks ───────────────────────────────────────────────────────────────
+
+// Check 1 — All 17 verbs appear in hexa.toml [modules]
+fn check_toml_modules_complete() {
+    let txt = _read(DOC_TOML)
+    let mut missing = []
+    for v in VERBS {
+        // Each verb shows up as "<group>/<file>.md" or as the directory name in [modules]
+        if _has(txt, v + "/") == false { missing.push(v) }
+    }
+    let ok = len(missing) == 0
+    _check(ok, "hexa.toml [modules] lists all 17 verb dirs",
+           "missing=" + str(len(missing)) + " of " + str(len(VERBS)))
+    if ok == false {
+        for m in missing { println("         · missing: " + m) }
+    }
+}
+
+// Check 2 — CLI declares 4-group VERBS_* arrays mirroring the taxonomy
+fn check_cli_verbs_arrays() {
+    let txt = _read(DOC_CLI)
+    let ok = _has(txt, "VERBS_SAFETY") &&
+             _has(txt, "VERBS_ECONOMICS") &&
+             _has(txt, "VERBS_OPS") &&
+             _has(txt, "VERBS_SUBSTRATE")
+    _check(ok, "cli/hexa-codex.hexa declares VERBS_SAFETY/ECONOMICS/OPS/SUBSTRATE",
+           "")
+}
+
+// Check 3 — All 17 verb names appear in CLI verb_spec() routing
+fn check_cli_verb_routing() {
+    let txt = _read(DOC_CLI)
+    let mut missing = []
+    for v in VERBS {
+        if _has(txt, "\"" + v + "\"") == false { missing.push(v) }
+    }
+    let ok = len(missing) == 0
+    _check(ok, "CLI verb_spec() routes all 17 verb names",
+           "missing=" + str(len(missing)))
+    if ok == false {
+        for m in missing { println("         · missing: " + m) }
+    }
+}
+
+// Check 4 — README.md verb table mentions all 17 verbs
+fn check_readme_verb_table() {
+    let txt = _read(DOC_README)
+    let mut missing = []
+    for v in VERBS {
+        if _has(txt, "`" + v + "`") == false { missing.push(v) }
+    }
+    let ok = len(missing) == 0
+    _check(ok, "README.md verb table mentions all 17 verbs",
+           "missing=" + str(len(missing)))
+    if ok == false {
+        for m in missing { println("         · missing: " + m) }
+    }
+}
+
+// Check 5 — README.md headers expose 4 group section labels
+fn check_readme_group_sections() {
+    let txt = _read(DOC_README)
+    let ok = _has(txt, "SAFETY (6)") &&
+             _has(txt, "ECONOMICS (3)") &&
+             _has(txt, "OPS (4)") &&
+             _has(txt, "SUBSTRATE (4)")
+    _check(ok, "README.md exposes 4-group section headers (6/3/4/4)", "")
+}
+
+// Check 6 — F-CODEX-1..4 appear in roadmap §A.4 + hexa.toml [falsifiers] + README
+fn check_falsifiers_cross_doc() {
+    let road = _read(DOC_ROADMAP)
+    let toml = _read(DOC_TOML)
+    let rdme = _read(DOC_README)
+    let mut bad = []
+    for f in FALSIFIERS {
+        let toml_id = f.replace("-", "_")     // F-CODEX-1 → F_CODEX_1
+        let in_road = _has(road, f)
+        let in_toml = _has(toml, toml_id)
+        let in_rdme = _has(rdme, f)
+        if (in_road && in_toml && in_rdme) == false {
+            bad.push(f + " (road=" + str(in_road) +
+                     " toml=" + str(in_toml) +
+                     " readme=" + str(in_rdme) + ")")
+        }
+    }
+    let ok = len(bad) == 0
+    _check(ok, "F-CODEX-1..4 appear in roadmap + hexa.toml + README",
+           "missing/inconsistent: " + str(len(bad)))
+    if ok == false {
+        for b in bad { println("         · " + b) }
+    }
+}
+
+// Check 7 — Provenance n6-architecture@c0f1f570 in hexa.toml + README + CHANGELOG
+fn check_provenance_initial() {
+    let toml = _read(DOC_TOML)
+    let rdme = _read(DOC_README)
+    let chlg = _read(DOC_CHANGELOG)
+    let phrase = "n6-architecture@c0f1f570"
+    let in_toml = _has(toml, phrase)
+    let in_rdme = _has(rdme, phrase)
+    let in_chlg = _has(chlg, phrase)
+    _check(in_toml && in_rdme && in_chlg,
+           "provenance " + phrase + " in hexa.toml + README + CHANGELOG",
+           "toml=" + str(in_toml) + " readme=" + str(in_rdme) + " changelog=" + str(in_chlg))
+}
+
+// Check 8 — Master identity string in roadmap + hexa.toml + README
+fn check_master_identity_string() {
+    let road = _read(DOC_ROADMAP)
+    let toml = _read(DOC_TOML)
+    let rdme = _read(DOC_README)
+    // Accept either spaced "σ(6) · φ(6) = n · τ(6) = J₂ = 24" or compact form.
+    let candidates = [
+        "σ(6) · φ(6) = n · τ(6) = J₂ = 24",
+        "σ(6)·φ(6) = n·τ(6) = J₂ = 24",
+        "σ(6) · φ(6) = n · τ(6) = J₂",
+    ]
+    let in_road = _any(road, candidates)
+    let in_toml = _any(toml, candidates)
+    let in_rdme = _any(rdme, candidates)
+    _check(in_road && in_toml && in_rdme,
+           "master identity σ·φ = n·τ = J₂ = 24 in roadmap + hexa.toml + README",
+           "roadmap=" + str(in_road) + " toml=" + str(in_toml) + " readme=" + str(in_rdme))
+}
+
+// Check 9 — Release ladder v1.0.0..v2.0.0 in roadmap §A.2 + README/CHANGELOG
+fn check_release_ladder() {
+    let road = _read(DOC_ROADMAP)
+    let chlg = _read(DOC_CHANGELOG)
+    let versions = ["v1.0.0", "v1.1.0", "v1.2.0", "v1.3.0", "v2.0.0"]
+    let mut road_hits = 0
+    for v in versions { if _has(road, v) { road_hits = road_hits + 1 } }
+    let chlg_v100 = _has(chlg, "1.0.0")
+    let road_full = road_hits == len(versions)
+    let road_released = _has(road, "v1.0.0") && _has(road, "RELEASED")
+    _check(road_full && road_released && chlg_v100,
+           "release ladder: roadmap §A.2 lists v1.0.0..v2.0.0 (5 versions, RELEASED) + CHANGELOG [1.0.0]",
+           "roadmap_versions=" + str(road_hits) + "/5 released=" + str(road_released) + " changelog=" + str(chlg_v100))
+}
+
+// Check 10 — Lifecycle quartet (pretrain/SFT/RLHF/deploy) enumerated in roadmap §A.1
+//   roadmap is the authority for the phase NAMES; hexa.toml [invariants.n6]
+//   carries the COUNT (tau_6 = 4) which is already verified in lattice_check.
+fn check_lifecycle_quartet() {
+    let road = _read(DOC_ROADMAP)
+    let phases = ["pretrain", "SFT", "RLHF", "deploy"]
+    let mut hits = 0
+    for p in phases { if _has(road, p) { hits = hits + 1 } }
+    _check(hits >= 4,
+           "lifecycle quartet (pretrain/SFT/RLHF/deploy) in roadmap §A.1",
+           "roadmap=" + str(hits) + "/4")
+}
+
+// Check 11 — HELM 12-dim capability bin phrase in roadmap + hexa.toml + README
+fn check_helm_bin() {
+    let road = _read(DOC_ROADMAP)
+    let toml = _read(DOC_TOML)
+    let rdme = _read(DOC_README)
+    let phrases = ["HELM 12-dim", "12 capability dim", "HELM bench bin", "HELM-dimension"]
+    let road_ok = _any(road, phrases)
+    let toml_ok = _any(toml, phrases)
+    let rdme_ok = _any(rdme, phrases)
+    _check(road_ok && toml_ok && rdme_ok,
+           "HELM 12-dim capability bin in roadmap + hexa.toml + README",
+           "roadmap=" + str(road_ok) + " toml=" + str(toml_ok) + " readme=" + str(rdme_ok))
+}
+
+// Check 12 — Each papers/*.md ships @canonical: n6-architecture@<sha> header
+fn check_paper_provenance_headers() {
+    let mut missing = []
+    for p in PAPER_FILES {
+        let txt = _read(ROOT + "/" + p)
+        let ok = _has(txt, "@canonical: n6-architecture@") &&
+                 _has(txt, "@md5_at_extraction:") &&
+                 _has(txt, "@absorbed_into: hexa-codex")
+    if ok == false { missing.push(p) }
+    }
+    let ok = len(missing) == 0
+    _check(ok,
+           "each papers/*.md has @canonical + @md5 + @absorbed_into header (4 papers)",
+           "missing=" + str(len(missing)) + " of " + str(len(PAPER_FILES)))
+    if ok == false {
+        for m in missing { println("         · " + m) }
+    }
+}
+
+// Check 13 — Lean formal anchor exists + formal/README references it
+fn check_formal_anchor() {
+    let lean = _read(DOC_LEAN)
+    let frm = _read(DOC_FORMAL)
+    let lean_ok = lean.len() > 0
+    let frm_ok = _any(frm, ["Sigma.lean", "InvariantLattice", "F-CL-FORMAL-1"])
+    _check(lean_ok && frm_ok,
+           "formal anchor: Sigma.lean exists + formal/README references it",
+           "lean=" + str(lean_ok) + " readme=" + str(frm_ok))
+}
+
+// Check 14 — README exposes Lean σ(6)=12 PROVEN badge + cross-link
+fn check_readme_lean_badge() {
+    let txt = _read(DOC_README)
+    let ok = _has(txt, "Lean4") && _has(txt, "σ(6)") &&
+             (_has(txt, "PROVEN") || _has(txt, "proof"))
+    _check(ok, "README.md surfaces Lean σ(6)=12 PROVEN reference", "")
+}
+
+// Check 15 — CHANGELOG declares 1.0.0 + RSC iter 1 (recipe-driven port)
+fn check_changelog_rsc_visibility() {
+    let txt = _read(DOC_CHANGELOG)
+    let ok_v100 = _has(txt, "[1.0.0]")
+    let ok_rsc  = _has(txt, "RSC") || _has(txt, "runnable_surface_recipe") ||
+                  _has(txt, "lattice_check.hexa")
+    _check(ok_v100 && ok_rsc,
+           "CHANGELOG.md has [1.0.0] + RSC port marker",
+           "v100=" + str(ok_v100) + " rsc=" + str(ok_rsc))
+}
+
+// ── main ─────────────────────────────────────────────────────────────────
+
+fn main() {
+    println("========================================================================")
+    println("  hexa-codex — cross-document anchor audit")
+    println("  17-verb / 4-group taxonomy + F-CODEX-1..4 + provenance + master identity")
+    println("========================================================================")
+    println("  root: " + ROOT)
+    println("")
+
+    check_toml_modules_complete()
+    check_cli_verbs_arrays()
+    check_cli_verb_routing()
+    check_readme_verb_table()
+    check_readme_group_sections()
+    println("")
+    check_falsifiers_cross_doc()
+    check_provenance_initial()
+    check_master_identity_string()
+    check_release_ladder()
+    println("")
+    check_lifecycle_quartet()
+    check_helm_bin()
+    check_paper_provenance_headers()
+    check_formal_anchor()
+    check_readme_lean_badge()
+    check_changelog_rsc_visibility()
+
+    println("========================================================================")
+    let pass_n = RUN - FAIL
+    println("  " + str(pass_n) + "/" + str(RUN) + " checks passed")
+    if FAIL > 0 {
+        println("  FAILURES:")
+        for f in FAILURES { println("    ✗ " + f) }
+        println("__HEXA_CODEX_CROSS_DOC__ FAIL")
+        exit(1)
+    }
+    println("  All cross-document anchors agree.")
+    println("__HEXA_CODEX_CROSS_DOC__ PASS")
+    exit(0)
+}

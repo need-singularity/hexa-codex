@@ -28,6 +28,7 @@ runner = "hexa"
 files = [
     "tests/test_selftest.hexa",
     "tests/test_lattice.hexa",
+    "tests/test_cross_doc.hexa",
     "tests/test_all.hexa",
 ]
 
@@ -101,6 +102,7 @@ verify = [
     "verify/lattice_explore.py",    # n=k lattice arithmetic explorer
     "verify/verb_query.py",         # verb info / spec lookup tool
     "verify/lattice_check.hexa",    # n=6 closure audit (.hexa, recipe §7.4 T1)
+    "verify/cross_doc_audit.hexa",  # cross-doc anchor audit (.hexa, recipe §7.4 cross-cutter)
 ]
 build = [
     "build/Makefile",               # verify + test + ci + per-verb pdf fan-out
@@ -159,6 +161,7 @@ extracted_from    = "n6-architecture@c0f1f570 on 2026-05-06"
 runnable_added_on = "2026-05-07 (verify/ + build/ + python tests/, mirroring hexa-sscb pattern)"
 references_added_on = "2026-05-07 (papers/ + formal/ from n6-architecture@0c65155a, P1+P2+P3)"
 runnable_hexa_iter1 = "2026-05-07 (verify/lattice_check.hexa 24/24 PASS — recipe §7.4 priority 1; T1 floor for F-CODEX-1..4)"
+runnable_hexa_iter2 = "2026-05-07 (verify/cross_doc_audit.hexa 15/15 PASS — recipe §7.4 cross-cutter; 17-verb/4-group + falsifier prefix + provenance + master identity all agree)"
 
 # ── Scope honesty (raw#10 C3) ─────────────────────────────
 [scope]
