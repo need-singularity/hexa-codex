@@ -1,0 +1,320 @@
+#!hexa strict
+// hexa-codex/verify/lint_numerics.hexa — recipe §7.4 priority 10 (meta lint).
+//
+// Enforces the 5 invariants from recipe §4 across every
+// `verify/numerics_*.hexa` script in this repo:
+//
+//   1. `use "self/runtime/math_pure"` import (raw float math forbidden)
+//   2. `__HEXA_<PROJECT>_<NAME>__` sentinel + `__ PASS` suffix
+//   3. `FALSIFIERS` array declaration
+//   4. `exit(0)` on the PASS path
+//   5. `let mut RUN = 0` + `let mut FAIL = 0` counters
+//
+// Plus the inventory invariant: the canonical numerics_* set on disk
+// equals the curated NUMERICS_SCRIPTS list below (drift trips the
+// inventory check).
+//
+// PASS criterion: 10 checks pass. The first 5 are 1 check / invariant
+// run across all numerics_* scripts (a single FAIL there means at
+// least one script breaks the invariant). The remaining 5 are
+// inventory + cross-project conventions.
+//
+// Recipe §4 floor — once `lint_numerics.hexa` passes, every numerics_*
+// caller is guaranteed math_pure-clean and convention-conformant.
+//
+// Run:
+//   hexa run verify/lint_numerics.hexa
+//
+// @no-lock-needed
+// @resolver-bypass(reason="Pure local verifier; integer + float arithmetic only.")
+
+let HOME = env("HOME")
+
+fn _root() -> str {
+    let r = env("HEXA_CODEX_ROOT")
+    if r.len() > 0 { return r }
+    let pwd = exec("pwd").trim()
+    if pwd.len() > 0 { return pwd }
+    return HOME + "/core/hexa-codex"
+}
+
+let ROOT = _root()
+let VERIFY_DIR = ROOT + "/verify"
+
+// Curated inventory — must match `verify/numerics_*.hexa` glob.
+let NUMERICS_SCRIPTS = [
+    "numerics_train_cost.hexa",
+    "numerics_infer_cost.hexa",
+    "numerics_alignment.hexa",
+    "numerics_interpret.hexa",
+    "numerics_train_cost_parity.hexa",
+    "numerics_infer_cost_parity.hexa",
+    "numerics_alignment_parity.hexa",
+    "numerics_interpret_parity.hexa",
+    "numerics_train_cost_solver.hexa",
+    "numerics_infer_cost_solver.hexa",
+    "numerics_alignment_solver.hexa",
+    "numerics_interpret_solver.hexa",
+    "numerics_cross_pillar.hexa",
+    "numerics_lattice_arithmetic.hexa",
+]
+
+// Project-namespace prefix (recipe §6 invariant 4).
+let PROJECT_PREFIX = "__HEXA_CODEX_"
+
+// FALSIFIERS list (recipe §4 invariant 3).
+let FALSIFIERS = ["meta lint enforcing recipe §4 invariants 1-5 across numerics_*"]
+
+// ── helpers ──────────────────────────────────────────────────────────────
+
+let mut RUN = 0
+let mut FAIL = 0
+let mut FAILURES = []
+
+fn _check(ok: bool, label: str, detail: str) {
+    RUN = RUN + 1
+    if ok {
+        println("  [PASS] " + label)
+        if detail.len() > 0 { println("         · " + detail) }
+    } else {
+        FAIL = FAIL + 1
+        FAILURES.push(label + " :: " + detail)
+        println("  [FAIL] " + label)
+        if detail.len() > 0 { println("         · " + detail) }
+    }
+}
+
+// Read entire file via shell `cat`. Returns empty string if missing.
+fn _read(path: str) -> str {
+    let r = exec_with_status("cat '" + path + "' 2>/dev/null")
+    return to_string(r[0])
+}
+
+// Cache: load every NUMERICS_SCRIPTS body once and reuse across checks.
+//   This drops total subprocess count from O(14·N_checks) to 14, so
+//   running inside a busy test_all won't hit fork-exhaustion.
+let mut BODIES = []
+let mut BODIES_LOADED = false
+
+fn _load_bodies() {
+    if BODIES_LOADED { return }
+    let mut i = 0
+    while i < len(NUMERICS_SCRIPTS) {
+        let p = VERIFY_DIR + "/" + NUMERICS_SCRIPTS[i]
+        BODIES.push(_read(p))
+        i = i + 1
+    }
+    BODIES_LOADED = true
+}
+
+fn _body(i: int) -> str {
+    return BODIES[i]
+}
+
+// True iff `needle` substring occurs in file `path` (uncached).
+fn _contains(path: str, needle: str) -> bool {
+    let body = _read(path)
+    return body.find(needle) >= 0
+}
+
+// On-disk numerics glob count via shell.
+fn _glob_count() -> int {
+    let cmd = "ls " + VERIFY_DIR + "/numerics_*.hexa 2>/dev/null | wc -l | tr -d ' \\n'"
+    let r = exec_with_status(cmd)
+    let s = to_string(r[0]).trim()
+    if s.len() == 0 { return 0 }
+    return parse_int(s)
+}
+
+// ── checks ───────────────────────────────────────────────────────────────
+
+// Check 1: invariant #1 — every numerics_*.hexa imports math_pure.
+fn check_invariant_math_pure() {
+    let mut bad = []
+    let mut i = 0
+    while i < len(NUMERICS_SCRIPTS) {
+        if _body(i).find("use \"self/runtime/math_pure\"") < 0 {
+            bad.push(NUMERICS_SCRIPTS[i])
+        }
+        i = i + 1
+    }
+    _check(len(bad) == 0,
+           "invariant 1: every numerics_*.hexa imports self/runtime/math_pure",
+           "missing=" + str(len(bad)) +
+           (if len(bad) > 0 { " (" + bad[0] + (if len(bad) > 1 { " ..." } else { "" }) + ")" } else { "" }))
+}
+
+// Check 2: invariant #2 — sentinel `__HEXA_CODEX_<NAME>__ PASS` present.
+//   We require both the prefix and a `__ PASS` token in the same file.
+fn check_invariant_sentinel() {
+    let mut bad = []
+    let mut i = 0
+    while i < len(NUMERICS_SCRIPTS) {
+        let body = _body(i)
+        let has_prefix = body.find(PROJECT_PREFIX) >= 0
+        let has_pass   = body.find("__ PASS") >= 0
+        if (has_prefix && has_pass) == false { bad.push(NUMERICS_SCRIPTS[i]) }
+        i = i + 1
+    }
+    _check(len(bad) == 0,
+           "invariant 2: __HEXA_CODEX_<NAME>__ + __ PASS sentinel present",
+           "missing=" + str(len(bad)))
+}
+
+// Check 3: invariant #3 — FALSIFIERS array declared.
+fn check_invariant_falsifiers() {
+    let mut bad = []
+    let mut i = 0
+    while i < len(NUMERICS_SCRIPTS) {
+        if _body(i).find("FALSIFIERS") < 0 { bad.push(NUMERICS_SCRIPTS[i]) }
+        i = i + 1
+    }
+    _check(len(bad) == 0,
+           "invariant 3: FALSIFIERS array declared in every numerics_*.hexa",
+           "missing=" + str(len(bad)))
+}
+
+// Check 4: invariant #4 — `exit(0)` appears on PASS path.
+fn check_invariant_exit_zero() {
+    let mut bad = []
+    let mut i = 0
+    while i < len(NUMERICS_SCRIPTS) {
+        if _body(i).find("exit(0)") < 0 { bad.push(NUMERICS_SCRIPTS[i]) }
+        i = i + 1
+    }
+    _check(len(bad) == 0,
+           "invariant 4: exit(0) present on PASS path",
+           "missing=" + str(len(bad)))
+}
+
+// Check 5: invariant #5 — `let mut RUN = 0` + `let mut FAIL = 0` counters.
+fn check_invariant_counters() {
+    let mut bad = []
+    let mut i = 0
+    while i < len(NUMERICS_SCRIPTS) {
+        let body = _body(i)
+        let has_run  = body.find("let mut RUN = 0") >= 0
+        let has_fail = body.find("let mut FAIL = 0") >= 0
+        if (has_run && has_fail) == false { bad.push(NUMERICS_SCRIPTS[i]) }
+        i = i + 1
+    }
+    _check(len(bad) == 0,
+           "invariant 5: let mut RUN = 0 + let mut FAIL = 0 counters",
+           "missing=" + str(len(bad)))
+}
+
+// Check 6: inventory glob == curated list.
+fn check_inventory_glob_match() {
+    let glob_n = _glob_count()
+    let curated_n = len(NUMERICS_SCRIPTS)
+    _check(glob_n == curated_n,
+           "inventory: numerics_*.hexa on-disk count = NUMERICS_SCRIPTS curated count",
+           "glob=" + str(glob_n) + " curated=" + str(curated_n))
+}
+
+// Check 7: every curated entry actually exists on disk (catches typos in
+//   the curated list before they trip silently downstream).
+fn check_curated_entries_exist() {
+    let mut missing = []
+    let mut i = 0
+    while i < len(NUMERICS_SCRIPTS) {
+        let p = VERIFY_DIR + "/" + NUMERICS_SCRIPTS[i]
+        let r = exec_with_status("test -f '" + p + "' && echo OK")
+        if to_string(r[0]).find("OK") < 0 { missing.push(NUMERICS_SCRIPTS[i]) }
+        i = i + 1
+    }
+    _check(len(missing) == 0,
+           "every curated NUMERICS_SCRIPTS entry exists on disk",
+           "missing=" + str(len(missing)))
+}
+
+// Check 8: namespace uniformity — every numerics_*.hexa has the project
+//   prefix __HEXA_CODEX_ AND no foreign namespaces (other hexa-* projects).
+fn check_namespace_uniformity() {
+    let foreign = ["__HEXA_CERN_", "__HEXA_BIO_", "__HEXA_RTSC_", "__HEXA_PHYS_"]
+    let mut bad_local = []
+    let mut bad_foreign = []
+    let mut i = 0
+    while i < len(NUMERICS_SCRIPTS) {
+        let body = _body(i)
+        if body.find(PROJECT_PREFIX) < 0 { bad_local.push(NUMERICS_SCRIPTS[i]) }
+        let mut k = 0
+        while k < len(foreign) {
+            if body.find(foreign[k]) >= 0 { bad_foreign.push(NUMERICS_SCRIPTS[i]) }
+            k = k + 1
+        }
+        i = i + 1
+    }
+    _check((len(bad_local) == 0) && (len(bad_foreign) == 0),
+           "namespace uniformity: __HEXA_CODEX_ present, no foreign __HEXA_<other>_",
+           "missing_local=" + str(len(bad_local)) +
+           " foreign_leaks=" + str(len(bad_foreign)))
+}
+
+// Check 9: companion regression test exists for every numerics_*.hexa.
+fn check_companion_tests_exist() {
+    let mut missing = []
+    let mut i = 0
+    while i < len(NUMERICS_SCRIPTS) {
+        let stem = NUMERICS_SCRIPTS[i].replace(".hexa", "")
+        let test_path = ROOT + "/tests/test_" + stem + ".hexa"
+        let r = exec_with_status("test -f '" + test_path + "' && echo OK")
+        if to_string(r[0]).find("OK") < 0 { missing.push(stem) }
+        i = i + 1
+    }
+    _check(len(missing) == 0,
+           "every numerics_*.hexa has a companion tests/test_*.hexa",
+           "missing=" + str(len(missing)))
+}
+
+// Check 10: every numerics_*.hexa contains a `_check(` call site (the
+//   harness used by recipe-conformant verifiers). Ensures the check
+//   plumbing is wired and not just declared.
+fn check_check_harness_used() {
+    let mut bad = []
+    let mut i = 0
+    while i < len(NUMERICS_SCRIPTS) {
+        if _body(i).find("_check(") < 0 { bad.push(NUMERICS_SCRIPTS[i]) }
+        i = i + 1
+    }
+    _check(len(bad) == 0,
+           "every numerics_*.hexa actually calls the _check() harness",
+           "missing=" + str(len(bad)))
+}
+
+// ── main ─────────────────────────────────────────────────────────────────
+
+fn main() {
+    println("========================================================================")
+    println("  hexa-codex lint_numerics — recipe §4 invariants 1-5 (recipe §7.4 priority 10)")
+    println("  curated NUMERICS_SCRIPTS = " + str(len(NUMERICS_SCRIPTS)) + " files")
+    println("========================================================================")
+
+    _load_bodies()                       // single batch read; reuse across all checks
+
+    check_invariant_math_pure()
+    check_invariant_sentinel()
+    check_invariant_falsifiers()
+    check_invariant_exit_zero()
+    check_invariant_counters()
+    println("")
+    check_inventory_glob_match()
+    check_curated_entries_exist()
+    check_namespace_uniformity()
+    check_companion_tests_exist()
+    check_check_harness_used()
+
+    println("========================================================================")
+    let pass_n = RUN - FAIL
+    println("  " + str(pass_n) + "/" + str(RUN) + " checks passed")
+    if FAIL > 0 {
+        println("  FAILURES:")
+        for f in FAILURES { println("    ✗ " + f) }
+        println("__HEXA_CODEX_LINT_NUMERICS__ FAIL")
+        exit(1)
+    }
+    println("  Lint floor (5 invariants × all numerics_*) closed.")
+    println("  Recipe §7.4 priority 10: COMPLETE.")
+    println("__HEXA_CODEX_LINT_NUMERICS__ PASS")
+    exit(0)
+}

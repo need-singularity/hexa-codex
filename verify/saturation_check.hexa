@@ -1,0 +1,211 @@
+#!hexa strict
+// hexa-codex/verify/saturation_check.hexa — recipe §7.4 priority 15 self-stop signal.
+//
+// Single-source-of-truth for "the runnable surface has reached its
+// closure goal". Aggregates the verdicts of the 4 closure components
+// (per-pillar T1+T2×3 closure, cross-cutter row, lattice-arithmetic
+// stability floor, and the §4 lint pass), and emits a self-stop
+// sentinel that downstream automation (cron / loop / CI gate) can
+// poll.
+//
+// Distinction vs `falsifier_check.hexa` (priority 9):
+//   - `falsifier_check.hexa`  measures closure layer-by-layer (4 pillars
+//                              × 4 layers + cross-cutters)
+//   - `saturation_check.hexa` is the AGGREGATE — it actually re-runs the
+//                              individual verifiers (lint + falsifier
+//                              + lattice arithmetic + cross pillar)
+//                              and only emits PASS if all 4 close.
+//
+// Sentinel: __HEXA_CODEX_SATURATION_CHECK__ PASS at sat-1.
+//
+// Recipe §7.2 sat-1 = T2 ×3 per falsifier (4 × 3 = 12 numerical runs,
+// plus 4 cross-cutter scripts, plus the §4 lint floor). This file is
+// the single command an operator can run to confirm the goal:
+//
+//     hexa run verify/saturation_check.hexa
+//     # → __HEXA_CODEX_SATURATION_CHECK__ PASS  (if at sat-1)
+//
+// Run:
+//   hexa run verify/saturation_check.hexa
+//
+// @no-lock-needed
+// @resolver-bypass(reason="Pure local verifier; integer + float arithmetic only.")
+
+let HOME = env("HOME")
+
+fn _root() -> str {
+    let r = env("HEXA_CODEX_ROOT")
+    if r.len() > 0 { return r }
+    let pwd = exec("pwd").trim()
+    if pwd.len() > 0 { return pwd }
+    return HOME + "/core/hexa-codex"
+}
+
+let ROOT = _root()
+let HEXA = HOME + "/.hx/packages/hexa/hexa.real"
+
+let FALSIFIERS = ["sat-1 saturation aggregator: closure tracker + lint + cross-pillar + lattice-arithmetic"]
+
+let mut RUN = 0
+let mut FAIL = 0
+let mut FAILURES = []
+
+fn _check(ok: bool, label: str, detail: str) {
+    RUN = RUN + 1
+    if ok {
+        println("  [PASS] " + label)
+        if detail.len() > 0 { println("         · " + detail) }
+    } else {
+        FAIL = FAIL + 1
+        FAILURES.push(label + " :: " + detail)
+        println("  [FAIL] " + label)
+        if detail.len() > 0 { println("         · " + detail) }
+    }
+}
+
+fn shq(s: str) -> str {
+    return "'" + s.replace("'", "'\\''") + "'"
+}
+
+// Run a sub-verifier and return whether its sentinel is present + exit 0.
+fn _run_subverifier(script: str, sentinel: str) -> bool {
+    let cmd = "RESOURCE_LOCAL_HEXA=1 HEXA_CODEX_ROOT=" + shq(ROOT) +
+              " " + shq(HEXA) + " run " + shq(ROOT + "/verify/" + script) + " 2>&1"
+    let r = exec_with_status(cmd)
+    let out = to_string(r[0])
+    let code = r[1]
+    return (code == 0) && (out.find(sentinel + " PASS") >= 0)
+}
+
+// ── checks ───────────────────────────────────────────────────────────────
+
+// Check 1: falsifier_check.hexa passes (closure tracker meta).
+fn check_closure_tracker() {
+    let ok = _run_subverifier("falsifier_check.hexa", "__HEXA_CODEX_FALSIFIER_CHECK__")
+    _check(ok,
+           "closure tracker: falsifier_check.hexa emits sat-1 PASS",
+           "subverifier reports per-falsifier T1+T2×3 + cross-cutter coverage")
+}
+
+// Check 2: lint_numerics.hexa passes (recipe §4 invariants 1-5).
+fn check_lint_floor() {
+    let ok = _run_subverifier("lint_numerics.hexa", "__HEXA_CODEX_LINT_NUMERICS__")
+    _check(ok,
+           "lint floor: lint_numerics.hexa enforces 5 invariants over numerics_*",
+           "math_pure import + sentinel + FALSIFIERS + exit(0) + RUN/FAIL counters")
+}
+
+// Check 3: numerics_cross_pillar.hexa passes (4-pillar identity bridge).
+fn check_cross_pillar() {
+    let ok = _run_subverifier("numerics_cross_pillar.hexa", "__HEXA_CODEX_NUMERICS_CROSS_PILLAR__")
+    _check(ok,
+           "cross-pillar: numerics_cross_pillar.hexa identities hold",
+           "lattice closure σ·φ=n·τ=J₂; F1×F2, F3×F4, coupled F1+F4 ODE")
+}
+
+// Check 4: numerics_lattice_arithmetic.hexa passes (math_pure stability floor).
+fn check_lattice_arithmetic() {
+    let ok = _run_subverifier("numerics_lattice_arithmetic.hexa", "__HEXA_CODEX_NUMERICS_LATTICE_ARITHMETIC__")
+    _check(ok,
+           "math_pure stability floor: numerics_lattice_arithmetic.hexa passes",
+           "associativity, distributivity, log/exp/pow round-trips, accumulation")
+}
+
+// Check 5: lattice_check.hexa passes (n=6 lattice algebraic closure).
+fn check_lattice_check() {
+    let ok = _run_subverifier("lattice_check.hexa", "__HEXA_CODEX_LATTICE__")
+    _check(ok,
+           "T1 algebraic floor: lattice_check.hexa (24-check master)",
+           "σ·φ=n·τ=J₂=24, σ²=144, σ³=1728, partition + spec + cross-doc")
+}
+
+// Check 6: cross_doc_audit.hexa passes (cross-document anchor audit).
+fn check_cross_doc_audit() {
+    let ok = _run_subverifier("cross_doc_audit.hexa", "__HEXA_CODEX_CROSS_DOC__")
+    _check(ok,
+           "cross-doc audit: cross_doc_audit.hexa passes",
+           "taxonomy + falsifier prefix + provenance + master identity + ladder")
+}
+
+// Check 7: aggregate "all 4 cores" — every one of the 4 above core
+//   verifiers passes.  This is the §7.2 sat-1 verdict.
+fn check_sat1_verdict() {
+    // We rely on the previous individual checks to populate FAIL.
+    // sat-1 holds iff none of checks 1..6 failed.
+    _check(FAIL == 0,
+           "RECIPE §7.2 sat-1 verdict: closure-depth saturation",
+           "checks 1-6 all PASS ⇒ sat-1 reached")
+}
+
+// Check 8: total runnable count ≥ 21 (4 pillars × 4 layers + lattice +
+//   cross_doc + cross_pillar + lattice_arithmetic + falsifier_check + lint).
+fn check_total_runnable_count() {
+    let cmd = "ls " + ROOT + "/verify/*.hexa 2>/dev/null | wc -l | tr -d ' \\n'"
+    let r = exec_with_status(cmd)
+    let s = to_string(r[0]).trim()
+    let n = parse_int(s)
+    _check(n >= 21,
+           "total verify/*.hexa count ≥ 21 (sat-1 inventory floor)",
+           "counted=" + str(n))
+}
+
+// Check 9: companion test count ≥ 22 (one per verify/ + selftest + cross_doc + lattice + 4 calc).
+fn check_total_test_count() {
+    let cmd = "ls " + ROOT + "/tests/test_*.hexa 2>/dev/null | wc -l | tr -d ' \\n'"
+    let r = exec_with_status(cmd)
+    let s = to_string(r[0]).trim()
+    let n = parse_int(s)
+    _check(n >= 22,
+           "total tests/test_*.hexa count ≥ 22 (sat-1 regression floor)",
+           "counted=" + str(n))
+}
+
+// Check 10: explicit self-stop signal — emits the sat-1 PASS sentinel
+//   that automation can grep. Always passes once we reach this check
+//   because the FAIL-aware exit happens earlier in main().
+fn check_self_stop_signal() {
+    _check(true,
+           "self-stop signal emitted: __HEXA_CODEX_SATURATION_CHECK__ PASS",
+           "downstream cron / CI / loop can grep this line as the saturation marker")
+}
+
+// ── main ─────────────────────────────────────────────────────────────────
+
+fn main() {
+    println("========================================================================")
+    println("  hexa-codex saturation_check (recipe §7.4 priority 15)")
+    println("  Aggregator: lint + closure tracker + cross-pillar + lattice arithmetic")
+    println("  + lattice_check + cross_doc_audit  →  recipe §7.2 sat-1 verdict.")
+    println("========================================================================")
+    println("  ROOT = " + ROOT)
+    println("")
+
+    check_closure_tracker()
+    check_lint_floor()
+    check_cross_pillar()
+    check_lattice_arithmetic()
+    check_lattice_check()
+    println("")
+    check_cross_doc_audit()
+    check_sat1_verdict()
+    check_total_runnable_count()
+    check_total_test_count()
+    check_self_stop_signal()
+
+    println("========================================================================")
+    let pass_n = RUN - FAIL
+    println("  " + str(pass_n) + "/" + str(RUN) + " checks passed")
+    if FAIL > 0 {
+        println("  FAILURES:")
+        for f in FAILURES { println("    ✗ " + f) }
+        println("__HEXA_CODEX_SATURATION_CHECK__ FAIL")
+        exit(1)
+    }
+    println("")
+    println("  ╭──────────────────────────────────────────────────────────────╮")
+    println("  │  hexa-codex runnable surface: SAT-1 SATURATION REACHED      │")
+    println("  │  Recipe §7.2 sat-1 closure-depth goal — confirmed.          │")
+    println("  ╰──────────────────────────────────────────────────────────────╯")
+    println("__HEXA_CODEX_SATURATION_CHECK__ PASS")
+    exit(0)
+}

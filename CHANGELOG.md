@@ -765,6 +765,78 @@ Optional saturation slots (priorities 10..15) — lint, doc PDF,
 methodology narrative, second T2 stack — remain as the post-sat-1
 extensions but are NOT required for the sat-1 closure goal.
 
+### Added (2026-05-08 — 22nd RSC iteration: lint_numerics)
+
+- `verify/lint_numerics.hexa` — recipe §7.4 priority 10 meta lint
+  enforcing the 5 invariants from recipe §4 across all 14
+  `verify/numerics_*.hexa` scripts:
+
+  | # | Invariant / structural rule                                  | Result |
+  |--:|:-------------------------------------------------------------|:-------|
+  | 1 | use "self/runtime/math_pure" import                          | 0 miss |
+  | 2 | __HEXA_CODEX_<NAME>__ sentinel + __ PASS suffix              | 0 miss |
+  | 3 | FALSIFIERS array declared                                    | 0 miss |
+  | 4 | exit(0) on PASS path                                         | 0 miss |
+  | 5 | let mut RUN = 0 + let mut FAIL = 0 counters                  | 0 miss |
+  | 6 | inventory glob count == curated NUMERICS_SCRIPTS count       | 14=14  |
+  | 7 | every curated entry exists on disk                           | 0 miss |
+  | 8 | namespace uniformity: __HEXA_CODEX_ present, no foreign      | OK     |
+  | 9 | companion tests/test_*.hexa exists per numerics_*            | 0 miss |
+  |10 | every numerics_*.hexa actually calls _check() harness        | 0 miss |
+
+- `tests/test_lint_numerics.hexa` — regression wrapper.
+- `tests/test_all.hexa` — CASES += lint_numerics test (now 23).
+
+### Added (2026-05-08 — 23rd RSC iteration: saturation_check + sat-1 self-stop)
+
+- `verify/saturation_check.hexa` — recipe §7.4 priority 15 aggregate
+  self-stop signal. Re-runs (via `exec_with_status`) the 6 closure
+  components and only emits the canonical sat-1 marker if all 6 pass:
+
+      falsifier_check.hexa            (closure tracker meta)
+      lint_numerics.hexa              (recipe §4 invariants)
+      numerics_cross_pillar.hexa      (cross-pillar T2 cross-cutter)
+      numerics_lattice_arithmetic.hexa (math_pure stability floor)
+      lattice_check.hexa              (n=6 lattice T1 master)
+      cross_doc_audit.hexa            (cross-document anchor audit)
+
+  Plus an inventory floor (≥21 verify scripts, ≥22 regression tests)
+  and the explicit self-stop signal that downstream cron/CI/loop can
+  grep:
+
+      __HEXA_CODEX_SATURATION_CHECK__ PASS
+
+- `tests/test_saturation_check.hexa` — regression wrapper.
+- `tests/test_all.hexa` — CASES += saturation_check (now 24).
+- `cli/hexa-codex.hexa` — `verify lint-numerics` + `verify saturation-check` routes.
+- `hexa.toml` — entries + `[closure].runnable_hexa_iter22/23` markers.
+
+### Verified (iter 22 + 23)
+
+- `RESOURCE_LOCAL_HEXA=1 hexa run verify/lint_numerics.hexa` — 10/10 PASS.
+- `RESOURCE_LOCAL_HEXA=1 hexa run verify/saturation_check.hexa` — 10/10 PASS, sat-1 SATURATION REACHED.
+- `hexa run tests/test_all.hexa` — 24/24 PASS.
+
+### Recipe §7.4 priority table after iter 23 — sat-1 + key extensions
+
+| # | Slot                                | Status     |
+|:-:|:------------------------------------|:-----------|
+| 1 | lattice_check                       | ✓ (iter 1) |
+| 2 | cross_doc_audit                     | ✓ (iter 2) |
+| 3 | calc × 4                            | ✓ (3..6)   |
+| 4 | numerics × 4                        | ✓ (7..10)  |
+| 5 | numerics_parity × 4                 | ✓ (11..14) |
+| 6 | numerics_solver × 4                 | ✓ (15..18) |
+| 7 | numerics_cross_pillar               | ✓ (iter 19)|
+| 8 | numerics_lattice_arithmetic         | ✓ (iter 20)|
+| 9 | falsifier_check                     | ✓ (iter 21)|
+|10 | lint_numerics                       | ✓ (iter 22)|
+|15 | saturation_check                    | ✓ (iter 23)|
+
+Remaining priority-table slots (11 build/Makefile, 12 PDF, 13 docs/
+narrative, 14 second T2 stack) are non-runnable / scope-extension
+items — the runnable surface goal is reached.
+
 ### F-CODEX T2 ROW: COMPLETE after iter 10
 
 | Falsifier  | T1 (algebraic)                    | T2 (numerics)            | T3 (empirical) |

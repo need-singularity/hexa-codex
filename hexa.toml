@@ -48,6 +48,8 @@ files = [
     "tests/test_numerics_cross_pillar.hexa",
     "tests/test_numerics_lattice_arithmetic.hexa",
     "tests/test_falsifier_check.hexa",
+    "tests/test_lint_numerics.hexa",
+    "tests/test_saturation_check.hexa",
     "tests/test_all.hexa",
 ]
 
@@ -141,6 +143,8 @@ verify = [
     "verify/numerics_cross_pillar.hexa",      # cross-cutter T2 over all 4 F-CODEX pillars (.hexa, recipe §7.4 priority 7)
     "verify/numerics_lattice_arithmetic.hexa", # math_pure stability floor (.hexa, recipe §7.4 priority 8)
     "verify/falsifier_check.hexa",             # closure tracker meta — sat-1 gate (.hexa, recipe §7.4 priority 9)
+    "verify/lint_numerics.hexa",               # meta lint — recipe §4 invariants 1-5 (.hexa, recipe §7.4 priority 10)
+    "verify/saturation_check.hexa",            # aggregate sat-1 self-stop signal (.hexa, recipe §7.4 priority 15)
 ]
 build = [
     "build/Makefile",               # verify + test + ci + per-verb pdf fan-out
@@ -219,6 +223,8 @@ runnable_hexa_iter18 = "2026-05-08 (verify/numerics_interpret_solver.hexa 10/10 
 runnable_hexa_iter19 = "2026-05-08 (verify/numerics_cross_pillar.hexa 10/10 PASS — recipe §7.4 priority 7; cross-cutter T2 over all 4 F-CODEX pillars; lattice closure σ·φ=n·τ=J₂=24, ratio tower σ/φ=n=6, F1×F2 composite anchor finite, F3×F4 product = σ−φ, coupled F1+F4 RK4 ODE both ≤1e-8, lattice-log positivity, exponent partition; recipe §7.4 priority 7 CLOSED)"
 runnable_hexa_iter20 = "2026-05-08 (verify/numerics_lattice_arithmetic.hexa 10/10 PASS — recipe §7.4 priority 8; math_pure stability floor — associativity/commutativity/distributivity, IEEE 754 24/25=0.96 exact, log∘exp=id within 1e-13, pow_pure round-trip within 6e-16, Σ24·1.0=J₂ exact, sqrt(σ²)/cbrt(σ³)=σ exact; recipe §7.4 priority 8 CLOSED)"
 runnable_hexa_iter21 = "2026-05-08 (verify/falsifier_check.hexa 10/10 PASS — recipe §7.4 priority 9 closure tracker; all 4 F-CODEX pillars at T1+T2×3=4/4, cross-cutter row 4/4, total 20 runnable .hexa scripts, closure pct ≥0.80 every pillar, substrate anchors P1/P2/Sigma.lean all present; **RECIPE §7.2 sat-1 GATE PASSES** — saturation goal reached)"
+runnable_hexa_iter22 = "2026-05-08 (verify/lint_numerics.hexa 10/10 PASS — recipe §7.4 priority 10; meta lint enforcing recipe §4 invariants 1-5 over 14 numerics_*.hexa: math_pure import, __HEXA_CODEX_<NAME>__ sentinel, FALSIFIERS array, exit(0), RUN/FAIL counters; inventory glob = curated 14 EXACT; namespace uniformity, companion-test pairing, _check() harness use)"
+runnable_hexa_iter23 = "2026-05-08 (verify/saturation_check.hexa 10/10 PASS — recipe §7.4 priority 15 self-stop aggregator; re-runs falsifier_check + lint_numerics + numerics_cross_pillar + numerics_lattice_arithmetic + lattice_check + cross_doc_audit; verify count 23, test count 24; emits __HEXA_CODEX_SATURATION_CHECK__ PASS as the canonical sat-1 marker)"
 
 # ── Scope honesty (raw#10 C3) ─────────────────────────────
 [scope]
