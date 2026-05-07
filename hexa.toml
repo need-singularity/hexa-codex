@@ -29,6 +29,20 @@ files = [
     "tests/test_selftest.hexa",
 ]
 
+# Python pytest tests (Python stdlib only — no pip install required).
+# Runner is `python3 -m pytest tests/ -m auto` (or via build/Makefile).
+[test.python]
+runner = "pytest"
+marker = "auto"
+files = [
+    "tests/test_n6_invariants.py",
+    "tests/test_verifiers.py",
+    "tests/test_calculators.py",
+    "tests/test_release_ladder.py",
+    "tests/test_spec_inventory.py",
+    "tests/test_install_hexa.py",
+]
+
 # ── hx install hook ───────────────────────────────────────
 [scripts]
 install = "install.hexa"
@@ -65,25 +79,76 @@ substrate = [
     "causal/causal-chain.md",
 ]
 
+# Runnable surface (added 2026-05-07) — Python verifiers, build scripts,
+# and pytest harness mirroring hexa-sscb's pattern. Each Python verifier
+# is stdlib-only (no pip install required).
+verify = [
+    "verify/cli.py",                # unified verifier dispatcher
+    "verify/n6_arithmetic.py",      # n=6 lattice arithmetic identity
+    "verify/spec_inventory.py",     # 17-verb spec presence + headers
+    "verify/group_audit.py",        # 4-group / 17-verb consistency
+    "verify/release_ladder.py",     # v1.0..v2.0 ladder monotonicity
+    "verify/release_params.py",     # per-version parameter registry
+    "verify/falsifier_check.py",    # F-CODEX-1..4 arithmetic floors
+    "verify/calc_train_cost.py",    # F-CODEX-1 closed form
+    "verify/calc_infer_cost.py",    # F-CODEX-2 closed form
+    "verify/calc_alignment.py",     # F-CODEX-3 axis aggregator
+    "verify/calc_interpret.py",     # F-CODEX-4 motif counter
+    "verify/calc_quality_scale.py", # quality_scale Chinchilla-comparable fit
+    "verify/lattice_explore.py",    # n=k lattice arithmetic explorer
+    "verify/verb_query.py",         # verb info / spec lookup tool
+]
+build = [
+    "build/Makefile",               # verify + test + ci + per-verb pdf fan-out
+]
+
 # ── Dependencies ───────────────────────────────────────────
 [dependencies]
 hexa-lang = ">=1.0.0"
+python    = ">=3.10"   # stdlib only — no pip deps for verify/
+
+# ── n=6 master identity (.roadmap.hexa_codex §A.1) ────────
+[invariants.n6]
+sigma_6           = 12     # σ(6) — HELM 12-dimension capability bin
+tau_6             = 4      # τ(6) — 4 lifecycle phases AND 4 group taxonomy
+phi_6             = 2      # φ(6) — 2-bit verdict (helpful / harmless)
+J_2               = 24     # σ·φ = n·τ — training-cost N^J₂ scaling stratum
+master_identity   = "σ(6) · φ(6) = n · τ(6) = J₂ = 24"
+
+# ── Falsifier preregister (.roadmap.hexa_codex §A.4) ──────
+[falsifiers]
+F_CODEX_1 = "training_cost ∝ N^σ·φ = N^24 — Chinchilla scaling-law fit?"
+F_CODEX_2 = "inference_cost ∝ context^τ = context^4 — Claude 4.7 1M ctx latency fit?"
+F_CODEX_3 = "alignment eval n=6 axis HELM-comparable score?"
+F_CODEX_4 = "interpretability circuit count σ-φ=10 motif statistics?"
 
 # ── Closure provenance (raw#10 honest C3) ─────────────────
 [closure]
-verbs_total = 17
-groups_total = 4
-verbs_wired = 0
-verbs_spec = 17
-verdict = "SPEC_CATALOG_ONLY"
-extracted_from = "n6-architecture@c0f1f570 on 2026-05-06"
+verbs_total       = 17
+groups_total      = 4
+verbs_wired       = 0
+verbs_spec        = 17
+verifiers_pass    = "5/5"
+acceptance_pass   = "61/61 pytest auto + 17/17 verb spec presence (.hexa selftest)"
+falsifier_floor   = "4/4 arithmetic-floor PASS (empirical evals land v1.1+)"
+verdict           = "SPEC_CATALOG_ONLY + RUNNABLE_VERIFICATION_SURFACE"
+extracted_from    = "n6-architecture@c0f1f570 on 2026-05-06"
+runnable_added_on = "2026-05-07 (verify/ + build/ + python tests/, mirroring hexa-sscb pattern)"
 
 # ── Scope honesty (raw#10 C3) ─────────────────────────────
 [scope]
-honest_scope = "17-verb AI knowledge substrate (4 groups: safety + economics + ops + substrate). spec-first (working .hexa CLI TBD). Library-style (codex) spec catalog — each verb ships closed-form candidate + falsifier preregister."
-not_scope = ["model training (read-side; this is a write-side spec library)", "deployed inference SaaS", "RLHF data labeling production pipeline", "regulatory or alignment claims (preregister only — no validation)"]
+honest_scope = "17-verb AI knowledge substrate (4 groups: safety + economics + ops + substrate). spec-first library + runnable verification surface (verify/ + tests/ + build/). Each verb ships closed-form candidate + falsifier preregister; F-CODEX-1..4 arithmetic floors verified, empirical evals land v1.1.0..v2.0.0."
+not_scope = [
+    "model training (read-side; this is a write-side spec library)",
+    "deployed inference SaaS",
+    "RLHF data labeling production pipeline",
+    "regulatory or alignment claims (preregister only — no validation)",
+    "F-CODEX-1..4 empirical fits (arithmetic floor only at v1.0.0)",
+]
 
 # ── Cost profile ──────────────────────────────────────────
 [cost]
-mac_local_default = "$0 (pure markdown spec library; CLI dispatcher TBD)"
-all_verbs = "$0 (read-only)"
+mac_local_default = "$0 (markdown spec library + Python stdlib verifiers + .hexa CLI router)"
+all_verbs         = "$0 (read-only)"
+verify_runtime    = "<3s wall (5 verifiers serial)"
+test_runtime      = "<20s wall (61 pytest auto-cases)"

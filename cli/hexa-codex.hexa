@@ -203,6 +203,111 @@ fn cmd_verb(verb: str, a: [str]) {
     _audit(verb, "", 0)
 }
 
+// ─── subcommand: verify (delegates to verify/cli.py) ───
+//
+// Forwards to python3 verify/cli.py. Each Python verifier is stdlib-only so
+// no pip install is required. Optional --json flag passes through.
+
+fn cmd_verify(a: [str]) {
+    let mut target = "all"
+    // a[0..2] are the bookkeeping prefix; a[2] = "verify"; a[3] = optional target
+    if a.len() > 3 {
+        let cand = a[3]
+        if cand.starts_with("--") == false { target = cand }
+    }
+    let json = ""
+    let mut tail = ""
+    if json_mode(a) { tail = " --json" }
+    let cmd = "cd " + shq(HC) + " && python3 verify/cli.py " + shq(target) + tail
+    let rc = exec(cmd)
+    print(rc)
+    _audit("verify", target, 0)
+}
+
+// ─── subcommand: calc (delegates to verify/calc_*.py) ───
+
+fn cmd_calc(a: [str]) {
+    if a.len() < 4 {
+        eprintln("hexa-codex: usage: hexa-codex calc <metric> [extra-args...]")
+        eprintln("            metrics: train_cost / infer_cost / alignment / interpret / quality_scale")
+        _audit("calc", "missing-metric", 2)
+        exit(2)
+    }
+    let metric = a[3]
+    let known = ["train_cost", "infer_cost", "alignment", "interpret", "quality_scale"]
+    let mut found = false
+    for k in known { if k == metric { found = true } }
+    if found == false {
+        eprintln("hexa-codex: unknown calc metric '" + metric + "'")
+        eprintln("            known: train_cost / infer_cost / alignment / interpret / quality_scale")
+        _audit("calc", metric, 2)
+        exit(2)
+    }
+    // forward all flags after the metric name
+    let mut extra = ""
+    let mut i = 4
+    while i < a.len() {
+        extra = extra + " " + shq(a[i])
+        i = i + 1
+    }
+    let cmd = "cd " + shq(HC) + " && python3 verify/calc_" + metric + ".py" + extra
+    let rc = exec(cmd)
+    print(rc)
+    _audit("calc " + metric, "", 0)
+}
+
+// ─── subcommand: test (delegates to pytest tests/) ───
+
+fn cmd_test(a: [str]) {
+    let mut mark = "auto"
+    if a.len() > 3 && a[3].starts_with("--") == false { mark = a[3] }
+    let cmd = "cd " + shq(HC) + " && python3 -m pytest tests/ -m " + shq(mark) + " 2>&1"
+    let rc = exec(cmd)
+    print(rc)
+    _audit("test", mark, 0)
+}
+
+// ─── subcommand: inventory (delegates to verify/spec_inventory.py) ───
+
+fn cmd_inventory(a: [str]) {
+    let mut tail = ""
+    if json_mode(a) { tail = " --json" }
+    let cmd = "cd " + shq(HC) + " && python3 verify/spec_inventory.py" + tail
+    let rc = exec(cmd)
+    print(rc)
+    _audit("inventory", "", 0)
+}
+
+// ─── subcommand: lattice (delegates to verify/lattice_explore.py) ───
+
+fn cmd_lattice(a: [str]) {
+    // pass through every arg after a[3]
+    let mut extra = ""
+    let mut i = 3
+    while i < a.len() {
+        extra = extra + " " + shq(a[i])
+        i = i + 1
+    }
+    let cmd = "cd " + shq(HC) + " && python3 verify/lattice_explore.py" + extra
+    let rc = exec(cmd)
+    print(rc)
+    _audit("lattice", "", 0)
+}
+
+// ─── subcommand: status (one-shot health summary) ───
+
+fn cmd_status(a: [str]) {
+    let cmd = "cd " + shq(HC) + " && python3 verify/cli.py all --json"
+    let raw = exec(cmd)
+    if raw.contains("\"ok\": true") {
+        println("hexa-codex status — verifiers PASS")
+    } else {
+        println("hexa-codex status — verifiers FAIL")
+    }
+    println(raw.trim())
+    _audit("status", "", 0)
+}
+
 // ─── subcommand: selftest (17-verb presence sweep) ───
 
 fn cmd_selftest(a: [str]) {
@@ -279,6 +384,12 @@ fn cmd_help() {
     println("utility subcommands:")
     println("  list            17-verb table grouped by 4 groups")
     println("  selftest        17-verb spec presence sweep")
+    println("  verify [check]  unified verifier dispatcher (n6/inventory/group/release/falsifiers/all)")
+    println("  inventory       17-verb spec inventory + canonical-header audit")
+    println("  lattice [n]     n=k lattice explorer (σ·φ vs n·τ identity)")
+    println("  calc <metric>   F-CODEX-1..4 calculators (train_cost/infer_cost/alignment/interpret/quality_scale)")
+    println("  test [mark]     pytest tests/ (auto|hexa)")
+    println("  status          one-shot verifier health summary")
     println("")
     println("global flags:")
     println("  --version       show version")
@@ -332,6 +443,14 @@ fn main() {
     if sub == "help" { cmd_help(); return }
     if sub == "list" { cmd_list(a); return }
     if sub == "selftest" { cmd_selftest(a); return }
+
+    // runnable-surface subcommands (delegate to python verify/ + tests/)
+    if sub == "verify"    { cmd_verify(a);    return }
+    if sub == "calc"      { cmd_calc(a);      return }
+    if sub == "test"      { cmd_test(a);      return }
+    if sub == "inventory" { cmd_inventory(a); return }
+    if sub == "lattice"   { cmd_lattice(a);   return }
+    if sub == "status"    { cmd_status(a);    return }
 
     // verb dispatch
     if verb_spec(sub) != "" {

@@ -8,7 +8,10 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 [![Version](https://img.shields.io/badge/version-1.0.0-informational.svg)](CHANGELOG.md)
 [![Verbs: 17 / 4 groups](https://img.shields.io/badge/verbs-17_(4_groups)-blue.svg)](#verbs)
-[![Status: spec-catalog](https://img.shields.io/badge/status-SPEC__CATALOG__ONLY-orange.svg)](#status)
+[![Verify: 5/5](https://img.shields.io/badge/verify-5%2F5-brightgreen.svg)](#runnable-surface)
+[![Tests: 62 passed](https://img.shields.io/badge/tests-62_passed-brightgreen.svg)](#runnable-surface)
+[![Falsifiers: 4/4 floor](https://img.shields.io/badge/falsifiers-4%2F4_floor-brightgreen.svg)](#falsifier-preregister)
+[![n=6 lattice](https://img.shields.io/badge/n=6-σ·φ_=_n·τ_=_24-blue.svg)](#n6-master-identity)
 
 ---
 
@@ -77,19 +80,163 @@ The codex framing matters because:
 
 ---
 
+## n=6 master identity
+
+The four verb-counts (6 + 3 + 4 + 4 = 17) and the four group taxonomy
+both anchor on the n=6 lattice declared in
+[`.roadmap.hexa_codex`](. roadmap.hexa_codex) §A.1:
+
+```
+σ(6) · φ(6) = n · τ(6) = J₂ = 24
+   12   ·   2  =  6  ·   4  = 24
+```
+
+| Symbol | Value | AI projection                                         |
+|--------|-------|-------------------------------------------------------|
+| σ(6)   | 12    | HELM 12-dimension capability bin                      |
+| τ(6)   | 4     | 4 lifecycle phases · **4 group taxonomy**             |
+| φ(6)   | 2     | helpful / harmless verdict bit                        |
+| J₂     | 24    | training-cost ∝ N^J₂ scaling stratum (F-CODEX-1)      |
+| σ−φ    | 10    | interpretability circuit-motif count (F-CODEX-4)      |
+
+`verify/n6_arithmetic.py` proves all 11 cross-checks at runtime — no
+external input, the algebraic identity is self-proving.
+
+---
+
+## Falsifier preregister
+
+[.roadmap.hexa_codex §A.4](. roadmap.hexa_codex) prereregisters four
+falsifiers; each one's **arithmetic floor** is checked at v1.0 by
+`verify/falsifier_check.py`. The **empirical floor** lands per
+[release ladder](#release-ladder).
+
+| Tag         | Claim                                                       | Arithmetic | Empirical            |
+|-------------|-------------------------------------------------------------|:----------:|----------------------|
+| F-CODEX-1   | training_cost ∝ N^σ·φ = N^**24** (Chinchilla-fit)            |    PASS    | PENDING (v1.2.0)     |
+| F-CODEX-2   | inference_cost ∝ context^τ = context^**4** (Claude 4.7 1M)   |    PASS    | PENDING (v1.2.0)     |
+| F-CODEX-3   | alignment_score = mean over **12** axes (HELM-comparable)    |    PASS    | PENDING (v1.1.0)     |
+| F-CODEX-4   | interpret_motifs = σ(6) − φ(6) = **10** (Anthropic dict-l.)  |    PASS    | PENDING (v1.1.0+)    |
+
+```bash
+hexa-codex calc train_cost --N 7e9 --D 1.4e12   # F-CODEX-1 closed form
+hexa-codex calc infer_cost --context 1000000    # F-CODEX-2 (1M ctx)
+hexa-codex calc alignment --helpfulness 0.85    # F-CODEX-3 axis aggregator
+hexa-codex calc interpret --observed-motifs 9   # F-CODEX-4 motif counter
+```
+
+---
+
+## Release ladder
+
+Per [.roadmap.hexa_codex §A.2](. roadmap.hexa_codex), strict monotone in
+verbs-wired and eval-pipeline count. Verified by
+`verify/release_ladder.py` (7/7 PASS).
+
+| Version  | Date     | Status        | Group focus  | wired | evals | Empirical falsifier      |
+|----------|----------|---------------|--------------|:-----:|:-----:|--------------------------|
+| v1.0.0   | 2026-05  | RELEASED      | (seed)       |   0   |   0   | (arithmetic floor only)  |
+| v1.1.0   | 2026-08  | TARGET        | safety       |   2   |   1   | F-CODEX-3                |
+| v1.2.0   | 2026-10  | PLANNED       | economics    |   5   |   2   | F-CODEX-1                |
+| v1.3.0   | 2026-12  | PLANNED       | ops          |   9   |   3   | F-CODEX-2                |
+| v2.0.0   | 2027-Q2  | ASPIRATIONAL  | substrate    |  17   |   4   | F-CODEX-4                |
+
+```bash
+hexa-codex verify release         # ladder monotonicity audit
+python3 verify/release_params.py  # full per-version parameter table
+```
+
+---
+
+## Runnable surface
+
+v1.0.0 ships the **codex** (markdown spec library) **plus** a stdlib-only
+runnable verification surface that mirrors the
+[hexa-sscb](https://github.com/need-singularity/hexa-sscb) pattern.
+
+### verify/ — 5 verifiers, Python stdlib only
+
+| Check          | Module                                | What it verifies                                  |
+|----------------|---------------------------------------|---------------------------------------------------|
+| `n6`           | `verify/n6_arithmetic.py`             | n=6 lattice identity (σ·φ = n·τ = 24) + 8 projections |
+| `inventory`    | `verify/spec_inventory.py`            | 17-verb spec presence + `@canonical` headers      |
+| `group`        | `verify/group_audit.py`               | 4-group / 17-verb consistency across 6 surfaces   |
+| `release`      | `verify/release_ladder.py`            | v1.0→v2.0 monotonicity (verbs_wired ↑, evals ↑)   |
+| `falsifiers`   | `verify/falsifier_check.py`           | F-CODEX-1..4 arithmetic floors                    |
+
+```bash
+python3 verify/cli.py all          # 5/5 PASS in <2s
+python3 verify/cli.py --json       # CI-friendly machine output
+python3 verify/cli.py n6           # single check
+```
+
+Plus 5 calculators and 4 analyzers:
+
+| Tool                            | Purpose                                       |
+|---------------------------------|-----------------------------------------------|
+| `verify/calc_train_cost.py`     | F-CODEX-1 closed form (N^J₂ vs Chinchilla)    |
+| `verify/calc_infer_cost.py`     | F-CODEX-2 closed form (context^τ)             |
+| `verify/calc_alignment.py`      | F-CODEX-3 12-axis HELM-comparable aggregator  |
+| `verify/calc_interpret.py`      | F-CODEX-4 motif counter (σ−φ=10)              |
+| `verify/calc_quality_scale.py`  | quality_scale Chinchilla-comparable fit       |
+| `verify/lattice_explore.py`     | n=k lattice arithmetic explorer               |
+| `verify/release_params.py`      | per-release parameter registry                |
+| `verify/verb_query.py`          | verb info / spec lookup tool                  |
+
+### tests/ — 62 pytest auto + 1 hexa
+
+```bash
+make -C build test          # pytest -m auto (62 cases, <20s)
+make -C build test-hexa     # pytest -m hexa (requires hexa-lang)
+hexa run tests/test_selftest.hexa   # 17/17 spec presence (.hexa-native)
+```
+
+Suite breakdown: `test_n6_invariants.py` (12) · `test_verifiers.py` (8) ·
+`test_calculators.py` (15) · `test_release_ladder.py` (5) ·
+`test_spec_inventory.py` (22) · `test_install_hexa.py` (1, hexa marker).
+
+### build/Makefile — fan-out to verify + tests + selftest + pdf
+
+```bash
+make -C build verify        # all 5 verifiers
+make -C build verify-json   # JSON for CI
+make -C build test          # pytest auto suite
+make -C build selftest      # 17-verb .hexa selftest
+make -C build install-test  # hx install hexa-codex --entry cli/hexa-codex.hexa
+make -C build pdf VERB=alignment   # one-off per-verb PDF (pandoc)
+make -C build ci            # verify + test
+make -C build everything    # ci + selftest + hexa-tests
+```
+
+### cli/hexa-codex.hexa — extended subcommands
+
+In addition to `list` / `selftest` / `<verb>`, the CLI now routes:
+
+```bash
+hexa-codex verify [check]      # n6 / inventory / group / release / falsifiers / all
+hexa-codex calc <metric>       # train_cost / infer_cost / alignment / interpret / quality_scale
+hexa-codex inventory           # spec presence + canonical-header audit
+hexa-codex lattice [n]         # n=k lattice explorer
+hexa-codex test [mark]         # pytest tests/ -m {auto|hexa}
+hexa-codex status              # one-shot health JSON
+```
+
+---
+
 ## Status
 
-**SPEC_CATALOG_ONLY at v1.0.0.**
+**SPEC_CATALOG_ONLY + RUNNABLE_VERIFICATION_SURFACE at v1.0.0.**
 
-> 17-verb AI 지식 substrate (4 그룹: safety + economics + ops + substrate).
-> spec-first (작동 .hexa CLI TBD). 도서관(codex)식 spec catalog — 각 verb는
-> closed-form 후보 + falsifier preregister.
+> 17-verb AI 지식 substrate (4 그룹: safety + economics + ops + substrate)
+> + verify/ + tests/ + build/ runnable surface.
+> spec-first (per-verb 작동 .hexa eval pipeline은 v1.1+ 단계별 합류).
 
-Translation: this repo is a *library* of AI specs at v1.0. The `cli/hexa-codex.hexa`
-dispatcher is a placeholder that prints verb-spec paths + a 20-line head; the
-heavy-lift `.hexa` modules (per-verb falsifier sandboxes, cost-curve fitters,
-interp probes, etc) are deferred to post-v1.0 cycles — same posture as
-`hexa-bio` 3/4 stub axes (raw#10 honest C3).
+Translation: this repo is (1) a *library* of AI specs and (2) a runnable
+verification surface at v1.0. The `cli/hexa-codex.hexa` dispatcher routes
+both — verb spec reads + Python verifiers / calculators / tests. The
+heavy-lift per-verb `.hexa` eval pipelines (falsifier sandboxes,
+cost-curve fitters, interp probes) land per the
+[release ladder](#release-ladder) v1.1.0..v2.0.0.
 
 What works at v1.0:
 
@@ -97,10 +244,16 @@ What works at v1.0:
 - `hexa-codex list` prints the full 4-group table.
 - `hexa-codex <verb>` prints the spec path + first 20 lines.
 - `hexa-codex selftest` confirms 17/17 spec presence.
+- **`hexa-codex verify all` runs 5 verifiers** (n6 / inventory / group /
+  release / falsifiers) — 5/5 PASS in <2s.
+- **`hexa-codex calc <metric>`** runs F-CODEX-1..4 closed-form calculators.
+- **`make -C build ci`** runs verify + 62 pytest cases (all auto, no
+  bench equipment / external SDK / pip install required).
 
 What is **out of scope** at v1.0:
 
-- Per-verb falsifier sandboxes (no ODE / probe / fitter shipped).
+- Per-verb empirical eval pipelines (arithmetic floor only — empirical
+  fits land per the [release ladder](#release-ladder)).
 - Model training, inference SaaS, or RLHF labeling production pipeline.
 - Any regulatory, alignment, or capability claim — these specs are
   preregistered hypotheses, not validated results.
@@ -109,28 +262,41 @@ What is **out of scope** at v1.0:
 
 ## Install
 
-### Via `hx` (forthcoming)
+### Via `hx` (works today)
 
 ```bash
-hx install hexa-codex          # global, pulls latest from registry
+# `hx` does not auto-detect hexa.toml's `entry` field yet — pass --entry
+# explicitly. Tracked as upstream improvement.
+hx install hexa-codex --entry cli/hexa-codex.hexa
 hexa-codex --version           # → 1.0.0
+hexa-codex verify all          # → 5/5 PASS
+hexa-codex selftest            # → 17/17 verb specs PASS
 ```
 
-### Via git clone (works today)
+For local development install (avoids GitHub round-trip):
+
+```bash
+hx install /path/to/hexa-codex --entry cli/hexa-codex.hexa --as hexa-codex
+```
+
+### Via git clone
 
 ```bash
 git clone https://github.com/need-singularity/hexa-codex.git ~/.hexa-codex
 export HEXA_CODEX_ROOT=~/.hexa-codex
-export PATH="$HEXA_CODEX_ROOT/cli:$PATH"
+cd $HEXA_CODEX_ROOT
 
 # List the 17 verbs:
-hexa run $HEXA_CODEX_ROOT/cli/hexa-codex.hexa list
+hexa run cli/hexa-codex.hexa list
 
-# Read a verb spec (path + head):
-hexa run $HEXA_CODEX_ROOT/cli/hexa-codex.hexa alignment
+# Run all 5 verifiers (Python stdlib only):
+python3 verify/cli.py all
 
-# Verify all 17 verb specs are on disk:
-hexa run $HEXA_CODEX_ROOT/cli/hexa-codex.hexa selftest
+# Run the pytest auto suite (no pip install required):
+make -C build test
+
+# Run F-CODEX-1 closed-form training-cost calc:
+hexa-codex calc train_cost --N 7e9 --D 1.4e12
 ```
 
 ---

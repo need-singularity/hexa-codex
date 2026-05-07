@@ -1,0 +1,11 @@
+# runtime / cache
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# hexa-codex runtime state (cli/hexa-codex.hexa appends to state/)
+state/
+
+# build artifacts
+build/out/
+*.pdf
