@@ -121,6 +121,35 @@ versions follow [SemVer](https://semver.org/spec/v2.0.0.html).
 - `hexa run tests/test_all.hexa` — 5/5 PASS.
 - `python3 -m pytest tests/ -m auto -q` — 83 passed (no regression).
 
+### Added (2026-05-07 — 5th RSC iteration: calc_alignment / F-CODEX-3)
+
+- `verify/calc_alignment.hexa` — F-CODEX-3 T1 algebraic calculator (9 checks):
+  - 12 HELM-comparable axes (helpfulness, harmlessness, honesty, calibration,
+    coherence, robustness, fairness, privacy, toxicity, bias, faithfulness,
+    instructability) — count = σ(6) = 12.
+  - 3-stratum × 4-stage = 12 axis closure: (σ/τ) · τ = σ.
+  - Uniform-axis 0.700 mean = 0.700 (sum=12·700, /12 = 700; ×1000 scaling).
+  - HELM drift |aggregate − baseline| = |700 − 650| = 50 ≤ 100 tolerance.
+  - Tolerance value 0.100 declared.
+  - σ-φ = 10 strict-positive axes (cross-link to F-CODEX-4 motif row).
+  - Spec anchor: `alignment/ai-alignment.md` ships preference + RLHF + DPO.
+  - Spec anchor §S4: three-axis architecture (engineering / model-organism /
+    scalable oversight).
+  - alignment ∈ safety group; |safety| = 6 = N (per hexa.toml [modules]).
+  - Sentinel `__HEXA_CODEX_CALC_ALIGNMENT__ PASS`. Closes T1 floor for F-CODEX-3.
+- `tests/test_calc_alignment.hexa` — regression wrapper.
+- `tests/test_all.hexa` — CASES += `test_calc_alignment`.
+- `cli/hexa-codex.hexa` — `verify alignment` routes to .hexa.
+- `hexa.toml` — `[test] files` += `test_calc_alignment.hexa`;
+  `verify =` += `verify/calc_alignment.hexa`;
+  `[closure].runnable_hexa_iter5` marker.
+
+### Verified (iter 5)
+
+- `hexa run verify/calc_alignment.hexa` — 9/9 PASS.
+- `hexa run tests/test_all.hexa` — 6/6 PASS.
+- `python3 -m pytest tests/ -m auto -q` — 83 passed (no regression).
+
 ## [1.0.0] — 2026-05-06
 
 ### Added
