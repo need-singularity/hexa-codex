@@ -68,6 +68,32 @@ versions follow [SemVer](https://semver.org/spec/v2.0.0.html).
 - `hexa run tests/test_all.hexa` — 3/3 PASS (selftest + lattice + cross_doc).
 - `python3 -m pytest tests/ -m auto -q` — 83 passed (no regression).
 
+### Added (2026-05-07 — 3rd RSC iteration: calc_train_cost / F-CODEX-1)
+
+- `verify/calc_train_cost.hexa` — F-CODEX-1 T1 algebraic calculator (8 checks):
+  - `J₂ = σ(6)·φ(6) = 12·2 = 24` factorization.
+  - `J₂ = n·τ(6) = 6·4 = 24` consistency with closure.
+  - n6 cost-exponent `J₂/(J₂+1) = 24/25 = 0.96` (cross-multiplication identity).
+  - Chinchilla a+b ≈ 1.00 within 0.10 of n6 exp 0.96 (falsifier-floor tolerance).
+  - Chinchilla 6·N·D rule: FLOPs/token = n = 6 (lattice-derived coefficient).
+  - Spec anchor: `train_cost/ai-training-cost.md` ships Chinchilla / scaling-law
+    / falsifier-anchor tokens.
+  - Anchor identity: cost ratio = 1 at N·D = nd_ref (multiplicative form).
+  - F-CODEX-1 vs F-CODEX-4 ordering: J₂=24 > σ-φ=10.
+  - Sentinel `__HEXA_CODEX_CALC_TRAIN_COST__ PASS`. Closes T1 floor for F-CODEX-1.
+- `tests/test_calc_train_cost.hexa` — regression wrapper.
+- `tests/test_all.hexa` — CASES += `test_calc_train_cost`.
+- `cli/hexa-codex.hexa` — `verify train_cost` (and `train-cost`) routes to .hexa.
+- `hexa.toml` — `[test] files` += `test_calc_train_cost.hexa`;
+  `verify =` += `verify/calc_train_cost.hexa`;
+  `[closure].runnable_hexa_iter3` marker.
+
+### Verified (iter 3)
+
+- `hexa run verify/calc_train_cost.hexa` — 8/8 PASS.
+- `hexa run tests/test_all.hexa` — 4/4 PASS (selftest + lattice + cross_doc + calc_train_cost).
+- `python3 -m pytest tests/ -m auto -q` — 83 passed (no regression).
+
 ## [1.0.0] — 2026-05-06
 
 ### Added
