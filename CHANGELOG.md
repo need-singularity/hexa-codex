@@ -516,16 +516,53 @@ before saturation.
 - `RESOURCE_LOCAL_HEXA=1 hexa run verify/numerics_infer_cost_solver.hexa` — 10/10 PASS.
 - `hexa run tests/test_all.hexa` — 17/17 PASS.
 
-### F-CODEX T2 #3 (solver) row: 2/4 entered after iter 16
+### Added (2026-05-08 — 17th RSC iteration: numerics_alignment_solver / F-CODEX-3 T2 #3)
+
+- `verify/numerics_alignment_solver.hexa` — F-CODEX-3 T2 ODE solver
+  layer (10 checks via `math_pure`): undamped harmonic oscillator whose
+  time-average position recovers the σ=12 axis mean. Setup:
+
+      L(x) = (1/2σ) Σᵢ (x − aᵢ)² = ½(x − M)² + const,
+      d²x/dt² = −∂L/∂x = −(x − M),  x(0) = 0, v(0) = 0,
+      closed-form: x(t) = M·(1 − cos t), ⟨x⟩_period = M.
+
+  Symplectic leapfrog (Verlet, recipe §1 row 7's natural fit) + RK4
+  integration; energy E = ½v² + ½(x−M)² is constant under the analytic
+  solution (= ½M²).
+
+  | # | Check                                          | Result          |
+  |--:|:-----------------------------------------------|:----------------|
+  | 1 | anchor identity x(0)=0, v(0)=0                 | drift = 0       |
+  | 2 | RK4 one period (t=2π) returns to (0, 0)        | drift 3e-12     |
+  | 3 | leapfrog one period returns to (0, 0)          | drift 7e-6      |
+  | 4 | peak position x(π) = 2M (RK4, n=2048)          | drift 1e-15     |
+  | 5 | leapfrog energy bounded over 50 periods        | max drift 9e-5  |
+  | 6 | time-average ⟨x⟩ = M (n=4096)                  | drift 7e-8      |
+  | 7 | RK4 4th-order convergence (16→32 steps)        | ratio 17.6      |
+  | 8 | leapfrog 2nd-order convergence (256→512)       | ratio 4.00      |
+  | 9 | 4 profiles (uniform/perfect/split/varied) → M  | max drift 1e-7  |
+  |10 | leapfrog over 50 periods finite + bounded      | (x,v) < 1e6     |
+
+- `tests/test_numerics_alignment_solver.hexa` — regression wrapper.
+- `tests/test_all.hexa` — CASES += solver test (now 18).
+- `cli/hexa-codex.hexa` — `verify numerics-alignment-solver` routes.
+- `hexa.toml` — entries + `[closure].runnable_hexa_iter17` marker.
+
+### Verified (iter 17)
+
+- `RESOURCE_LOCAL_HEXA=1 hexa run verify/numerics_alignment_solver.hexa` — 10/10 PASS.
+- `hexa run tests/test_all.hexa` — 18/18 PASS.
+
+### F-CODEX T2 #3 (solver) row: 3/4 entered after iter 17
 
 | Falsifier  | T1 ✓ ✓ | T2 #1 ✓ | T2 #2 ✓ | T2 #3 (solver)   | T3 |
 |:-----------|:------:|:-------:|:-------:|:----------------:|:--:|
 | F-CODEX-1  | ✓✓     | ✓       | ✓       | ✓ (iter 15)      | – |
-| F-CODEX-2  | ✓✓     | ✓       | ✓       | **✓ (iter 16)**  | – |
-| F-CODEX-3  | ✓✓     | ✓       | ✓       | TBD              | – |
+| F-CODEX-2  | ✓✓     | ✓       | ✓       | ✓ (iter 16)      | – |
+| F-CODEX-3  | ✓✓     | ✓       | ✓       | **✓ (iter 17)**  | – |
 | F-CODEX-4  | ✓✓     | ✓       | ✓       | TBD              | – |
 
-Next: F-CODEX-3/4 solvers (priority 6), then priority 7 cross-pillar,
+Next: F-CODEX-4 solver (priority 6 final), then priority 7 cross-pillar,
 reaching recipe §7.2 sat-1.
 
 ### F-CODEX T2 ROW: COMPLETE after iter 10

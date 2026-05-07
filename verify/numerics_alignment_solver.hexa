@@ -1,0 +1,394 @@
+#!hexa strict
+// hexa-codex/verify/numerics_alignment_solver.hexa — F-CODEX-3 T2 ODE solver layer.
+//
+// Beyond `verify/numerics_alignment.hexa` (σ=12 axis-mean closed form) and
+// `verify/numerics_alignment_parity.hexa` (HELM-Core 4-model published
+// parity), this script re-derives the σ=12 mean by SOLVING a 2nd-order
+// dynamical system whose equilibrium / time-average IS the mean.
+//
+// Setup. For a profile vector a₁..a_σ with mean
+//
+//     M = (1/σ) · Σ_i a_i,
+//
+// define the quadratic loss
+//
+//     L(x) = (1/2σ) · Σ_i (x − a_i)² = (1/2)(x − M)² + const.
+//
+// Newton-flow / momentum dynamics on L:
+//
+//     d²x/dt² = −∂L/∂x = −(x − M),       x(0) = 0,  v(0) = 0.
+//
+// This is an UNDAMPED HARMONIC OSCILLATOR centred at M with unit
+// frequency, period 2π:
+//
+//     x(t) = M · (1 − cos t),    v(t) = M · sin t.
+//
+// Time-average over one period:
+//     ⟨x⟩ = M · (1 − ⟨cos t⟩) = M · 1 = M.
+//
+// So the σ=12 algebraic mean is recovered as the orbit-averaged position
+// of the oscillator. We integrate with leapfrog (recipe §1 row 7's
+// suggestion) and RK4 and check both endpoint accuracy and energy drift.
+//
+// The total energy
+//     E(x, v) = (1/2)·v² + (1/2)·(x − M)²
+// is constant analytically (= ½ M²). Symplectic leapfrog should preserve
+// it within bounded oscillation; non-symplectic RK4 has secular drift.
+//
+// PASS criterion (T2 solver floor): 10 checks pass.
+//
+// Recipe T2 floor: §1 row 7 — `numerics_<pillar3>_solver.hexa` is the
+// genuine Verlet/leapfrog candidate (pillars 1+2 used 1st-order linear
+// ODEs; pillar 3 sits naturally in 2nd-order mechanical form).
+//
+// Run:
+//   hexa run verify/numerics_alignment_solver.hexa
+//
+// @no-lock-needed
+// @resolver-bypass(reason="Pure local verifier; integer + float arithmetic only.")
+
+use "self/runtime/math_pure"
+
+let HOME = env("HOME")
+
+fn _root() -> str {
+    let r = env("HEXA_CODEX_ROOT")
+    if r.len() > 0 { return r }
+    let pwd = exec("pwd").trim()
+    if pwd.len() > 0 { return pwd }
+    return HOME + "/core/hexa-codex"
+}
+
+let ROOT = _root()
+
+// ── n=6 lattice ──────────────────────────────────────────────────────────
+let SIGMA_6_INT = 12
+let SIGMA_6     = 12.0
+
+// ── 12-axis profiles (same set as numerics_alignment.hexa) ──────────────
+let UNIFORM_VEC = [0.7, 0.7, 0.7, 0.7, 0.7, 0.7, 0.7, 0.7, 0.7, 0.7, 0.7, 0.7]
+let PERFECT_VEC = [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
+let SPLIT_VEC   = [0.8, 0.6, 0.8, 0.6, 0.8, 0.6, 0.8, 0.6, 0.8, 0.6, 0.8, 0.6]
+let VARIED_VEC  = [0.85, 0.80, 0.78, 0.65, 0.72, 0.70, 0.68, 0.55, 0.78, 0.55, 0.72, 0.62]
+
+// FALSIFIERS list (recipe §4 invariant 3).
+let FALSIFIERS = ["F-CODEX-3 (alignment-mean ODE solver re-derivation, Verlet/leapfrog + RK4)"]
+
+// ── helpers ──────────────────────────────────────────────────────────────
+
+let mut RUN = 0
+let mut FAIL = 0
+let mut FAILURES = []
+
+fn _check(ok: bool, label: str, detail: str) {
+    RUN = RUN + 1
+    if ok {
+        println("  [PASS] " + label)
+        if detail.len() > 0 { println("         · " + detail) }
+    } else {
+        FAIL = FAIL + 1
+        FAILURES.push(label + " :: " + detail)
+        println("  [FAIL] " + label)
+        if detail.len() > 0 { println("         · " + detail) }
+    }
+}
+
+fn _abs(x: float) -> float {
+    return abs_pure(x)
+}
+
+fn _sum12(v: [float]) -> float {
+    let mut s = 0.0
+    let mut i = 0
+    while i < SIGMA_6_INT {
+        s = s + v[i]
+        i = i + 1
+    }
+    return s
+}
+
+fn _mean(v: [float]) -> float {
+    return _sum12(v) / SIGMA_6
+}
+
+// Closed-form solution: x(t) = M · (1 − cos t), v(t) = M · sin t
+fn closed_x(m: float, t: float) -> float {
+    return m * (1.0 - cos_pure(t))
+}
+
+fn closed_v(m: float, t: float) -> float {
+    return m * sin_pure(t)
+}
+
+// Energy E = ½ v² + ½ (x − M)². Analytically constant = ½ M².
+fn energy(m: float, x: float, v: float) -> float {
+    let dx = x - m
+    return 0.5 * v * v + 0.5 * dx * dx
+}
+
+// Acceleration a(x) = −(x − M)
+fn accel(m: float, x: float) -> float {
+    return -(x - m)
+}
+
+// ── solvers (state = scalar globals updated by integrate) ────────────────
+// To avoid array-allocation churn in the hot loop, integrate() returns
+// the final x via the scalar return path and stores final v in OUT_V.
+
+let mut OUT_V = 0.0
+
+// Symplectic leapfrog inlined inside integrate(). Drives over n_steps from
+// (x=0, v=0) for time T. step_id: 0=leapfrog, 1=RK4. Final v in OUT_V.
+fn integrate(step_id: int, m: float, t_target: float, n_steps: int) -> float {
+    let h = t_target / to_float(n_steps)
+    let mut x = 0.0
+    let mut v = 0.0
+    let mut i = 0
+    while i < n_steps {
+        if step_id == 0 {
+            // leapfrog kick-drift-kick
+            let v_half = v + 0.5 * h * accel(m, x)
+            let x_new  = x + h * v_half
+            let v_new  = v_half + 0.5 * h * accel(m, x_new)
+            x = x_new
+            v = v_new
+        } else {
+            // RK4 on (x, v) with x' = v, v' = a(x) = −(x − M)
+            let kx1 = v
+            let kv1 = accel(m, x)
+            let kx2 = v + 0.5 * h * kv1
+            let kv2 = accel(m, x + 0.5 * h * kx1)
+            let kx3 = v + 0.5 * h * kv2
+            let kv3 = accel(m, x + 0.5 * h * kx2)
+            let kx4 = v + h * kv3
+            let kv4 = accel(m, x + h * kx3)
+            x = x + (h / 6.0) * (kx1 + 2.0 * kx2 + 2.0 * kx3 + kx4)
+            v = v + (h / 6.0) * (kv1 + 2.0 * kv2 + 2.0 * kv3 + kv4)
+        }
+        i = i + 1
+    }
+    OUT_V = v
+    return x
+}
+
+// Trapezoidal time-average of x(t) over [0, T] using leapfrog samples.
+fn time_average_x(m: float, t_target: float, n_steps: int) -> float {
+    let h = t_target / to_float(n_steps)
+    let mut x = 0.0
+    let mut v = 0.0
+    let mut sum = 0.5 * x          // first endpoint weight
+    let mut i = 0
+    while i < n_steps {
+        let v_half = v + 0.5 * h * accel(m, x)
+        let x_new  = x + h * v_half
+        let v_new  = v_half + 0.5 * h * accel(m, x_new)
+        x = x_new
+        v = v_new
+        let w = if i == n_steps - 1 { 0.5 } else { 1.0 }
+        sum = sum + w * x
+        i = i + 1
+    }
+    return sum * h / t_target
+}
+
+// ── handy constants ──────────────────────────────────────────────────────
+let PI         = 3.14159265358979323846         // half period
+let TWO_PI     = 6.28318530717958647692         // one period
+let FOUR_PI    = 12.56637061435917295384         // two periods
+let HUNDRED_PI = 314.159265358979323846         // 50 periods (long-time test)
+
+// ── checks ───────────────────────────────────────────────────────────────
+
+// Check 1: anchor identity — at t=0 we have (x, v) = (0, 0) for any M.
+fn check_anchor_identity() {
+    let m = _mean(VARIED_VEC)
+    let lf_x = integrate(0, m, 0.0, 8)
+    let lf_v = OUT_V
+    let rk_x = integrate(1, m, 0.0, 8)
+    let rk_v = OUT_V
+    let drift = _abs(lf_x) + _abs(lf_v) + _abs(rk_x) + _abs(rk_v)
+    _check(drift < 1.0e-15,
+           "anchor identity: x(0)=0, v(0)=0 across leapfrog + RK4",
+           "lf=(" + to_string(lf_x) + "," + to_string(lf_v) +
+           ") rk=(" + to_string(rk_x) + "," + to_string(rk_v) +
+           ") sum_drift=" + to_string(drift))
+}
+
+// Check 2: RK4 one period (t = 2π) returns to origin within 1e-9 (n=2048).
+fn check_rk4_one_period_return() {
+    let m = _mean(VARIED_VEC)
+    let x = integrate(1, m, TWO_PI, 2048)
+    let v = OUT_V
+    let drift = _abs(x) + _abs(v)
+    _check(drift < 1.0e-9,
+           "RK4 one period (t=2π): (x, v) returns to (0, 0) within 1e-9",
+           "x=" + to_string(x) + " v=" + to_string(v) +
+           " drift=" + to_string(drift))
+}
+
+// Check 3: leapfrog one period (t = 2π) returns to origin within 1e-3
+//   (leapfrog has 2nd-order accuracy; coarser tolerance than RK4).
+fn check_leapfrog_one_period_return() {
+    let m = _mean(VARIED_VEC)
+    let x = integrate(0, m, TWO_PI, 1024)
+    let v = OUT_V
+    let drift = _abs(x) + _abs(v)
+    _check(drift < 1.0e-3,
+           "Leapfrog one period (t=2π): (x, v) returns to (0, 0) within 1e-3",
+           "x=" + to_string(x) + " v=" + to_string(v) +
+           " drift=" + to_string(drift))
+}
+
+// Check 4: peak position x_max = 2M (cos goes from +1 to −1 over half period).
+//   x(t=π) = M·(1 − cos π) = M·(1 − (−1)) = 2M.
+fn check_peak_position() {
+    let m = _mean(VARIED_VEC)             // ≈ 0.70
+    let x_peak = integrate(1, m, PI, 2048)
+    let drift = _abs(x_peak - 2.0 * m)
+    _check(drift < 1.0e-6,
+           "peak position x(π) = 2·M (RK4, n=2048)",
+           "computed=" + to_string(x_peak) + " expected=" + to_string(2.0 * m) +
+           " drift=" + to_string(drift))
+}
+
+// Check 5: energy conservation under leapfrog over 50 periods.
+//   For symplectic leapfrog the energy oscillates near a fixed value but
+//   has no secular drift; max excursion from initial energy ≤ O(h²).
+fn check_leapfrog_energy_conservation() {
+    let m = _mean(VARIED_VEC)
+    let n = 8192
+    let h = HUNDRED_PI / to_float(n)
+    let mut x = 0.0
+    let mut v = 0.0
+    let e0 = energy(m, x, v)
+    let mut max_drift = 0.0
+    let mut i = 0
+    while i < n {
+        let v_half = v + 0.5 * h * accel(m, x)
+        let x_new  = x + h * v_half
+        let v_new  = v_half + 0.5 * h * accel(m, x_new)
+        x = x_new
+        v = v_new
+        let drift = _abs(energy(m, x, v) - e0)
+        if drift > max_drift { max_drift = drift }
+        i = i + 1
+    }
+    _check(max_drift < 1.0e-3,
+           "leapfrog energy bounded over 50 periods (max drift < 1e-3)",
+           "max|E(t) − E(0)|=" + to_string(max_drift))
+}
+
+// Check 6: time-average of leapfrog x(t) over one period equals M within 1e-3.
+//   Quadrature uses the trapezoidal rule on leapfrog samples.
+fn check_time_average_recovers_mean() {
+    let m = _mean(VARIED_VEC)
+    let avg = time_average_x(m, TWO_PI, 4096)
+    let drift = _abs(avg - m)
+    _check(drift < 1.0e-3,
+           "time-average ⟨x⟩ over 1 period = M (σ=12 mean recovered, n=4096)",
+           "⟨x⟩=" + to_string(avg) + " M=" + to_string(m) +
+           " drift=" + to_string(drift))
+}
+
+// Check 7: RK4 4th-order convergence on one-period return error.
+fn check_rk4_order_four() {
+    let m = _mean(VARIED_VEC)
+    let xc = integrate(1, m, TWO_PI, 16)
+    let vc = OUT_V
+    let xf = integrate(1, m, TWO_PI, 32)
+    let vf = OUT_V
+    let e_coarse = _abs(xc) + _abs(vc)
+    let e_fine   = _abs(xf) + _abs(vf)
+    let ratio = e_coarse / e_fine
+    _check((ratio > 10.0) && (ratio < 22.0),
+           "RK4 4th-order convergence on (x,v) drift ≈ 16 (16→32 steps)",
+           "ratio=" + to_string(ratio) +
+           " e_coarse=" + to_string(e_coarse) + " e_fine=" + to_string(e_fine))
+}
+
+// Check 8: leapfrog 2nd-order convergence on one-period return error.
+fn check_leapfrog_order_two() {
+    let m = _mean(VARIED_VEC)
+    let xc = integrate(0, m, TWO_PI, 256)
+    let vc = OUT_V
+    let xf = integrate(0, m, TWO_PI, 512)
+    let vf = OUT_V
+    let e_coarse = _abs(xc) + _abs(vc)
+    let e_fine   = _abs(xf) + _abs(vf)
+    let ratio = e_coarse / e_fine
+    _check((ratio > 3.0) && (ratio < 5.0),
+           "leapfrog 2nd-order convergence on (x,v) drift ≈ 4 (256→512)",
+           "ratio=" + to_string(ratio) +
+           " e_coarse=" + to_string(e_coarse) + " e_fine=" + to_string(e_fine))
+}
+
+// Check 9: 4 profiles agree — leapfrog time-average matches algebraic mean
+//   within 1e-3 for {uniform, perfect, split, varied}.
+fn check_all_profiles_recover_mean() {
+    let mut all_ok = true
+    let mut max_drift = 0.0
+    let profiles = [UNIFORM_VEC, PERFECT_VEC, SPLIT_VEC, VARIED_VEC]
+    let mut i = 0
+    while i < len(profiles) {
+        let m = _mean(profiles[i])
+        let avg = time_average_x(m, TWO_PI, 4096)
+        let drift = _abs(avg - m)
+        if drift > max_drift { max_drift = drift }
+        if drift > 1.0e-3 { all_ok = false }
+        i = i + 1
+    }
+    _check(all_ok,
+           "4 profiles (uniform/perfect/split/varied): ⟨x⟩ = M within 1e-3",
+           "max_drift=" + to_string(max_drift))
+}
+
+// Check 10: positivity / finiteness — leapfrog over 50 periods stays bounded.
+fn check_positivity_finiteness() {
+    let m = _mean(PERFECT_VEC)            // M = 1.0 (largest mean)
+    let x = integrate(0, m, HUNDRED_PI, 8192)
+    let v = OUT_V
+    let bounded = (x == x) && (v == v) &&
+                  (_abs(x) < 1.0e6) && (_abs(v) < 1.0e6)
+    _check(bounded,
+           "leapfrog over 50 periods (M=1.0): (x, v) finite + |·|<1e6",
+           "x=" + to_string(x) + " v=" + to_string(v))
+}
+
+// ── main ─────────────────────────────────────────────────────────────────
+
+fn main() {
+    println("========================================================================")
+    println("  hexa-codex F-CODEX-3 alignment solver (T2 stack #3, leapfrog/RK4)")
+    println("  ODE: d²x/dt² = −(x − M),  x(0)=0, v(0)=0,  M = mean(σ=12 axes)")
+    println("  closed-form: x(t) = M·(1 − cos t),  ⟨x⟩_period = M")
+    println("========================================================================")
+    println("  σ        = " + to_string(SIGMA_6))
+    println("  M_varied = " + to_string(_mean(VARIED_VEC)))
+    println("  solvers  = symplectic leapfrog (Verlet) | RK4")
+    println("")
+
+    check_anchor_identity()
+    check_rk4_one_period_return()
+    check_leapfrog_one_period_return()
+    check_peak_position()
+    check_leapfrog_energy_conservation()
+    println("")
+    check_time_average_recovers_mean()
+    check_rk4_order_four()
+    check_leapfrog_order_two()
+    check_all_profiles_recover_mean()
+    check_positivity_finiteness()
+
+    println("========================================================================")
+    let pass_n = RUN - FAIL
+    println("  " + str(pass_n) + "/" + str(RUN) + " checks passed")
+    if FAIL > 0 {
+        println("  FAILURES:")
+        for f in FAILURES { println("    ✗ " + f) }
+        println("__HEXA_CODEX_NUMERICS_ALIGNMENT_SOLVER__ FAIL")
+        exit(1)
+    }
+    println("  F-CODEX-3 T2 ODE solver layer: closed.")
+    println("__HEXA_CODEX_NUMERICS_ALIGNMENT_SOLVER__ PASS")
+    exit(0)
+}
