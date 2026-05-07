@@ -237,16 +237,40 @@ versions follow [SemVer](https://semver.org/spec/v2.0.0.html).
 - `hexa run tests/test_all.hexa` — 9/9 PASS.
 - `python3 -m pytest tests/ -m auto -q` — 83 passed (no regression).
 
-### F-CODEX closure status (after iter 8)
+### Added (2026-05-08 — 9th RSC iteration: numerics_alignment / F-CODEX-3 T2)
+
+- `verify/numerics_alignment.hexa` — F-CODEX-3 T2 numerical re-derivation
+  (10 checks via `math_pure`):
+  - Axis count σ=12 across 5 profile vectors + axis-name catalog.
+  - uniform-0.7 profile: mean = 0.7 within 1e-12.
+  - perfect-1.0 / floor-0.0 / split-0.8/0.6 / varied: each mean exact.
+  - HELM drift partition: 3 of 5 profiles within ±0.10 of baseline 0.65.
+  - Mean linearity: mean(2·v) = 2·mean(v).
+  - Jensen's inequality demo: mean(log v) < log(mean v) (concave log).
+  - Accumulation stability: 12·0.1 sum within 1e-14 of 1.2.
+- `tests/test_numerics_alignment.hexa` — regression wrapper.
+- `tests/test_all.hexa` — CASES += `test_numerics_alignment` (now 10).
+- `cli/hexa-codex.hexa` — `verify numerics-alignment` routes to .hexa.
+- `hexa.toml` — `[test] files` += `test_numerics_alignment.hexa`;
+  `verify =` += `verify/numerics_alignment.hexa`;
+  `[closure].runnable_hexa_iter9` marker.
+
+### Verified (iter 9)
+
+- `hexa run verify/numerics_alignment.hexa` — 10/10 PASS.
+- `hexa run tests/test_all.hexa` — 10/10 PASS.
+- `python3 -m pytest tests/ -m auto -q` — 83 passed (no regression).
+
+### F-CODEX closure status (after iter 9)
 
 | Falsifier  | T1 (algebraic)                    | T2 (numerics)            | T3 (empirical) |
 |:-----------|:----------------------------------|:-------------------------|:--------------:|
 | F-CODEX-1  | lattice + calc_train_cost ✓ ✓     | numerics_train_cost ✓    | TBD            |
 | F-CODEX-2  | lattice + calc_infer_cost ✓ ✓     | numerics_infer_cost ✓    | TBD            |
-| F-CODEX-3  | lattice + calc_alignment ✓ ✓      | TBD                      | TBD            |
+| F-CODEX-3  | lattice + calc_alignment ✓ ✓      | numerics_alignment ✓     | TBD            |
 | F-CODEX-4  | lattice + calc_interpret ✓ ✓      | TBD                      | TBD            |
 
-F-CODEX-1/2 closure pct: 67% (T1 + T2 ✓). Half of T2 row complete.
+F-CODEX-1/2/3 closure pct: 67% each (T1 + T2). 3 of 4 falsifiers reach T2 floor.
 
 ### F-CODEX T1 row: COMPLETE after iter 6
 

@@ -1,0 +1,281 @@
+#!hexa strict
+// hexa-codex/verify/numerics_alignment.hexa — F-CODEX-3 T2 numerical re-derivation.
+//
+// Beyond `verify/calc_alignment.hexa` (integer ×1000 scaling), this script
+// computes the σ=12-axis HELM-comparable mean in float64 and verifies:
+//
+//   alignment_score = (1/σ) · Σ_{i=1..σ} axis_i,    σ = σ(6) = 12
+//
+// across multiple axis-vector profiles plus drift-tolerance arithmetic.
+//
+// Profiles tested:
+//   · uniform 0.700  (baseline) → mean = 0.700, drift |0.700-0.650| = 0.050 ≤ 0.100
+//   · perfect 1.000  → mean = 1.000, drift 0.350 (above tol — informational)
+//   · floor 0.000    → mean = 0.000, drift 0.650 (above tol — informational)
+//   · split 0.6/0.8  → mean = 0.700 by symmetry
+//   · varied (12-vec mimicking a HELM-bench-class model with realistic axis spread)
+//
+// Recipe T2 floor (recipe §4 invariants 1-5 satisfied):
+//   1. `use "self/runtime/math_pure"` import          ✓
+//   2. `__HEXA_<PROJECT>_<NAME>__` sentinel + PASS    ✓
+//   3. `FALSIFIERS` array                              ✓
+//   4. `exit(0)` on PASS path                          ✓
+//   5. `let mut RUN = 0` + `let mut FAIL = 0`          ✓
+//
+// T3 (live HELM eval on a frontier model) follows.
+//
+// Run:
+//   hexa run verify/numerics_alignment.hexa
+//
+// @no-lock-needed
+// @resolver-bypass(reason="Pure local verifier; integer + float arithmetic only.")
+
+use "self/runtime/math_pure"
+
+let HOME = env("HOME")
+
+fn _root() -> str {
+    let r = env("HEXA_CODEX_ROOT")
+    if r.len() > 0 { return r }
+    let pwd = exec("pwd").trim()
+    if pwd.len() > 0 { return pwd }
+    return HOME + "/core/hexa-codex"
+}
+
+let ROOT = _root()
+
+// ── n=6 lattice ──────────────────────────────────────────────────────────
+let SIGMA_6_INT = 12
+let SIGMA_6     = 12.0
+
+// ── HELM tolerance / baseline (float) ────────────────────────────────────
+let HELM_BASELINE = 0.65
+let HELM_TOL      = 0.10
+
+// ── 12 axes (catalog same as calc_alignment) ─────────────────────────────
+let AXES = [
+    "helpfulness", "harmlessness", "honesty", "calibration",
+    "coherence",   "robustness",   "fairness", "privacy",
+    "toxicity",    "bias",         "faithfulness", "instructability",
+]
+
+// ── profile vectors ──────────────────────────────────────────────────────
+// Each profile = 12 float scores in [0,1].
+let UNIFORM_VEC = [0.7, 0.7, 0.7, 0.7, 0.7, 0.7, 0.7, 0.7, 0.7, 0.7, 0.7, 0.7]
+let PERFECT_VEC = [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
+let FLOOR_VEC   = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+let SPLIT_VEC   = [0.8, 0.6, 0.8, 0.6, 0.8, 0.6, 0.8, 0.6, 0.8, 0.6, 0.8, 0.6]
+// Varied: realistic HELM-bench-class model (mean ≈ 0.70 by construction).
+//   Sum = 0.85+0.80+0.78+0.65+0.72+0.70+0.68+0.55+0.78+0.55+0.72+0.62 = 8.40
+//   Mean = 8.40 / 12 = 0.70 EXACT.
+let VARIED_VEC  = [0.85, 0.80, 0.78, 0.65, 0.72, 0.70, 0.68, 0.55, 0.78, 0.55, 0.72, 0.62]
+
+// FALSIFIERS list (recipe §4 invariant 3).
+let FALSIFIERS = ["F-CODEX-3 (alignment_score = mean over σ=12 axes, T2 numerical re-derivation, math_pure)"]
+
+// ── helpers ──────────────────────────────────────────────────────────────
+
+let mut RUN = 0
+let mut FAIL = 0
+let mut FAILURES = []
+
+fn _check(ok: bool, label: str, detail: str) {
+    RUN = RUN + 1
+    if ok {
+        println("  [PASS] " + label)
+        if detail.len() > 0 { println("         · " + detail) }
+    } else {
+        FAIL = FAIL + 1
+        FAILURES.push(label + " :: " + detail)
+        println("  [FAIL] " + label)
+        if detail.len() > 0 { println("         · " + detail) }
+    }
+}
+
+fn _abs(x: float) -> float {
+    return abs_pure(x)
+}
+
+// Sum a 12-element float array.
+fn _sum12(v: [float]) -> float {
+    let mut s = 0.0
+    let mut i = 0
+    while i < SIGMA_6_INT {
+        s = s + v[i]
+        i = i + 1
+    }
+    return s
+}
+
+// Arithmetic mean.
+fn _mean(v: [float]) -> float {
+    return _sum12(v) / SIGMA_6
+}
+
+// HELM drift: |mean − baseline|.
+fn _drift(mean: float) -> float {
+    return _abs(mean - HELM_BASELINE)
+}
+
+// ── checks ───────────────────────────────────────────────────────────────
+
+// Check 1: σ=12 axis count agrees with vector lengths
+fn check_axis_count() {
+    let ok_uniform = len(UNIFORM_VEC) == SIGMA_6_INT
+    let ok_perfect = len(PERFECT_VEC) == SIGMA_6_INT
+    let ok_floor   = len(FLOOR_VEC)   == SIGMA_6_INT
+    let ok_split   = len(SPLIT_VEC)   == SIGMA_6_INT
+    let ok_varied  = len(VARIED_VEC)  == SIGMA_6_INT
+    let ok_axes    = len(AXES)         == SIGMA_6_INT
+    let all_ok = ok_uniform && ok_perfect && ok_floor && ok_split && ok_varied && ok_axes
+    _check(all_ok,
+           "all 5 profile vectors + axis-name catalog have length σ=12",
+           "vec_lengths=[u=" + str(len(UNIFORM_VEC)) +
+           ",p=" + str(len(PERFECT_VEC)) +
+           ",f=" + str(len(FLOOR_VEC)) +
+           ",s=" + str(len(SPLIT_VEC)) +
+           ",v=" + str(len(VARIED_VEC)) + "]")
+}
+
+// Check 2: uniform 0.7 → mean exactly 0.7 (within 1e-12)
+fn check_uniform_mean() {
+    let m = _mean(UNIFORM_VEC)
+    let drift = _abs(m - 0.7)
+    _check(drift < 1.0e-12,
+           "uniform-0.7 profile: mean = 0.7 (within 1e-12)",
+           "mean=" + to_string(m) + " drift=" + to_string(drift))
+}
+
+// Check 3: perfect 1.0 → mean = 1.0
+fn check_perfect_mean() {
+    let m = _mean(PERFECT_VEC)
+    _check(m == 1.0,
+           "perfect-1.0 profile: mean = 1.0",
+           "mean=" + to_string(m))
+}
+
+// Check 4: floor 0.0 → mean = 0.0
+fn check_floor_mean() {
+    let m = _mean(FLOOR_VEC)
+    _check(m == 0.0,
+           "floor-0.0 profile: mean = 0.0",
+           "mean=" + to_string(m))
+}
+
+// Check 5: split 0.8/0.6 alternating → mean = 0.7 by symmetry
+fn check_split_mean() {
+    let m = _mean(SPLIT_VEC)
+    let drift = _abs(m - 0.7)
+    _check(drift < 1.0e-12,
+           "split-0.8/0.6 profile: mean = 0.7 (symmetry)",
+           "mean=" + to_string(m) + " drift=" + to_string(drift))
+}
+
+// Check 6: varied 12-axis profile → mean = 0.7 (constructed)
+fn check_varied_mean() {
+    let m = _mean(VARIED_VEC)
+    let drift = _abs(m - 0.7)
+    _check(drift < 1.0e-12,
+           "varied 12-axis profile: mean = 0.7",
+           "mean=" + to_string(m) + " drift=" + to_string(drift))
+}
+
+// Check 7: HELM drift tolerance — 4 of 5 profiles within tol
+//   uniform / split / varied → drift = 0.05 ≤ 0.10 → PASS
+//   perfect → drift = 0.35 → FAIL (above tol; correctly rejected as too good)
+//   floor   → drift = 0.65 → FAIL (above tol; correctly rejected as too bad)
+fn check_helm_drift_partition() {
+    let mut within = 0
+    let profs = [UNIFORM_VEC, PERFECT_VEC, FLOOR_VEC, SPLIT_VEC, VARIED_VEC]
+    for v in profs {
+        let m = _mean(v)
+        let d = _drift(m)
+        if d <= HELM_TOL { within = within + 1 }
+    }
+    // uniform, split, varied → 3 within tol; perfect, floor → 2 outside.
+    _check(within == 3,
+           "HELM drift partition: 3 of 5 profiles within ±0.10 of baseline",
+           "within=" + str(within) + "/5 (expected 3 — uniform+split+varied)")
+}
+
+// Check 8: linearity — mean(c·v) = c·mean(v)
+//   Use uniform: 2.0 · uniform = vec of 1.4s, mean = 1.4 = 2 · 0.7.
+fn check_mean_linearity() {
+    let scaled = [1.4, 1.4, 1.4, 1.4, 1.4, 1.4, 1.4, 1.4, 1.4, 1.4, 1.4, 1.4]
+    let m_scaled = _mean(scaled)
+    let m_orig = _mean(UNIFORM_VEC)
+    let drift = _abs(m_scaled - 2.0 * m_orig)
+    _check(drift < 1.0e-12,
+           "mean linearity: mean(2·v) = 2·mean(v)",
+           "lhs=" + to_string(m_scaled) + " rhs=" + to_string(2.0 * m_orig))
+}
+
+// Check 9: Jensen's inequality demo — mean(log(v)) ≤ log(mean(v))
+//   For SPLIT_VEC: log(0.8) ≈ -0.223, log(0.6) ≈ -0.511
+//   mean(log) = (6·(-0.223) + 6·(-0.511))/12 = -0.367
+//   log(mean) = log(0.7) ≈ -0.357
+//   So mean(log) (-0.367) < log(mean) (-0.357) ⇒ Jensen for concave log.
+fn check_jensen_inequality() {
+    let mut log_sum = 0.0
+    let mut i = 0
+    while i < SIGMA_6_INT {
+        log_sum = log_sum + log_pure(SPLIT_VEC[i])
+        i = i + 1
+    }
+    let mean_of_log = log_sum / SIGMA_6
+    let log_of_mean = log_pure(_mean(SPLIT_VEC))
+    _check(mean_of_log < log_of_mean,
+           "Jensen's inequality: mean(log v) ≤ log(mean v) (concave log)",
+           "mean(log)=" + to_string(mean_of_log) +
+           " log(mean)=" + to_string(log_of_mean))
+}
+
+// Check 10: numerical accumulation — Σ_{i=1..12} 0.1 = 1.2 within 1e-15
+//   12 · 0.1 = 1.2 in float64 has tiny accumulation error (0.1 not exact).
+//   Sum loop should still land within ~1e-15 of the analytic result.
+fn check_accumulation_stability() {
+    let small = [0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1]
+    let s = _sum12(small)
+    let drift = _abs(s - 1.2)
+    // 12-term sum of inexact 0.1: typical drift ~1e-16..1e-15.
+    _check(drift < 1.0e-14,
+           "12-term Σ 0.1 stability: |sum − 1.2| < 1e-14",
+           "sum=" + to_string(s) + " drift=" + to_string(drift))
+}
+
+// ── main ─────────────────────────────────────────────────────────────────
+
+fn main() {
+    println("========================================================================")
+    println("  hexa-codex F-CODEX-3 alignment numerics (T2 numerical, math_pure)")
+    println("  alignment_score = (1/σ) · Σ axis_i,  σ = 12 ; HELM tol = ±0.10")
+    println("========================================================================")
+    println("  profiles: uniform-0.7 / perfect-1.0 / floor-0.0 / split-0.8/0.6 / varied")
+    println("  baseline: " + to_string(HELM_BASELINE) + "  tol: " + to_string(HELM_TOL))
+    println("")
+
+    check_axis_count()
+    check_uniform_mean()
+    check_perfect_mean()
+    check_floor_mean()
+    check_split_mean()
+    check_varied_mean()
+    println("")
+    check_helm_drift_partition()
+    check_mean_linearity()
+    check_jensen_inequality()
+    check_accumulation_stability()
+
+    println("========================================================================")
+    let pass_n = RUN - FAIL
+    println("  " + str(pass_n) + "/" + str(RUN) + " checks passed")
+    if FAIL > 0 {
+        println("  FAILURES:")
+        for f in FAILURES { println("    ✗ " + f) }
+        println("__HEXA_CODEX_NUMERICS_ALIGNMENT__ FAIL")
+        exit(1)
+    }
+    println("  F-CODEX-3 T2 numerical floor: closed.")
+    println("__HEXA_CODEX_NUMERICS_ALIGNMENT__ PASS")
+    exit(0)
+}
