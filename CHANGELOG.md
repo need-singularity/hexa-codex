@@ -181,6 +181,46 @@ versions follow [SemVer](https://semver.org/spec/v2.0.0.html).
 - `hexa run tests/test_all.hexa` — 7/7 PASS.
 - `python3 -m pytest tests/ -m auto -q` — 83 passed (no regression).
 
+### Added (2026-05-07 — 7th RSC iteration: numerics_train_cost / F-CODEX-1 T2)
+
+- `verify/numerics_train_cost.hexa` — F-CODEX-1 T2 numerical re-derivation
+  (9 checks; recipe §4 invariants 1–5 satisfied — `use "self/runtime/math_pure"`,
+  RUN/FAIL counters, `FALSIFIERS` list, `__HEXA_CODEX_NUMERICS_TRAIN_COST__ PASS`
+  sentinel, `exit(0)`):
+  - Anchor identity: `n6_ratio(N·D = ND_REF) = 1.0` within 1e-9.
+  - Monotonicity over 5-anchor grid (1e20, 1e21, 1e22 REF, 1e23, 1e24).
+  - Above anchor: n6_ratio < Chinchilla-naive (0.96 < 1.0 exponent).
+  - Below anchor: n6_ratio > Chinchilla-naive (concave power).
+  - Curve proximity: max |log-ratio diff| < 0.25 over 100× span.
+  - Numerical stability: all anchors finite + positive (math_pure pow_pure /
+    log_pure on float64).
+  - Float exponent J₂/(J₂+1) = 0.96 within 1e-12.
+  - Exponent gap = 1.0 − 24/25 = 0.04 within 1e-12.
+  - Chinchilla 6·N·D coefficient = n = 6 (float identity).
+- `tests/test_numerics_train_cost.hexa` — regression wrapper.
+- `tests/test_all.hexa` — CASES += `test_numerics_train_cost`.
+- `cli/hexa-codex.hexa` — `verify numerics-train_cost` routes to .hexa.
+- `hexa.toml` — `[test] files` += `test_numerics_train_cost.hexa`;
+  `verify =` += `verify/numerics_train_cost.hexa`;
+  `[closure].runnable_hexa_iter7` marker.
+
+### Verified (iter 7)
+
+- `hexa run verify/numerics_train_cost.hexa` — 9/9 PASS.
+- `hexa run tests/test_all.hexa` — 8/8 PASS.
+- `python3 -m pytest tests/ -m auto -q` — 83 passed (no regression).
+
+### F-CODEX closure status (after iter 7)
+
+| Falsifier  | T1 (algebraic)                    | T2 (numerics)        | T3 (empirical) |
+|:-----------|:----------------------------------|:---------------------|:--------------:|
+| F-CODEX-1  | lattice + calc_train_cost ✓ ✓     | numerics_train_cost ✓ | TBD            |
+| F-CODEX-2  | lattice + calc_infer_cost ✓ ✓     | TBD                  | TBD            |
+| F-CODEX-3  | lattice + calc_alignment ✓ ✓      | TBD                  | TBD            |
+| F-CODEX-4  | lattice + calc_interpret ✓ ✓      | TBD                  | TBD            |
+
+F-CODEX-1 closure pct: 67% (T1 + T2 ✓ — recipe §3 ladder).
+
 ### F-CODEX T1 row: COMPLETE after iter 6
 
 | Falsifier  | T1 anchors                                | T2 (numerics) | T3 (empirical) |
