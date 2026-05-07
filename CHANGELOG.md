@@ -705,6 +705,66 @@ tracker, reaching recipe §7.2 sat-1 saturation.
 Only priority 9 (closure tracker meta) remains before sat-2 — rest
 are optional saturation slots (priorities 10..15).
 
+### Added (2026-05-08 — 21st RSC iteration: falsifier_check / SAT-1 GATE)
+
+- `verify/falsifier_check.hexa` — recipe §7.4 priority 9 closure-
+  tracker meta verifier (10 checks). Walks `verify/` and tallies, per
+  pillar, the {T1, T2#1, T2#2, T2#3} layer presence; aggregates the
+  cross-cutter row; reports the recipe §3 closure-pct per falsifier;
+  flags the T3 (empirical) gap; and emits the sat-1 verdict.
+
+  | # | Closure check                                            | Result |
+  |--:|:---------------------------------------------------------|:-------|
+  | 1 | F-CODEX-1 (train_cost): T1 + T2×3 = 4 layers             | 4/4    |
+  | 2 | F-CODEX-2 (infer_cost): T1 + T2×3 = 4 layers             | 4/4    |
+  | 3 | F-CODEX-3 (alignment): T1 + T2×3 = 4 layers              | 4/4    |
+  | 4 | F-CODEX-4 (interpret): T1 + T2×3 = 4 layers              | 4/4    |
+  | 5 | cross-cutter row (lattice/cross_doc/cross_pillar/arith)  | 4/4    |
+  | 6 | total runnable .hexa scripts ≥ 20                        | 20     |
+  | 7 | closure pct ≥ 0.80 (4/5) for every F-CODEX falsifier     | min 0.80 |
+  | 8 | T3 (empirical) row gap report (informational)            | 0/4 (T3 TBD) |
+  | 9 | substrate anchors P1, P2, Sigma.lean                     | 3/3    |
+  |10 | **RECIPE §7.2 sat-1 GATE**                               | **PASS** |
+
+- `tests/test_falsifier_check.hexa` — regression wrapper.
+- `tests/test_all.hexa` — CASES += falsifier_check (now 22).
+- `cli/hexa-codex.hexa` — `verify falsifier-check` routes.
+- `hexa.toml` — entries + `[closure].runnable_hexa_iter21` marker.
+
+### Verified (iter 21)
+
+- `RESOURCE_LOCAL_HEXA=1 hexa run verify/falsifier_check.hexa` — 10/10 PASS.
+- `hexa run tests/test_all.hexa` — 22/22 PASS.
+
+### **RECIPE §7.2 sat-1 GOAL REACHED** — closure-depth saturation hit
+
+After iter 21 the runnable surface has reached the sat-1 saturation
+gate spelled out in `~/core/bedrock/docs/runnable_surface_recipe.md`:
+
+  - All 4 F-CODEX falsifiers carry T1 (algebraic) + T2 ×3 (numerics +
+    parity + solver) → 4 layers each, closure pct = 4/5 = 0.80.
+  - Cross-cutter row 4/4 (lattice_check, cross_doc_audit,
+    numerics_cross_pillar, numerics_lattice_arithmetic).
+  - Closure tracker `falsifier_check.hexa` itself emits
+    `__HEXA_CODEX_FALSIFIER_CHECK__ PASS` confirming the gate.
+  - Total runnable .hexa files: **20 verifiers + 22 regression tests**.
+
+| Priority | Slot                                | Status     |
+|:--------:|:------------------------------------|:-----------|
+| 1 | lattice_check                            | ✓ (iter 1) |
+| 2 | cross_doc_audit                          | ✓ (iter 2) |
+| 3 | calc × 4                                 | ✓ (3..6)   |
+| 4 | numerics × 4                             | ✓ (7..10)  |
+| 5 | numerics_parity × 4                      | ✓ (11..14) |
+| 6 | numerics_solver × 4                      | ✓ (15..18) |
+| 7 | numerics_cross_pillar                    | ✓ (iter 19)|
+| 8 | numerics_lattice_arithmetic              | ✓ (iter 20)|
+| 9 | falsifier_check (sat-1 gate)             | ✓ (iter 21)|
+
+Optional saturation slots (priorities 10..15) — lint, doc PDF,
+methodology narrative, second T2 stack — remain as the post-sat-1
+extensions but are NOT required for the sat-1 closure goal.
+
 ### F-CODEX T2 ROW: COMPLETE after iter 10
 
 | Falsifier  | T1 (algebraic)                    | T2 (numerics)            | T3 (empirical) |

@@ -1,0 +1,282 @@
+#!hexa strict
+// hexa-codex/verify/falsifier_check.hexa — recipe §7.4 priority 9 closure tracker (meta).
+//
+// Single source of truth for "where each F-CODEX falsifier sits on the
+// closure ladder". Walks the verify/ directory and tallies, per pillar:
+//
+//     T1     calc_<pillar>.hexa                          (1 file)
+//     T2 #1  numerics_<pillar>.hexa                      (1 file)
+//     T2 #2  numerics_<pillar>_parity.hexa               (1 file)
+//     T2 #3  numerics_<pillar>_solver.hexa               (1 file)
+//     T3     <pillar>_t3_*.hexa  (empirical, ≥ 1 file)   (0 files yet)
+//
+// Plus the cross-cutter row:
+//
+//     X1  lattice_check.hexa, cross_doc_audit.hexa,
+//         numerics_cross_pillar.hexa, numerics_lattice_arithmetic.hexa
+//
+// PASS criterion: every F-CODEX falsifier has T1 + T2 ×3 present (= 4
+// files per pillar = 16 pillar files), AND all 4 cross-cutter slots
+// are present (= 4 files), totalling 20 baseline runnables. T3 not
+// required for sat-1; flagged when missing.
+//
+// Sentinel: __HEXA_CODEX_FALSIFIER_CHECK__ PASS at sat-1.
+//
+// Recipe §3 closure-pct formula:
+//
+//     pct(F-CODEX-k) = layers_closed(k) / 5  (T1 + T2#1 + T2#2 + T2#3 + T3)
+//     overall_sat1   = AND_k (pct(k) ≥ 4/5 = 0.80)
+//
+// Run:
+//   hexa run verify/falsifier_check.hexa
+//
+// @no-lock-needed
+// @resolver-bypass(reason="Pure local verifier; integer + float arithmetic only.")
+
+let HOME = env("HOME")
+
+fn _root() -> str {
+    let r = env("HEXA_CODEX_ROOT")
+    if r.len() > 0 { return r }
+    let pwd = exec("pwd").trim()
+    if pwd.len() > 0 { return pwd }
+    return HOME + "/core/hexa-codex"
+}
+
+let ROOT = _root()
+let VERIFY_DIR = ROOT + "/verify"
+
+// 4 F-CODEX pillars
+let PILLARS = ["train_cost", "infer_cost", "alignment", "interpret"]
+
+// FALSIFIERS list (recipe §4 invariant 3).
+let FALSIFIERS = [
+    "F-CODEX-1 closure tracker",
+    "F-CODEX-2 closure tracker",
+    "F-CODEX-3 closure tracker",
+    "F-CODEX-4 closure tracker",
+]
+
+// ── helpers ──────────────────────────────────────────────────────────────
+
+let mut RUN = 0
+let mut FAIL = 0
+let mut FAILURES = []
+
+fn _check(ok: bool, label: str, detail: str) {
+    RUN = RUN + 1
+    if ok {
+        println("  [PASS] " + label)
+        if detail.len() > 0 { println("         · " + detail) }
+    } else {
+        FAIL = FAIL + 1
+        FAILURES.push(label + " :: " + detail)
+        println("  [FAIL] " + label)
+        if detail.len() > 0 { println("         · " + detail) }
+    }
+}
+
+// File-existence test via shell (`test -f path` returns exit 0 iff present).
+fn _exists(path: str) -> bool {
+    let r = exec_with_status("test -f '" + path + "' && echo OK")
+    let out = to_string(r[0])
+    return out.find("OK") >= 0
+}
+
+// Layer file path for (pillar, layer-tag).
+//   layer ∈ {"calc", "numerics", "numerics_parity", "numerics_solver"}.
+fn _layer_path(pillar: str, layer: str) -> str {
+    if layer == "calc" {
+        return VERIFY_DIR + "/calc_" + pillar + ".hexa"
+    }
+    if layer == "numerics" {
+        return VERIFY_DIR + "/numerics_" + pillar + ".hexa"
+    }
+    if layer == "numerics_parity" {
+        return VERIFY_DIR + "/numerics_" + pillar + "_parity.hexa"
+    }
+    if layer == "numerics_solver" {
+        return VERIFY_DIR + "/numerics_" + pillar + "_solver.hexa"
+    }
+    return ""
+}
+
+// ── checks ───────────────────────────────────────────────────────────────
+
+// Check 1..4: per-falsifier closure (T1 + T2 ×3 = 4 layers all present).
+fn check_pillar_closure(idx: int) {
+    let pillar = PILLARS[idx]
+    let p_calc = _exists(_layer_path(pillar, "calc"))
+    let p_t2_1 = _exists(_layer_path(pillar, "numerics"))
+    let p_t2_2 = _exists(_layer_path(pillar, "numerics_parity"))
+    let p_t2_3 = _exists(_layer_path(pillar, "numerics_solver"))
+    let layers = (if p_calc { 1 } else { 0 }) +
+                 (if p_t2_1 { 1 } else { 0 }) +
+                 (if p_t2_2 { 1 } else { 0 }) +
+                 (if p_t2_3 { 1 } else { 0 })
+    let label = "F-CODEX-" + str(idx + 1) + " (" + pillar + "): T1 + T2×3 = 4 layers"
+    _check(layers == 4,
+           label,
+           "calc=" + str(p_calc) + " T2#1=" + str(p_t2_1) +
+           " T2#2=" + str(p_t2_2) + " T2#3=" + str(p_t2_3) +
+           " — closed=" + str(layers) + "/4")
+}
+
+// Check 5: cross-cutter row presence.
+fn check_cross_cutter_row() {
+    let f1 = _exists(VERIFY_DIR + "/lattice_check.hexa")
+    let f2 = _exists(VERIFY_DIR + "/cross_doc_audit.hexa")
+    let f3 = _exists(VERIFY_DIR + "/numerics_cross_pillar.hexa")
+    let f4 = _exists(VERIFY_DIR + "/numerics_lattice_arithmetic.hexa")
+    let cnt = (if f1 { 1 } else { 0 }) + (if f2 { 1 } else { 0 }) +
+              (if f3 { 1 } else { 0 }) + (if f4 { 1 } else { 0 })
+    _check(cnt == 4,
+           "cross-cutter row (X1): lattice/cross_doc/cross_pillar/lattice_arithmetic",
+           "lattice=" + str(f1) + " cross_doc=" + str(f2) +
+           " cross_pillar=" + str(f3) + " lattice_arith=" + str(f4) +
+           " — closed=" + str(cnt) + "/4")
+}
+
+// Check 6: total runnable file count (4 pillars × 4 layers + 4 cross = 20).
+fn check_total_runnable_count() {
+    let mut total = 0
+    let layers = ["calc", "numerics", "numerics_parity", "numerics_solver"]
+    let mut p = 0
+    while p < len(PILLARS) {
+        let mut l = 0
+        while l < len(layers) {
+            if _exists(_layer_path(PILLARS[p], layers[l])) { total = total + 1 }
+            l = l + 1
+        }
+        p = p + 1
+    }
+    let cross_paths = [
+        VERIFY_DIR + "/lattice_check.hexa",
+        VERIFY_DIR + "/cross_doc_audit.hexa",
+        VERIFY_DIR + "/numerics_cross_pillar.hexa",
+        VERIFY_DIR + "/numerics_lattice_arithmetic.hexa",
+    ]
+    let mut i = 0
+    while i < len(cross_paths) {
+        if _exists(cross_paths[i]) { total = total + 1 }
+        i = i + 1
+    }
+    _check(total >= 20,
+           "total runnable .hexa scripts = 20 (4 pillars × 4 layers + 4 cross-cutters)",
+           "counted=" + str(total))
+}
+
+// Check 7: closure-pct per falsifier ≥ 4/5 = 0.80 (sat-1 floor).
+fn check_closure_pct_sat1() {
+    let mut all_ok = true
+    let mut min_pct = 1.0
+    let mut p = 0
+    while p < len(PILLARS) {
+        let pillar = PILLARS[p]
+        let layers = (if _exists(_layer_path(pillar, "calc")) { 1 } else { 0 }) +
+                     (if _exists(_layer_path(pillar, "numerics")) { 1 } else { 0 }) +
+                     (if _exists(_layer_path(pillar, "numerics_parity")) { 1 } else { 0 }) +
+                     (if _exists(_layer_path(pillar, "numerics_solver")) { 1 } else { 0 })
+        let pct = to_float(layers) / 5.0           // T3 not yet ⇒ /5
+        if pct < 0.80 { all_ok = false }
+        if pct < min_pct { min_pct = pct }
+        p = p + 1
+    }
+    _check(all_ok,
+           "closure pct ≥ 0.80 (4/5) for every F-CODEX falsifier (sat-1 floor)",
+           "min_pct=" + to_string(min_pct))
+}
+
+// Check 8: T3 (empirical) row — gap report. Currently 0/4. Flagged but
+//   does NOT block sat-1 PASS.
+fn check_t3_gap_report() {
+    let mut t3_count = 0
+    let mut p = 0
+    while p < len(PILLARS) {
+        let pillar = PILLARS[p]
+        // Convention: T3 lives at verify/<pillar>_t3_*.hexa (none exist yet).
+        // We probe a single canonical name to demonstrate the gap.
+        let candidate = VERIFY_DIR + "/" + pillar + "_t3_anchor.hexa"
+        if _exists(candidate) { t3_count = t3_count + 1 }
+        p = p + 1
+    }
+    let gap = 4 - t3_count
+    // PASS iff gap is reported (not blocking). Always passes by design.
+    _check(gap >= 0,
+           "T3 (empirical) row gap report: " + str(gap) + "/4 falsifiers awaiting T3",
+           "t3_count=" + str(t3_count) + " (informational; sat-1 does NOT require T3)")
+}
+
+// Check 9: papers/lean anchor presence (closure substrate).
+fn check_substrate_anchors() {
+    let p1 = _exists(ROOT + "/papers/n6-ai-17-techniques-experimental-paper.md")
+    let p2 = _exists(ROOT + "/papers/n6-ai-techniques-68-integrated-paper.md")
+    let p3 = _exists(ROOT + "/formal/lean4/N6/InvariantLattice/Sigma.lean")
+    let cnt = (if p1 { 1 } else { 0 }) + (if p2 { 1 } else { 0 }) +
+              (if p3 { 1 } else { 0 })
+    _check(cnt >= 2,
+           "substrate anchors: ≥ 2 of {paper P1, paper P2, Sigma.lean} present",
+           "P1=" + str(p1) + " P2=" + str(p2) + " Sigma.lean=" + str(p3) +
+           " — present=" + str(cnt) + "/3")
+}
+
+// Check 10: overall sat-1 verdict — every per-falsifier closure ≥ 4/5
+//   AND cross-cutter row 4/4. This is THE recipe §7.2 sat-1 gate.
+fn check_overall_sat1() {
+    let mut all_pillars_ok = true
+    let mut p = 0
+    while p < len(PILLARS) {
+        let pillar = PILLARS[p]
+        let layers = (if _exists(_layer_path(pillar, "calc")) { 1 } else { 0 }) +
+                     (if _exists(_layer_path(pillar, "numerics")) { 1 } else { 0 }) +
+                     (if _exists(_layer_path(pillar, "numerics_parity")) { 1 } else { 0 }) +
+                     (if _exists(_layer_path(pillar, "numerics_solver")) { 1 } else { 0 })
+        if layers < 4 { all_pillars_ok = false }
+        p = p + 1
+    }
+    let cross_ok = _exists(VERIFY_DIR + "/lattice_check.hexa") &&
+                   _exists(VERIFY_DIR + "/cross_doc_audit.hexa") &&
+                   _exists(VERIFY_DIR + "/numerics_cross_pillar.hexa") &&
+                   _exists(VERIFY_DIR + "/numerics_lattice_arithmetic.hexa")
+    _check(all_pillars_ok && cross_ok,
+           "RECIPE §7.2 sat-1 gate: all 4 pillars at T2 ×3 AND cross-cutter 4/4",
+           "pillars_ok=" + str(all_pillars_ok) + " cross_ok=" + str(cross_ok))
+}
+
+// ── main ─────────────────────────────────────────────────────────────────
+
+fn main() {
+    println("========================================================================")
+    println("  hexa-codex falsifier closure tracker (recipe §7.4 priority 9)")
+    println("  4 F-CODEX pillars × {T1, T2#1, T2#2, T2#3} + 4 cross-cutters")
+    println("========================================================================")
+    println("  ROOT = " + ROOT)
+    println("")
+
+    let mut i = 0
+    while i < len(PILLARS) {
+        check_pillar_closure(i)
+        i = i + 1
+    }
+    println("")
+    check_cross_cutter_row()
+    check_total_runnable_count()
+    check_closure_pct_sat1()
+    check_t3_gap_report()
+    check_substrate_anchors()
+    check_overall_sat1()
+
+    println("========================================================================")
+    let pass_n = RUN - FAIL
+    println("  " + str(pass_n) + "/" + str(RUN) + " checks passed")
+    if FAIL > 0 {
+        println("  FAILURES:")
+        for f in FAILURES { println("    ✗ " + f) }
+        println("__HEXA_CODEX_FALSIFIER_CHECK__ FAIL")
+        exit(1)
+    }
+    println("  Falsifier closure tracker: sat-1 reached.")
+    println("  Recipe §7.4 priority 9: COMPLETE.")
+    println("__HEXA_CODEX_FALSIFIER_CHECK__ PASS")
+    exit(0)
+}
