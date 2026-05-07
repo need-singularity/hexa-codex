@@ -203,10 +203,21 @@ fn cmd_verb(verb: str, a: [str]) {
     _audit(verb, "", 0)
 }
 
-// ─── subcommand: verify (delegates to verify/cli.py) ───
+// ─── subcommand: verify (delegates to verify/cli.py or .hexa scripts) ───
 //
-// Forwards to python3 verify/cli.py. Each Python verifier is stdlib-only so
-// no pip install is required. Optional --json flag passes through.
+// Routing:
+//   verify lattice          → hexa run verify/lattice_check.hexa  (.hexa, recipe T1)
+//   verify all | <other>    → python3 verify/cli.py <target>      (Python, legacy)
+//
+// .hexa-native targets close T1/T2 falsifier floors per
+// ~/core/bedrock/docs/runnable_surface_recipe.md ; Python targets remain
+// for the wider 6-verifier inventory (n6 / inventory / group / release /
+// falsifiers / reference). Optional --json flag passes through to python only.
+
+fn _verify_hexa_script(target: str) -> str {
+    if target == "lattice" { return HC + "/verify/lattice_check.hexa" }
+    return ""
+}
 
 fn cmd_verify(a: [str]) {
     let mut target = "all"
@@ -215,7 +226,20 @@ fn cmd_verify(a: [str]) {
         let cand = a[3]
         if cand.starts_with("--") == false { target = cand }
     }
-    let json = ""
+
+    let hexa_script = _verify_hexa_script(target)
+    if hexa_script.len() > 0 {
+        let cmd = "HEXA_CODEX_ROOT=" + shq(HC) + " " +
+                  shq(HOME + "/.hx/bin/hexa") + " run " + shq(hexa_script)
+        let rc = exec_with_status(cmd)
+        let out = to_string(rc[0])
+        let code = rc[1]
+        print(out)
+        _audit("verify", target, code)
+        if code != 0 { exit(code) }
+        return
+    }
+
     let mut tail = ""
     if json_mode(a) { tail = " --json" }
     let cmd = "cd " + shq(HC) + " && python3 verify/cli.py " + shq(target) + tail
@@ -348,7 +372,7 @@ fn cmd_version() {
     println("hexa-codex " + VERSION)
     println("standalone AI knowledge substrate (HEXA family — extracted from n6-architecture@c0f1f570 on 2026-05-06)")
     println("license: MIT")
-    println("repo:    https://github.com/need-singularity/hexa-codex")
+    println("repo:    https://github.com/dancinlab/hexa-codex")
 }
 
 // ─── help ───
@@ -384,7 +408,8 @@ fn cmd_help() {
     println("utility subcommands:")
     println("  list            17-verb table grouped by 4 groups")
     println("  selftest        17-verb spec presence sweep")
-    println("  verify [check]  unified verifier dispatcher (n6/inventory/group/release/falsifiers/all)")
+    println("  verify [check]  unified verifier dispatcher (lattice/n6/inventory/group/release/falsifiers/reference/all)")
+    println("                  · 'lattice' → verify/lattice_check.hexa (.hexa, recipe §7.4 T1)")
     println("  inventory       17-verb spec inventory + canonical-header audit")
     println("  lattice [n]     n=k lattice explorer (σ·φ vs n·τ identity)")
     println("  calc <metric>   F-CODEX-1..4 calculators (train_cost/infer_cost/alignment/interpret/quality_scale)")

@@ -27,6 +27,8 @@ path = "cli/hexa-codex.hexa"
 runner = "hexa"
 files = [
     "tests/test_selftest.hexa",
+    "tests/test_lattice.hexa",
+    "tests/test_all.hexa",
 ]
 
 # Python pytest tests (Python stdlib only — no pip install required).
@@ -98,6 +100,7 @@ verify = [
     "verify/calc_quality_scale.py", # quality_scale Chinchilla-comparable fit
     "verify/lattice_explore.py",    # n=k lattice arithmetic explorer
     "verify/verb_query.py",         # verb info / spec lookup tool
+    "verify/lattice_check.hexa",    # n=6 closure audit (.hexa, recipe §7.4 T1)
 ]
 build = [
     "build/Makefile",               # verify + test + ci + per-verb pdf fan-out
@@ -155,6 +158,7 @@ verdict           = "SPEC_CATALOG_ONLY + RUNNABLE_VERIFICATION_SURFACE + FORMAL_
 extracted_from    = "n6-architecture@c0f1f570 on 2026-05-06"
 runnable_added_on = "2026-05-07 (verify/ + build/ + python tests/, mirroring hexa-sscb pattern)"
 references_added_on = "2026-05-07 (papers/ + formal/ from n6-architecture@0c65155a, P1+P2+P3)"
+runnable_hexa_iter1 = "2026-05-07 (verify/lattice_check.hexa 24/24 PASS — recipe §7.4 priority 1; T1 floor for F-CODEX-1..4)"
 
 # ── Scope honesty (raw#10 C3) ─────────────────────────────
 [scope]

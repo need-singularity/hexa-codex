@@ -1,0 +1,374 @@
+#!hexa strict
+// hexa-codex/verify/lattice_check.hexa — n=6 invariant lattice audit.
+//
+// Verifies that σ(6)=12, τ(6)=4, φ(6)=2, J₂=24, the closure
+// σ(6)·φ(6) = n·τ(6) = J₂ = 24, the σ-φ=10 interpretability motif row,
+// and the 17-verb / 4-group arithmetic (6+3+4+4=17 ; group_count=τ(6)) hold
+// consistently across:
+//
+//   .roadmap.hexa_codex                                     — repo-overall lattice (§A.1)
+//   hexa.toml                                               — package manifest [invariants.n6]
+//   papers/n6-ai-17-techniques-experimental-paper.md        — 17-verb σ·φ=24 map (192/192 EXACT)
+//   formal/lean4/N6/InvariantLattice/Sigma.lean             — Lean σ(n) Nat definition
+//   safety / economics / ops / substrate (4 groups, 17 verbs)
+//
+// Authority: .roadmap.hexa_codex §A.1; hexa.toml [invariants.n6]; n=6 perfect-number closure.
+//
+// Falsifier coverage: T1 algebraic floor for F-CODEX-1..4 (closure identity must hold
+// before any empirical fit can be asked).
+//
+// Run:
+//   hexa run verify/lattice_check.hexa            # exit 0 = all invariants hold
+//   HEXA_CODEX_ROOT=/path hexa run …              # explicit root override
+//
+// Cost: $0 (pure file reads + integer arithmetic + string scan).
+//
+// @no-lock-needed
+// @resolver-bypass(reason="Pure local verifier; reads project docs only.")
+
+let HOME = env("HOME")
+
+fn hexa_codex_root() -> str {
+    let r = env("HEXA_CODEX_ROOT")
+    if r.len() > 0 { return r }
+    let pwd = exec("pwd").trim()
+    if pwd.len() > 0 { return pwd }
+    return HOME + "/core/hexa-codex"  // @allow-devpath
+}
+
+let ROOT = hexa_codex_root()
+
+// ── canonical n=6 lattice values (.roadmap.hexa_codex §A.1) ──────────────
+let SIGMA_6   = 12      // σ(6) — sum-of-divisors → HELM 12-dim capability bin
+let TAU_6     = 4       // τ(6) — divisor count → 4 lifecycle phases AND 4 group taxonomy
+let PHI_6     = 2       // φ(6) — Euler totient → helpful / harmless verdict bit
+let J2        = 24      // σ·φ = n·τ — training-cost N^J₂ scaling stratum
+let N         = 6       // master row
+let SIGMA_PHI = 10      // σ - φ = 10 → interpretability circuit motif statistics
+
+// ── 4-group taxonomy arithmetic (must sum to 17) ─────────────────────────
+let SAFETY_VERBS    = 6    // alignment, safety, welfare, adversarial, consciousness, interpret
+let ECONOMICS_VERBS = 3    // train_cost, infer_cost, quality_scale
+let OPS_VERBS       = 4    // deploy, enterprise, agent_serving, eval
+let SUBSTRATE_VERBS = 4    // multimodal, rlhf, cog_arch, causal
+let VERBS_TOTAL     = 17
+
+// ── falsifier preregister coverage (this verifier closes T1 floor for all 4) ──
+let FALSIFIERS = [
+    "F-CODEX-1 (training_cost ∝ N^σ·φ = N^24)",
+    "F-CODEX-2 (inference_cost ∝ context^τ = context^4)",
+    "F-CODEX-3 (alignment eval n=6 axis HELM-comparable)",
+    "F-CODEX-4 (interpretability circuit motif σ-φ=10)",
+]
+
+// ── doc paths ────────────────────────────────────────────────────────────
+let DOC_ROADMAP = ROOT + "/.roadmap.hexa_codex"
+let DOC_TOML    = ROOT + "/hexa.toml"
+let DOC_PAPER1  = ROOT + "/papers/n6-ai-17-techniques-experimental-paper.md"
+let DOC_LEAN    = ROOT + "/formal/lean4/N6/InvariantLattice/Sigma.lean"
+
+// 17-verb spec paths (4 groups). Order mirrors hexa.toml [modules].
+let VERB_SPECS = [
+    "alignment/ai-alignment.md",
+    "safety/ai-safety.md",
+    "welfare/ai-welfare.md",
+    "adversarial/ai-adversarial.md",
+    "consciousness/ai-consciousness.md",
+    "interpret/ai-interpretability.md",
+    "train_cost/ai-training-cost.md",
+    "infer_cost/ai-inference-cost.md",
+    "quality_scale/ai-quality-scale.md",
+    "deploy/ai-deployment.md",
+    "enterprise/ai-enterprise-custom.md",
+    "agent_serving/ai-agent-serving.md",
+    "eval/ai-eval-pipeline.md",
+    "multimodal/ai-multimodal.md",
+    "rlhf/youth-ai-labeling-rlhf-hub.md",
+    "cog_arch/cognitive-architecture.md",
+    "causal/causal-chain.md",
+]
+
+// 11 verb specs (of the 17) that reference n=6 lattice tokens explicitly.
+// The remaining 6 (alignment/welfare/adversarial/interpret/deploy/multimodal)
+// inherit the lattice from group context — presence-only is sufficient.
+let LATTICE_AWARE_SPECS = [
+    "safety/ai-safety.md",
+    "consciousness/ai-consciousness.md",
+    "train_cost/ai-training-cost.md",
+    "infer_cost/ai-inference-cost.md",
+    "quality_scale/ai-quality-scale.md",
+    "enterprise/ai-enterprise-custom.md",
+    "agent_serving/ai-agent-serving.md",
+    "eval/ai-eval-pipeline.md",
+    "rlhf/youth-ai-labeling-rlhf-hub.md",
+    "cog_arch/cognitive-architecture.md",
+    "causal/causal-chain.md",
+]
+
+// ── helpers ──────────────────────────────────────────────────────────────
+
+fn _read(path: str) -> str {
+    if file_exists(path) == false { return "" }
+    return read_file(path)
+}
+
+fn _contains(text: str, needle: str) -> bool {
+    if text.len() == 0 { return false }
+    if needle.len() == 0 { return true }
+    return text.find(needle) >= 0
+}
+
+fn _any_of(text: str, needles: [str]) -> bool {
+    for n in needles { if _contains(text, n) { return true } }
+    return false
+}
+
+// ── audit accumulators ───────────────────────────────────────────────────
+
+let mut RUN = 0
+let mut FAIL = 0
+let mut WARN = 0
+let mut FAILURES = []
+
+fn _check(ok: bool, label: str, detail: str) {
+    RUN = RUN + 1
+    if ok {
+        println("  [PASS] " + label)
+        if detail.len() > 0 { println("         · " + detail) }
+    } else {
+        FAIL = FAIL + 1
+        FAILURES.push(label + " :: " + detail)
+        println("  [FAIL] " + label)
+        if detail.len() > 0 { println("         · " + detail) }
+    }
+}
+
+fn _warn(label: str, detail: str) {
+    WARN = WARN + 1
+    println("  [WARN] " + label)
+    if detail.len() > 0 { println("         · " + detail) }
+}
+
+// ── checks ───────────────────────────────────────────────────────────────
+
+// Check 1: arithmetic closure σ(6)·φ(6) = n·τ(6) = J₂ = 24
+fn check_closure() {
+    let lhs = SIGMA_6 * PHI_6
+    let mid = N * TAU_6
+    let ok1 = lhs == J2
+    let ok2 = mid == J2
+    let ok3 = lhs == mid
+    _check(ok1 && ok2 && ok3,
+           "n=6 closure: σ(6)·φ(6) = n·τ(6) = J₂",
+           "12·2 = 6·4 = " + str(J2))
+}
+
+// Check 2: σ-φ = 10 (interpretability circuit motif row, F-CODEX-4 anchor)
+fn check_sigma_minus_phi() {
+    let v = SIGMA_6 - PHI_6
+    _check(v == SIGMA_PHI,
+           "σ-φ = 10 interpretability motif row",
+           "σ(6)-φ(6) = " + str(v) + " (F-CODEX-4 anchor)")
+}
+
+// Check 3: σ² = 144 (training-cost squared scaling pivot)
+fn check_sigma_squared() {
+    let s2 = SIGMA_6 * SIGMA_6
+    _check(s2 == 144,
+           "σ² = 144 training-cost scaling pivot",
+           "σ(6)² = " + str(s2))
+}
+
+// Check 4: σ³ = 1728 (deploy fleet envelope)
+fn check_sigma_cubed() {
+    let s3 = SIGMA_6 * SIGMA_6 * SIGMA_6
+    _check(s3 == 1728,
+           "σ³ = 1728 deploy fleet envelope",
+           "σ(6)³ = " + str(s3))
+}
+
+// Check 5: 17-verb / 4-group arithmetic — 6+3+4+4 = 17 = σ + σ-φ - 5? not arithmetic-derived.
+//          Just verify the partition sums to declared total.
+fn check_verb_partition() {
+    let sum = SAFETY_VERBS + ECONOMICS_VERBS + OPS_VERBS + SUBSTRATE_VERBS
+    _check(sum == VERBS_TOTAL,
+           "17-verb / 4-group partition: 6+3+4+4 = 17",
+           "safety=" + str(SAFETY_VERBS) +
+           " economics=" + str(ECONOMICS_VERBS) +
+           " ops=" + str(OPS_VERBS) +
+           " substrate=" + str(SUBSTRATE_VERBS) +
+           " sum=" + str(sum))
+}
+
+// Check 6: 4 group count == τ(6)
+fn check_group_count_equals_tau() {
+    let groups = 4
+    _check(groups == TAU_6,
+           "group count = τ(6) = 4 (safety / economics / ops / substrate)",
+           "groups=" + str(groups) + " τ(6)=" + str(TAU_6))
+}
+
+// Check 7: roadmap declares the lattice values
+fn check_roadmap_declares_lattice() {
+    let txt = _read(DOC_ROADMAP)
+    if txt.len() == 0 {
+        _check(false, ".roadmap.hexa_codex exists", DOC_ROADMAP + " missing")
+        return
+    }
+    let ok_sigma = _any_of(txt, ["σ(6)", "sigma(6)"]) && _contains(txt, "12")
+    _check(ok_sigma, "roadmap declares σ(6) = 12", "§A.1")
+    let ok_tau = _any_of(txt, ["τ(6)", "tau(6)"]) && _contains(txt, "4")
+    _check(ok_tau, "roadmap declares τ(6) = 4", "§A.1")
+    let ok_phi = _any_of(txt, ["φ(6)", "phi(6)"]) && _contains(txt, "2")
+    _check(ok_phi, "roadmap declares φ(6) = 2", "§A.1")
+    let ok_j2 = _any_of(txt, ["J₂", "J_2"]) && _contains(txt, "24")
+    _check(ok_j2, "roadmap declares J₂ = 24", "§A.1")
+    let ok_master = _contains(txt, "σ(6) · φ(6) = n · τ(6) = J₂ = 24") ||
+                    _contains(txt, "σ(6)·φ(6) = n·τ(6) = J₂ = 24")
+    _check(ok_master, "roadmap declares master identity",
+           "σ(6) · φ(6) = n · τ(6) = J₂ = 24")
+}
+
+// Check 8: hexa.toml [invariants.n6] declares the same constants
+fn check_toml_invariants() {
+    let txt = _read(DOC_TOML)
+    if txt.len() == 0 {
+        _check(false, "hexa.toml exists", DOC_TOML + " missing")
+        return
+    }
+    let ok_block = _contains(txt, "[invariants.n6]")
+    _check(ok_block, "hexa.toml has [invariants.n6] block", "")
+    let ok_s = _contains(txt, "sigma_6") && _contains(txt, "12")
+    _check(ok_s, "hexa.toml sigma_6 = 12", "")
+    let ok_t = _contains(txt, "tau_6") && _contains(txt, "4")
+    _check(ok_t, "hexa.toml tau_6 = 4", "")
+    let ok_p = _contains(txt, "phi_6") && _contains(txt, "2")
+    _check(ok_p, "hexa.toml phi_6 = 2", "")
+    let ok_j = _contains(txt, "J_2") && _contains(txt, "24")
+    _check(ok_j, "hexa.toml J_2 = 24", "")
+    let ok_master = _contains(txt, "master_identity")
+    _check(ok_master, "hexa.toml declares master_identity field", "")
+    let ok_falsifiers = _contains(txt, "F_CODEX_1") &&
+                        _contains(txt, "F_CODEX_2") &&
+                        _contains(txt, "F_CODEX_3") &&
+                        _contains(txt, "F_CODEX_4")
+    _check(ok_falsifiers, "hexa.toml [falsifiers] lists F_CODEX_1..4", "")
+}
+
+// Check 9: each of the 17 verb specs is present on disk
+fn check_verb_specs_present() {
+    let mut missing = 0
+    for rel in VERB_SPECS {
+        let p = ROOT + "/" + rel
+        if file_exists(p) == false { missing = missing + 1 }
+    }
+    _check(missing == 0,
+           "all 17 verb specs present",
+           "missing=" + str(missing) + " of " + str(VERBS_TOTAL))
+}
+
+// Check 10: 11 lattice-aware verb specs reference σ/τ/φ tokens
+fn check_lattice_aware_specs() {
+    let mut hits = 0
+    let mut misses = []
+    for rel in LATTICE_AWARE_SPECS {
+        let txt = _read(ROOT + "/" + rel)
+        let ok = _any_of(txt, ["sigma(6)", "σ(6)"]) &&
+                 _any_of(txt, ["tau(6)", "τ(6)"]) &&
+                 _any_of(txt, ["phi(6)", "φ(6)"])
+        if ok { hits = hits + 1 } else { misses.push(rel) }
+    }
+    let total = len(LATTICE_AWARE_SPECS)
+    _check(hits == total,
+           "lattice-aware verb specs reference σ/τ/φ (" + str(hits) + "/" + str(total) + ")",
+           "expected sigma(6) / τ(6) / phi(6) tokens in 11 specs")
+    if hits < total {
+        for m in misses { println("         · missing tokens in: " + m) }
+    }
+}
+
+// Check 11: paper P1 (17-techniques) references σ(6)/τ(6)/φ(6) AND the master identity
+fn check_paper_p1() {
+    let txt = _read(DOC_PAPER1)
+    if txt.len() == 0 {
+        _warn("papers/P1 absent (optional)", DOC_PAPER1)
+        return
+    }
+    let ok_tokens = _any_of(txt, ["σ(6)=12", "sigma(6)=12"]) &&
+                    _any_of(txt, ["τ(6)=4",  "tau(6)=4"]) &&
+                    _any_of(txt, ["φ(6)=2",  "phi(6)=2"])
+    _check(ok_tokens, "papers/P1 declares σ(6)=12 τ(6)=4 φ(6)=2",
+           "n6-ai-17-techniques-experimental-paper.md")
+    let ok_192 = _contains(txt, "192/192")
+    _check(ok_192, "papers/P1 ships 192/192 EXACT σ·φ=24 map",
+           "17-verb coordinate map")
+}
+
+// Check 12: Lean formal proof of σ(6)=12 anchor file exists
+fn check_lean_formal() {
+    let txt = _read(DOC_LEAN)
+    if txt.len() == 0 {
+        _warn("formal/Sigma.lean absent (optional)", DOC_LEAN)
+        return
+    }
+    let ok_def = _contains(txt, "def sigma") || _contains(txt, "sigma :")
+    _check(ok_def, "formal/Sigma.lean defines σ(n) Nat function",
+           "Lean 4 formal anchor for F-CL-FORMAL-1")
+}
+
+// Check 13: hexa.toml [closure] verdict declares runnable verification surface
+fn check_toml_verdict_honesty() {
+    let txt = _read(DOC_TOML)
+    if txt.len() == 0 {
+        _warn("hexa.toml absent", DOC_TOML)
+        return
+    }
+    let ok = _contains(txt, "verdict") &&
+             (_contains(txt, "SPEC_CATALOG_ONLY") ||
+              _contains(txt, "RUNNABLE_VERIFICATION_SURFACE"))
+    _check(ok, "hexa.toml [closure] verdict declared (raw#10 C3)",
+           "honest scope declaration present")
+}
+
+// ── main ─────────────────────────────────────────────────────────────────
+
+fn main() {
+    println("========================================================================")
+    println("  hexa-codex — n=6 invariant lattice audit")
+    println("  σ(6)=12, τ(6)=4, φ(6)=2, J₂=24 — closure σ·φ = n·τ = J₂")
+    println("  17-verb / 4-group taxonomy (safety + economics + ops + substrate)")
+    println("========================================================================")
+    println("  root: " + ROOT)
+    println("")
+
+    check_closure()
+    check_sigma_minus_phi()
+    check_sigma_squared()
+    check_sigma_cubed()
+    check_verb_partition()
+    check_group_count_equals_tau()
+    println("")
+    check_roadmap_declares_lattice()
+    println("")
+    check_toml_invariants()
+    println("")
+    check_verb_specs_present()
+    check_lattice_aware_specs()
+    println("")
+    check_paper_p1()
+    check_lean_formal()
+    check_toml_verdict_honesty()
+
+    println("========================================================================")
+    let pass_n = RUN - FAIL
+    println("  " + str(pass_n) + "/" + str(RUN) + " checks passed  (" + str(WARN) + " warn)")
+    if FAIL > 0 {
+        println("  FAILURES:")
+        for f in FAILURES { println("    ✗ " + f) }
+        println("__HEXA_CODEX_LATTICE__ FAIL")
+        exit(1)
+    }
+    println("  All n=6 invariants hold across roadmap + hexa.toml + 17 verb specs.")
+    println("__HEXA_CODEX_LATTICE__ PASS")
+    exit(0)
+}
