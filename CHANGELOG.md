@@ -94,6 +94,33 @@ versions follow [SemVer](https://semver.org/spec/v2.0.0.html).
 - `hexa run tests/test_all.hexa` — 4/4 PASS (selftest + lattice + cross_doc + calc_train_cost).
 - `python3 -m pytest tests/ -m auto -q` — 83 passed (no regression).
 
+### Added (2026-05-07 — 4th RSC iteration: calc_infer_cost / F-CODEX-2)
+
+- `verify/calc_infer_cost.hexa` — F-CODEX-2 T1 algebraic calculator (9 checks):
+  - `τ(6) = 4` divisor-count identity.
+  - n=6 closed-form exponent equals `τ(6)`.
+  - Exponent ladder: 1.0 (linear) < 1.5 (approx) < 2.0 (naïve) < 4.0 (n=6).
+  - n=6 strict upper bound: gap from naïve O(n²) ≥ 1.0.
+  - 1M context = 2^20 = 1_048_576 power-of-2 arithmetic.
+  - Spec anchor: `infer_cost/ai-inference-cost.md` ships 1M-ctx + KV-cache +
+    >80GB infeasibility tokens.
+  - Spec anchor: attention + O(n²) + linear/Paged/Flash engine tokens.
+  - σ·τ = 12·4 = 48 serving-channel anchor (arithmetic + spec presence).
+  - (σ·τ)/J₂ = φ(6) = 2 — serving-channel ↔ training-cost lattice link.
+  - Sentinel `__HEXA_CODEX_CALC_INFER_COST__ PASS`. Closes T1 floor for F-CODEX-2.
+- `tests/test_calc_infer_cost.hexa` — regression wrapper.
+- `tests/test_all.hexa` — CASES += `test_calc_infer_cost`.
+- `cli/hexa-codex.hexa` — `verify infer_cost` (and `infer-cost`) routes to .hexa.
+- `hexa.toml` — `[test] files` += `test_calc_infer_cost.hexa`;
+  `verify =` += `verify/calc_infer_cost.hexa`;
+  `[closure].runnable_hexa_iter4` marker.
+
+### Verified (iter 4)
+
+- `hexa run verify/calc_infer_cost.hexa` — 9/9 PASS.
+- `hexa run tests/test_all.hexa` — 5/5 PASS.
+- `python3 -m pytest tests/ -m auto -q` — 83 passed (no regression).
+
 ## [1.0.0] — 2026-05-06
 
 ### Added

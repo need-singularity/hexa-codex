@@ -30,6 +30,7 @@ files = [
     "tests/test_lattice.hexa",
     "tests/test_cross_doc.hexa",
     "tests/test_calc_train_cost.hexa",
+    "tests/test_calc_infer_cost.hexa",
     "tests/test_all.hexa",
 ]
 
@@ -105,6 +106,7 @@ verify = [
     "verify/lattice_check.hexa",    # n=6 closure audit (.hexa, recipe §7.4 T1)
     "verify/cross_doc_audit.hexa",  # cross-doc anchor audit (.hexa, recipe §7.4 cross-cutter)
     "verify/calc_train_cost.hexa",  # F-CODEX-1 T1 calc (.hexa, recipe §7.4 priority 3)
+    "verify/calc_infer_cost.hexa",  # F-CODEX-2 T1 calc (.hexa, recipe §7.4 priority 3)
 ]
 build = [
     "build/Makefile",               # verify + test + ci + per-verb pdf fan-out
@@ -165,6 +167,7 @@ references_added_on = "2026-05-07 (papers/ + formal/ from n6-architecture@0c6515
 runnable_hexa_iter1 = "2026-05-07 (verify/lattice_check.hexa 24/24 PASS — recipe §7.4 priority 1; T1 floor for F-CODEX-1..4)"
 runnable_hexa_iter2 = "2026-05-07 (verify/cross_doc_audit.hexa 15/15 PASS — recipe §7.4 cross-cutter; 17-verb/4-group + falsifier prefix + provenance + master identity all agree)"
 runnable_hexa_iter3 = "2026-05-07 (verify/calc_train_cost.hexa 8/8 PASS — recipe §7.4 priority 3; F-CODEX-1 T1 calc; J₂=σ·φ=24, exp 24/25=0.96 Chinchilla-comparable)"
+runnable_hexa_iter4 = "2026-05-07 (verify/calc_infer_cost.hexa 9/9 PASS — recipe §7.4 priority 3; F-CODEX-2 T1 calc; context^τ=context^4, σ·τ=48 serving-channel link)"
 
 # ── Scope honesty (raw#10 C3) ─────────────────────────────
 [scope]
