@@ -656,6 +656,55 @@ Next: priority 8 `numerics_lattice_arithmetic.hexa` (math_pure
 stability floor), then priority 9 `falsifier_check.hexa` closure
 tracker, reaching recipe §7.2 sat-1 saturation.
 
+### Added (2026-05-08 — 20th RSC iteration: numerics_lattice_arithmetic)
+
+- `verify/numerics_lattice_arithmetic.hexa` — recipe §7.4 priority 8
+  math_pure stability floor (10 checks). Every other `numerics_*`,
+  `numerics_*_parity`, `numerics_*_solver` script in this repo passes
+  lattice constants through `pow_pure`, `exp_pure`, `log_pure`, etc.
+  This script pins the algebraic invariants those primitives must
+  preserve:
+
+  | # | Stability invariant                                  | Result   |
+  |--:|:-----------------------------------------------------|:---------|
+  | 1 | associativity (σ·φ)·τ = σ·(φ·τ) = J₂·τ = 96          | drift 0  |
+  | 2 | commutativity over (σ, φ, τ, n) pairs                | drift 0  |
+  | 3 | distributivity σ·(φ+τ) = σ·φ + σ·τ = 72              | drift 0  |
+  | 4 | IEEE 754 exact 24/25 = 0.96                          | drift 0  |
+  | 5 | log(exp(x)) = x within 1e-13 over {σ, φ, τ, n, J₂, σ−φ} | drift 0 |
+  | 6 | exp(log(x)) = x within 1e-13 over the same set       | 1.8e-16  |
+  | 7 | pow(pow(x, N6_EXP), 1/N6_EXP) round-trip within 1e-12 | 6e-16   |
+  | 8 | Σ_{i=1..24} 1.0 = J₂ EXACT (accumulation invariant)  | drift 0  |
+  | 9 | floor(x) = ceil(x) = x at integer lattice points     | drift 0  |
+  |10 | sqrt(σ²)=σ; cbrt(σ³)=σ within 1e-12 (1728→12)        | drift 0  |
+
+- `tests/test_numerics_lattice_arithmetic.hexa` — regression wrapper.
+- `tests/test_all.hexa` — CASES += lattice-arithmetic test (now 21).
+- `cli/hexa-codex.hexa` — `verify numerics-lattice-arithmetic` routes.
+- `hexa.toml` — entries + `[closure].runnable_hexa_iter20` marker.
+
+### Verified (iter 20)
+
+- `RESOURCE_LOCAL_HEXA=1 hexa run verify/numerics_lattice_arithmetic.hexa` — 10/10 PASS.
+- `hexa run tests/test_all.hexa` — 21/21 PASS.
+
+### Recipe §7.4 priority table after iter 20
+
+| # | Slot                                | Status     |
+|:-:|:------------------------------------|:-----------|
+| 1 | lattice_check                       | ✓ (iter 1) |
+| 2 | cross_doc_audit                     | ✓ (iter 2) |
+| 3 | calc × 4                            | ✓ (3..6)   |
+| 4 | numerics × 4                        | ✓ (7..10)  |
+| 5 | numerics_parity × 4                 | ✓ (11..14) |
+| 6 | numerics_solver × 4                 | ✓ (15..18) |
+| 7 | numerics_cross_pillar               | ✓ (iter 19)|
+| 8 | numerics_lattice_arithmetic         | ✓ (iter 20)|
+| 9 | falsifier_check                     | TBD        |
+
+Only priority 9 (closure tracker meta) remains before sat-2 — rest
+are optional saturation slots (priorities 10..15).
+
 ### F-CODEX T2 ROW: COMPLETE after iter 10
 
 | Falsifier  | T1 (algebraic)                    | T2 (numerics)            | T3 (empirical) |

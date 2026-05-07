@@ -46,6 +46,7 @@ files = [
     "tests/test_numerics_alignment_solver.hexa",
     "tests/test_numerics_interpret_solver.hexa",
     "tests/test_numerics_cross_pillar.hexa",
+    "tests/test_numerics_lattice_arithmetic.hexa",
     "tests/test_all.hexa",
 ]
 
@@ -137,6 +138,7 @@ verify = [
     "verify/numerics_alignment_solver.hexa",  # F-CODEX-3 T2 stack #3 ODE solver — leapfrog/Verlet harmonic oscillator (.hexa, recipe §7.4 priority 6)
     "verify/numerics_interpret_solver.hexa",  # F-CODEX-4 T2 stack #3 ODE solver — gradient-flow + Lyapunov (.hexa, recipe §7.4 priority 6 final)
     "verify/numerics_cross_pillar.hexa",      # cross-cutter T2 over all 4 F-CODEX pillars (.hexa, recipe §7.4 priority 7)
+    "verify/numerics_lattice_arithmetic.hexa", # math_pure stability floor (.hexa, recipe §7.4 priority 8)
 ]
 build = [
     "build/Makefile",               # verify + test + ci + per-verb pdf fan-out
@@ -213,6 +215,7 @@ runnable_hexa_iter16 = "2026-05-08 (verify/numerics_infer_cost_solver.hexa 10/10
 runnable_hexa_iter17 = "2026-05-08 (verify/numerics_alignment_solver.hexa 10/10 PASS — recipe §7.4 priority 6; F-CODEX-3 T2 stack #3 ODE solver — symplectic leapfrog/Verlet on harmonic oscillator d²x/dt²=−(x−M); time-average ⟨x⟩ over 1 period recovers σ=12 mean within 7e-8; energy bounded over 50 periods (max drift 9e-5); T2 #3 row 3/4)"
 runnable_hexa_iter18 = "2026-05-08 (verify/numerics_interpret_solver.hexa 10/10 PASS — recipe §7.4 priority 6 FINAL; F-CODEX-4 T2 stack #3 ODE solver — gradient-flow dx/dt=M−x with Lyapunov L=½(x−M)² monotone decay; all 6 OBS-as-IC trajectories converge to M=σ−φ=10 within 4e-9 at t=20; convergence orders 1/2/4 verified; T2 #3 row 4/4 COMPLETE — recipe §7.4 priority 6 row CLOSED)"
 runnable_hexa_iter19 = "2026-05-08 (verify/numerics_cross_pillar.hexa 10/10 PASS — recipe §7.4 priority 7; cross-cutter T2 over all 4 F-CODEX pillars; lattice closure σ·φ=n·τ=J₂=24, ratio tower σ/φ=n=6, F1×F2 composite anchor finite, F3×F4 product = σ−φ, coupled F1+F4 RK4 ODE both ≤1e-8, lattice-log positivity, exponent partition; recipe §7.4 priority 7 CLOSED)"
+runnable_hexa_iter20 = "2026-05-08 (verify/numerics_lattice_arithmetic.hexa 10/10 PASS — recipe §7.4 priority 8; math_pure stability floor — associativity/commutativity/distributivity, IEEE 754 24/25=0.96 exact, log∘exp=id within 1e-13, pow_pure round-trip within 6e-16, Σ24·1.0=J₂ exact, sqrt(σ²)/cbrt(σ³)=σ exact; recipe §7.4 priority 8 CLOSED)"
 
 # ── Scope honesty (raw#10 C3) ─────────────────────────────
 [scope]

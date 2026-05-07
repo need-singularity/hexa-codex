@@ -1,0 +1,252 @@
+#!hexa strict
+// hexa-codex/verify/numerics_lattice_arithmetic.hexa — recipe §7.4 priority 8.
+//
+// Math_pure stability floor: every other numerics_* / numerics_*_parity /
+// numerics_*_solver script in this repo passes its lattice constants
+// through `pow_pure`, `exp_pure`, `log_pure`, etc. If those primitives
+// drift, every higher-tier check silently shifts. This script is the
+// arithmetic-only safety net that pins down the lattice's algebraic
+// closure under math_pure operations:
+//
+//   · associativity / commutativity / distributivity for {σ, φ, τ, n, J₂}
+//   · IEEE 754 exact representations (24/25 = 0.96, 1.0/12 round-trip)
+//   · log ∘ exp = id  and  exp ∘ log = id  within float epsilon
+//   · pow_pure round trips (x = pow(pow(x, e), 1/e))
+//   · accumulation stability: Σ_{i=1..N} 1.0  produces N exactly
+//   · floor/ceil at integer lattice points
+//   · sqrt(σ²) = σ exact; cbrt(σ³) ≈ σ within 1e-12
+//
+// PASS criterion: 10 checks pass.
+//
+// Recipe T2 floor: §7.4 row 8 — the math_pure stability check the
+// `numerics_*` row depends on.
+//
+// Run:
+//   hexa run verify/numerics_lattice_arithmetic.hexa
+//
+// @no-lock-needed
+// @resolver-bypass(reason="Pure local verifier; integer + float arithmetic only.")
+
+use "self/runtime/math_pure"
+
+let HOME = env("HOME")
+
+fn _root() -> str {
+    let r = env("HEXA_CODEX_ROOT")
+    if r.len() > 0 { return r }
+    let pwd = exec("pwd").trim()
+    if pwd.len() > 0 { return pwd }
+    return HOME + "/core/hexa-codex"
+}
+
+let ROOT = _root()
+
+// ── lattice constants (float copies; integer mirrors not used here) ──────
+let SIGMA = 12.0
+let PHI   = 2.0
+let TAU   = 4.0
+let N     = 6.0
+let J2    = 24.0
+let SIGMA_PHI_DIFF = 10.0
+let N6_EXP = 24.0 / 25.0
+
+let FALSIFIERS = ["math_pure stability floor for n=6 lattice arithmetic (recipe §7.4 priority 8)"]
+
+// ── helpers ──────────────────────────────────────────────────────────────
+
+let mut RUN = 0
+let mut FAIL = 0
+let mut FAILURES = []
+
+fn _check(ok: bool, label: str, detail: str) {
+    RUN = RUN + 1
+    if ok {
+        println("  [PASS] " + label)
+        if detail.len() > 0 { println("         · " + detail) }
+    } else {
+        FAIL = FAIL + 1
+        FAILURES.push(label + " :: " + detail)
+        println("  [FAIL] " + label)
+        if detail.len() > 0 { println("         · " + detail) }
+    }
+}
+
+fn _abs(x: float) -> float {
+    return abs_pure(x)
+}
+
+// ── checks ───────────────────────────────────────────────────────────────
+
+// Check 1: associativity (σ·φ)·τ = σ·(φ·τ) = J₂·τ = 96
+fn check_associativity() {
+    let a = (SIGMA * PHI) * TAU
+    let b = SIGMA * (PHI * TAU)
+    let c = J2 * TAU
+    let drift = _abs(a - b) + _abs(b - c)
+    _check((drift < 1.0e-12) && (a == 96.0),
+           "associativity (σ·φ)·τ = σ·(φ·τ) = J₂·τ = 96",
+           "(σ·φ)·τ=" + to_string(a) + " σ·(φ·τ)=" + to_string(b) +
+           " J₂·τ=" + to_string(c))
+}
+
+// Check 2: commutativity over all 6 lattice constants pairs
+fn check_commutativity() {
+    let p1 = SIGMA * PHI - PHI * SIGMA            // 0
+    let p2 = N * TAU - TAU * N                     // 0
+    let p3 = SIGMA * TAU - TAU * SIGMA             // 0
+    let p4 = N * PHI - PHI * N                     // 0
+    let drift = _abs(p1) + _abs(p2) + _abs(p3) + _abs(p4)
+    _check(drift < 1.0e-15,
+           "commutativity: a·b = b·a for all (σ, φ, τ, n) pairs",
+           "max_residual=" + to_string(drift))
+}
+
+// Check 3: distributivity σ·(φ + τ) = σ·φ + σ·τ
+fn check_distributivity() {
+    let lhs = SIGMA * (PHI + TAU)
+    let rhs = SIGMA * PHI + SIGMA * TAU
+    let drift = _abs(lhs - rhs)
+    _check((drift < 1.0e-12) && (lhs == 72.0),
+           "distributivity σ·(φ+τ) = σ·φ + σ·τ = 72",
+           "lhs=" + to_string(lhs) + " rhs=" + to_string(rhs))
+}
+
+// Check 4: IEEE 754 exact — 24/25 = 0.96 representable exactly
+fn check_n6_exp_exact() {
+    let direct = 24.0 / 25.0
+    let drift = _abs(direct - 0.96) + _abs(N6_EXP - 0.96)
+    _check(drift == 0.0,
+           "IEEE 754 exact: 24/25 = 0.96 (no rounding)",
+           "direct=" + to_string(direct) + " N6_EXP=" + to_string(N6_EXP))
+}
+
+// Check 5: log ∘ exp = id within float epsilon for all lattice constants
+fn check_log_exp_inverse() {
+    let mut max_drift = 0.0
+    let xs = [SIGMA, PHI, TAU, N, J2, SIGMA_PHI_DIFF]
+    let mut i = 0
+    while i < len(xs) {
+        let r = log_pure(exp_pure(xs[i]))
+        let drift = _abs(r - xs[i]) / xs[i]
+        if drift > max_drift { max_drift = drift }
+        i = i + 1
+    }
+    _check(max_drift < 1.0e-13,
+           "log(exp(x)) = x within 1e-13 for {σ, φ, τ, n, J₂, σ−φ}",
+           "max_rel_drift=" + to_string(max_drift))
+}
+
+// Check 6: exp ∘ log = id (the other direction) for the same set
+fn check_exp_log_inverse() {
+    let mut max_drift = 0.0
+    let xs = [SIGMA, PHI, TAU, N, J2, SIGMA_PHI_DIFF]
+    let mut i = 0
+    while i < len(xs) {
+        let r = exp_pure(log_pure(xs[i]))
+        let drift = _abs(r - xs[i]) / xs[i]
+        if drift > max_drift { max_drift = drift }
+        i = i + 1
+    }
+    _check(max_drift < 1.0e-13,
+           "exp(log(x)) = x within 1e-13 for {σ, φ, τ, n, J₂, σ−φ}",
+           "max_rel_drift=" + to_string(max_drift))
+}
+
+// Check 7: pow_pure round trip — pow(pow(x, e), 1/e) ≈ x within 1e-12
+//   Use e = N6_EXP = 0.96 (the F-CODEX-1 exponent every numerics_*_*
+//   script depends on).
+fn check_pow_round_trip() {
+    let mut max_drift = 0.0
+    let xs = [SIGMA, PHI, TAU, N, J2, SIGMA_PHI_DIFF]
+    let inv_e = 1.0 / N6_EXP
+    let mut i = 0
+    while i < len(xs) {
+        let y = pow_pure(xs[i], N6_EXP)
+        let r = pow_pure(y, inv_e)
+        let drift = _abs(r - xs[i]) / xs[i]
+        if drift > max_drift { max_drift = drift }
+        i = i + 1
+    }
+    _check(max_drift < 1.0e-12,
+           "pow(pow(x, N6_EXP), 1/N6_EXP) = x within 1e-12",
+           "max_rel_drift=" + to_string(max_drift))
+}
+
+// Check 8: accumulation stability — sum of N=24 copies of 1.0 = 24 exact
+//   (validates Σ-loop floor used by every solver / parity script).
+fn check_accumulation_stability() {
+    let mut s = 0.0
+    let mut i = 0
+    while i < 24 {
+        s = s + 1.0
+        i = i + 1
+    }
+    _check(s == J2,
+           "Σ_{i=1..24} 1.0 = J₂ EXACT (accumulation invariant)",
+           "sum=" + to_string(s) + " J₂=" + to_string(J2))
+}
+
+// Check 9: floor/ceil idempotence at integer lattice points
+fn check_floor_ceil_idempotent() {
+    let f_sigma = floor_pure(SIGMA)
+    let c_sigma = ceil_pure(SIGMA)
+    let f_j2    = floor_pure(J2)
+    let c_j2    = ceil_pure(J2)
+    let f_pred  = floor_pure(SIGMA_PHI_DIFF)
+    let c_pred  = ceil_pure(SIGMA_PHI_DIFF)
+    let drift = _abs(f_sigma - SIGMA) + _abs(c_sigma - SIGMA) +
+                _abs(f_j2 - J2)       + _abs(c_j2 - J2) +
+                _abs(f_pred - SIGMA_PHI_DIFF) + _abs(c_pred - SIGMA_PHI_DIFF)
+    _check(drift < 1.0e-15,
+           "floor(x) = ceil(x) = x at integer lattice points {σ, J₂, σ−φ}",
+           "drift=" + to_string(drift))
+}
+
+// Check 10: sqrt(σ²) = σ AND cbrt(σ³) ≈ σ — root primitives stable
+fn check_sqrt_cbrt() {
+    let s_sq    = sqrt_pure(SIGMA * SIGMA)               // sqrt(144) = 12
+    let s_cb    = cbrt_pure(SIGMA * SIGMA * SIGMA)       // cbrt(1728) = 12
+    let drift_s = _abs(s_sq - SIGMA)
+    let drift_c = _abs(s_cb - SIGMA) / SIGMA
+    _check((drift_s < 1.0e-12) && (drift_c < 1.0e-12),
+           "sqrt(σ²) = σ ; cbrt(σ³) ≈ σ within 1e-12 (1728 → 12)",
+           "sqrt=" + to_string(s_sq) + " (drift " + to_string(drift_s) + ")  " +
+           "cbrt=" + to_string(s_cb) + " (rel_drift " + to_string(drift_c) + ")")
+}
+
+// ── main ─────────────────────────────────────────────────────────────────
+
+fn main() {
+    println("========================================================================")
+    println("  hexa-codex math_pure stability floor (recipe §7.4 priority 8)")
+    println("  10 algebraic invariants under math_pure ops; pins every numerics_*")
+    println("========================================================================")
+    println("  σ=12  φ=2  τ=4  n=6  J₂=24  σ−φ=10  N6_EXP=24/25=0.96")
+    println("")
+
+    check_associativity()
+    check_commutativity()
+    check_distributivity()
+    check_n6_exp_exact()
+    check_log_exp_inverse()
+    println("")
+    check_exp_log_inverse()
+    check_pow_round_trip()
+    check_accumulation_stability()
+    check_floor_ceil_idempotent()
+    check_sqrt_cbrt()
+
+    println("========================================================================")
+    let pass_n = RUN - FAIL
+    println("  " + str(pass_n) + "/" + str(RUN) + " checks passed")
+    if FAIL > 0 {
+        println("  FAILURES:")
+        for f in FAILURES { println("    ✗ " + f) }
+        println("__HEXA_CODEX_NUMERICS_LATTICE_ARITHMETIC__ FAIL")
+        exit(1)
+    }
+    println("  math_pure stability floor: closed.")
+    println("  Recipe §7.4 priority 8: COMPLETE.")
+    println("__HEXA_CODEX_NUMERICS_LATTICE_ARITHMETIC__ PASS")
+    exit(0)
+}
