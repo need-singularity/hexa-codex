@@ -34,6 +34,7 @@ files = [
     "tests/test_calc_alignment.hexa",
     "tests/test_calc_interpret.hexa",
     "tests/test_numerics_train_cost.hexa",
+    "tests/test_numerics_infer_cost.hexa",
     "tests/test_all.hexa",
 ]
 
@@ -113,6 +114,7 @@ verify = [
     "verify/calc_alignment.hexa",   # F-CODEX-3 T1 calc (.hexa, recipe §7.4 priority 3)
     "verify/calc_interpret.hexa",   # F-CODEX-4 T1 calc (.hexa, recipe §7.4 priority 3)
     "verify/numerics_train_cost.hexa", # F-CODEX-1 T2 numerics (.hexa, recipe §7.4 priority 4; math_pure)
+    "verify/numerics_infer_cost.hexa", # F-CODEX-2 T2 numerics (.hexa, recipe §7.4 priority 4; math_pure)
 ]
 build = [
     "build/Makefile",               # verify + test + ci + per-verb pdf fan-out
@@ -177,6 +179,7 @@ runnable_hexa_iter4 = "2026-05-07 (verify/calc_infer_cost.hexa 9/9 PASS — reci
 runnable_hexa_iter5 = "2026-05-07 (verify/calc_alignment.hexa 9/9 PASS — recipe §7.4 priority 3; F-CODEX-3 T1 calc; mean over σ=12 axes, HELM-drift ≤ 0.10 tolerance)"
 runnable_hexa_iter6 = "2026-05-07 (verify/calc_interpret.hexa 10/10 PASS — recipe §7.4 priority 3 final; F-CODEX-4 T1 calc; motif count = σ−φ = 10, T1 row complete for all 4 falsifiers)"
 runnable_hexa_iter7 = "2026-05-07 (verify/numerics_train_cost.hexa 9/9 PASS — recipe §7.4 priority 4 first; F-CODEX-1 T2 numerical re-derivation via math_pure pow_pure/log_pure; (N·D)^0.96 closed-form on 5-anchor grid)"
+runnable_hexa_iter8 = "2026-05-07 (verify/numerics_infer_cost.hexa 10/10 PASS — recipe §7.4 priority 4; F-CODEX-2 T2 numerical re-derivation; ctx^4 ladder on 5-anchor 1k..1M grid; 1M-ctx ratio = 128^4 = 2^28 EXACT)"
 
 # ── Scope honesty (raw#10 C3) ─────────────────────────────
 [scope]

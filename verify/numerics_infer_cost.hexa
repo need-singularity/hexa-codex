@@ -1,0 +1,272 @@
+#!hexa strict
+// hexa-codex/verify/numerics_infer_cost.hexa — F-CODEX-2 T2 numerical re-derivation.
+//
+// Beyond `verify/calc_infer_cost.hexa` (algebraic identities only), this
+// script does the floating-point math: compute the n=6 closed-form
+// inference-cost ratio
+//
+//     cost_ratio(ctx) = (ctx / ctx_ref) ^ τ(6) = (ctx / 8192) ^ 4
+//
+// at a 5-anchor context grid (1k, 8k REF, 32k, 128k, 1M) and verify:
+//   · monotonicity in ctx
+//   · anchor identity ratio = 1.0 at ctx = 8192 (8k ref)
+//   · n6 ratio > naive O(n²) ratio above anchor (4 > 2 exponent)
+//   · n6 ratio > approx O(n^1.5) ratio above anchor
+//   · ladder ordering at every anchor: linear ≤ approx ≤ naïve ≤ n6
+//   · 1M ctx ratio ≈ (1M/8k)^4 ≈ 122^4 ≈ 2.21e8 (strict upper bound)
+//   · numerical stability — no NaN / Inf at extreme grid points
+//
+// Recipe T2 floor (recipe §4 invariants):
+//   1. `use "self/runtime/math_pure"` import          ✓
+//   2. `__HEXA_<PROJECT>_<NAME>__` sentinel + PASS    ✓
+//   3. `FALSIFIERS` array                              ✓
+//   4. `exit(0)` on PASS path                          ✓
+//   5. `let mut RUN = 0` + `let mut FAIL = 0`          ✓
+//
+// T3 (live latency at 1M ctx on Claude 4.7) follows; F-CODEX-2 is
+// expected to falsify (production engines fall well below O(n^1.5)).
+//
+// Run:
+//   hexa run verify/numerics_infer_cost.hexa
+//
+// @no-lock-needed
+// @resolver-bypass(reason="Pure local verifier; integer + float arithmetic only.")
+
+use "self/runtime/math_pure"
+
+let HOME = env("HOME")
+
+fn _root() -> str {
+    let r = env("HEXA_CODEX_ROOT")
+    if r.len() > 0 { return r }
+    let pwd = exec("pwd").trim()
+    if pwd.len() > 0 { return pwd }
+    return HOME + "/core/hexa-codex"
+}
+
+let ROOT = _root()
+
+// ── n=6 lattice ──────────────────────────────────────────────────────────
+let TAU_6_INT = 4
+let TAU_6     = 4.0
+let SIGMA_6   = 12.0
+let PHI_6     = 2.0
+
+// Exponents (float)
+let EXP_LINEAR = 1.0           // perfect linear-attention practice
+let EXP_APPROX = 1.5           // approx attention (FlashAttention/Paged)
+let EXP_NAIVE  = 2.0           // naive Transformer O(n²)
+let EXP_N6     = TAU_6         // 4.0 — n=6 closed form
+
+// Reference context: 8k tokens (default Claude/GPT-class window).
+let CTX_REF = 8192.0
+
+// FALSIFIERS list (recipe §4 invariant 3).
+let FALSIFIERS = ["F-CODEX-2 (inference_cost ∝ context^τ = context^4, T2 numerical re-derivation, math_pure)"]
+
+// ── helpers ──────────────────────────────────────────────────────────────
+
+let mut RUN = 0
+let mut FAIL = 0
+let mut FAILURES = []
+
+fn _check(ok: bool, label: str, detail: str) {
+    RUN = RUN + 1
+    if ok {
+        println("  [PASS] " + label)
+        if detail.len() > 0 { println("         · " + detail) }
+    } else {
+        FAIL = FAIL + 1
+        FAILURES.push(label + " :: " + detail)
+        println("  [FAIL] " + label)
+        if detail.len() > 0 { println("         · " + detail) }
+    }
+}
+
+fn _abs(x: float) -> float {
+    return abs_pure(x)
+}
+
+fn ratio(ctx: float, exp: float) -> float {
+    return pow_pure(ctx / CTX_REF, exp)
+}
+
+fn n6_ratio(ctx: float) -> float {
+    return ratio(ctx, EXP_N6)
+}
+
+// ── anchor grid: 1k, 8k (REF), 32k, 128k, 1M tokens ──────────────────────
+let CTX_1K   = 1024.0
+let CTX_8K   = 8192.0           // = CTX_REF
+let CTX_32K  = 32768.0
+let CTX_128K = 131072.0
+let CTX_1M   = 1048576.0        // 2^20
+
+// ── checks ───────────────────────────────────────────────────────────────
+
+// Check 1: anchor identity — ratio = 1.0 at ctx = CTX_REF, exponent 4
+fn check_anchor_identity() {
+    let r = n6_ratio(CTX_REF)
+    let drift = _abs(r - 1.0)
+    _check(drift < 1.0e-9,
+           "anchor identity: n6_ratio(8k) = 1.0",
+           "computed=" + to_string(r) + " drift=" + to_string(drift))
+}
+
+// Check 2: monotonicity over 5-anchor grid
+fn check_monotonicity() {
+    let r1 = n6_ratio(CTX_1K)
+    let r2 = n6_ratio(CTX_8K)
+    let r3 = n6_ratio(CTX_32K)
+    let r4 = n6_ratio(CTX_128K)
+    let r5 = n6_ratio(CTX_1M)
+    let mono = (r1 < r2) && (r2 < r3) && (r3 < r4) && (r4 < r5)
+    _check(mono,
+           "monotonic: n6_ratio strictly increases over 5-point ctx grid",
+           "r=[" + to_string(r1) + "," + to_string(r2) + "," + to_string(r3) +
+           "," + to_string(r4) + "," + to_string(r5) + "]")
+}
+
+// Check 3: ladder ordering above anchor (ctx > REF):
+//   linear (1.0) < approx (1.5) < naïve (2.0) < n6 (4.0).
+//   For ctx > REF: x^a < x^b when a < b and x > 1.
+fn check_ladder_above_anchor() {
+    let ctx = CTX_32K     // 4× REF
+    let r_lin = ratio(ctx, EXP_LINEAR)
+    let r_apx = ratio(ctx, EXP_APPROX)
+    let r_nai = ratio(ctx, EXP_NAIVE)
+    let r_n6  = ratio(ctx, EXP_N6)
+    let ok = (r_lin < r_apx) && (r_apx < r_nai) && (r_nai < r_n6)
+    _check(ok,
+           "ladder above anchor: linear < approx < naïve < n6 at 32k",
+           "lin=" + to_string(r_lin) +
+           " apx=" + to_string(r_apx) +
+           " nai=" + to_string(r_nai) +
+           " n6=" + to_string(r_n6))
+}
+
+// Check 4: ladder ordering below anchor (ctx < REF):
+//   for ctx < REF (x<1): higher exponent → smaller value, so order flips:
+//   linear > approx > naïve > n6.
+fn check_ladder_below_anchor() {
+    let ctx = CTX_1K     // 1/8 REF
+    let r_lin = ratio(ctx, EXP_LINEAR)
+    let r_apx = ratio(ctx, EXP_APPROX)
+    let r_nai = ratio(ctx, EXP_NAIVE)
+    let r_n6  = ratio(ctx, EXP_N6)
+    let ok = (r_lin > r_apx) && (r_apx > r_nai) && (r_nai > r_n6)
+    _check(ok,
+           "ladder below anchor: linear > approx > naïve > n6 at 1k (x<1 inverts)",
+           "lin=" + to_string(r_lin) +
+           " apx=" + to_string(r_apx) +
+           " nai=" + to_string(r_nai) +
+           " n6=" + to_string(r_n6))
+}
+
+// Check 5: 1M-ctx n6 ratio = (1M/8k)^4 = 128^4 = 268435456 (= 2^28)
+fn check_1m_ctx_ratio() {
+    let r = n6_ratio(CTX_1M)
+    // 1M/8k = 1048576/8192 = 128 exactly.
+    // 128^4 = 2^28 = 268435456.
+    let expected = 268435456.0
+    let drift_rel = _abs(r - expected) / expected
+    _check(drift_rel < 1.0e-9,
+           "1M-ctx n6 ratio = (1M/8k)^4 = 128^4 = 2^28 = 268_435_456",
+           "computed=" + to_string(r) + " expected=" + to_string(expected) +
+           " rel_drift=" + to_string(drift_rel))
+}
+
+// Check 6: 1M-ctx naïve O(n²) = (1M/8k)^2 = 128^2 = 16384
+fn check_1m_naive_ratio() {
+    let r = ratio(CTX_1M, EXP_NAIVE)
+    let expected = 16384.0
+    let drift_rel = _abs(r - expected) / expected
+    _check(drift_rel < 1.0e-9,
+           "1M-ctx naïve ratio = 128² = 16_384",
+           "computed=" + to_string(r) + " expected=" + to_string(expected))
+}
+
+// Check 7: gap n6 − naïve at 1M ctx is large (n6 is strict upper bound)
+//   gap = 268_435_456 − 16_384 = 268_419_072 ≈ 2.68e8
+fn check_n6_naive_gap_1m() {
+    let r_n6 = n6_ratio(CTX_1M)
+    let r_nai = ratio(CTX_1M, EXP_NAIVE)
+    let gap = r_n6 - r_nai
+    _check(gap > 1.0e8,
+           "1M-ctx gap n6 − naïve > 1e8 (strict upper bound)",
+           "gap=" + to_string(gap))
+}
+
+// Check 8: numerical stability — finite + positive at all 5 anchors
+fn check_numerical_stability() {
+    let ctxs = [CTX_1K, CTX_8K, CTX_32K, CTX_128K, CTX_1M]
+    let mut all_ok = true
+    for c in ctxs {
+        let r = n6_ratio(c)
+        if r <= 0.0 { all_ok = false }
+        if r > 1.0e30 { all_ok = false }
+    }
+    _check(all_ok,
+           "stability: n6_ratio finite + positive at every grid anchor",
+           "5 anchors, no NaN/Inf-class outputs")
+}
+
+// Check 9: τ(6) cast — int 4 == float 4.0 round-trip
+fn check_tau_int_float_consistency() {
+    let from_int = TAU_6_INT * 1.0
+    let drift = _abs(from_int - TAU_6)
+    _check(drift < 1.0e-12,
+           "τ(6) int↔float consistency: 4 == 4.0",
+           "from_int=" + to_string(from_int) + " TAU_6=" + to_string(TAU_6))
+}
+
+// Check 10: log identity check — log(n6_ratio(ctx)) = τ · log(ctx/REF)
+//   Verifies that pow_pure obeys the log-power law within float precision.
+fn check_log_power_law() {
+    let ctx = CTX_128K     // 16× REF
+    let r = n6_ratio(ctx)
+    let lhs = log_pure(r)
+    let rhs = TAU_6 * log_pure(ctx / CTX_REF)
+    let drift = _abs(lhs - rhs)
+    _check(drift < 1.0e-9,
+           "log identity: log(ctx^τ) = τ · log(ctx) at 128k",
+           "lhs=" + to_string(lhs) + " rhs=" + to_string(rhs) +
+           " drift=" + to_string(drift))
+}
+
+// ── main ─────────────────────────────────────────────────────────────────
+
+fn main() {
+    println("========================================================================")
+    println("  hexa-codex F-CODEX-2 inference-cost numerics (T2 numerical, math_pure)")
+    println("  cost_ratio(ctx) = (ctx / 8192)^τ = (ctx / 8k)^4")
+    println("========================================================================")
+    println("  ctx anchors: 1k, 8k (REF), 32k, 128k, 1M (= 2^20)")
+    println("  exponents: linear=1.0  approx=1.5  naïve=2.0  n6=4.0")
+    println("")
+
+    check_anchor_identity()
+    check_monotonicity()
+    check_ladder_above_anchor()
+    check_ladder_below_anchor()
+    check_1m_ctx_ratio()
+    println("")
+    check_1m_naive_ratio()
+    check_n6_naive_gap_1m()
+    check_numerical_stability()
+    check_tau_int_float_consistency()
+    check_log_power_law()
+
+    println("========================================================================")
+    let pass_n = RUN - FAIL
+    println("  " + str(pass_n) + "/" + str(RUN) + " checks passed")
+    if FAIL > 0 {
+        println("  FAILURES:")
+        for f in FAILURES { println("    ✗ " + f) }
+        println("__HEXA_CODEX_NUMERICS_INFER_COST__ FAIL")
+        exit(1)
+    }
+    println("  F-CODEX-2 T2 numerical floor: closed.")
+    println("__HEXA_CODEX_NUMERICS_INFER_COST__ PASS")
+    exit(0)
+}

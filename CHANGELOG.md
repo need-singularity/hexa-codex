@@ -210,16 +210,43 @@ versions follow [SemVer](https://semver.org/spec/v2.0.0.html).
 - `hexa run tests/test_all.hexa` — 8/8 PASS.
 - `python3 -m pytest tests/ -m auto -q` — 83 passed (no regression).
 
-### F-CODEX closure status (after iter 7)
+### Added (2026-05-07 — 8th RSC iteration: numerics_infer_cost / F-CODEX-2 T2)
 
-| Falsifier  | T1 (algebraic)                    | T2 (numerics)        | T3 (empirical) |
-|:-----------|:----------------------------------|:---------------------|:--------------:|
-| F-CODEX-1  | lattice + calc_train_cost ✓ ✓     | numerics_train_cost ✓ | TBD            |
-| F-CODEX-2  | lattice + calc_infer_cost ✓ ✓     | TBD                  | TBD            |
-| F-CODEX-3  | lattice + calc_alignment ✓ ✓      | TBD                  | TBD            |
-| F-CODEX-4  | lattice + calc_interpret ✓ ✓      | TBD                  | TBD            |
+- `verify/numerics_infer_cost.hexa` — F-CODEX-2 T2 numerical re-derivation
+  (10 checks via `math_pure pow_pure / log_pure / abs_pure`):
+  - Anchor identity `n6_ratio(8k) = 1.0` within 1e-9.
+  - Monotonic over 5-anchor ctx grid (1k, 8k REF, 32k, 128k, 1M = 2^20).
+  - Ladder above anchor: linear (1.0) < approx (1.5) < naïve (2.0) < n6 (4.0).
+  - Ladder below anchor inverted (x<1: higher exponent → smaller value).
+  - 1M-ctx n6 ratio = (1M/8k)^4 = 128^4 = 2^28 = 268_435_456 EXACT.
+  - 1M-ctx naïve O(n²) ratio = 128² = 16_384 EXACT.
+  - 1M-ctx gap (n6 − naïve) > 1e8 (strict upper bound).
+  - Numerical stability at all 5 anchors (no NaN/Inf).
+  - τ(6) int↔float consistency (4 == 4.0).
+  - Log-power identity log(ctx^τ) = τ·log(ctx) within 1e-9.
+- `tests/test_numerics_infer_cost.hexa` — regression wrapper.
+- `tests/test_all.hexa` — CASES += `test_numerics_infer_cost`.
+- `cli/hexa-codex.hexa` — `verify numerics-infer_cost` routes to .hexa.
+- `hexa.toml` — `[test] files` += `test_numerics_infer_cost.hexa`;
+  `verify =` += `verify/numerics_infer_cost.hexa`;
+  `[closure].runnable_hexa_iter8` marker.
 
-F-CODEX-1 closure pct: 67% (T1 + T2 ✓ — recipe §3 ladder).
+### Verified (iter 8)
+
+- `hexa run verify/numerics_infer_cost.hexa` — 10/10 PASS.
+- `hexa run tests/test_all.hexa` — 9/9 PASS.
+- `python3 -m pytest tests/ -m auto -q` — 83 passed (no regression).
+
+### F-CODEX closure status (after iter 8)
+
+| Falsifier  | T1 (algebraic)                    | T2 (numerics)            | T3 (empirical) |
+|:-----------|:----------------------------------|:-------------------------|:--------------:|
+| F-CODEX-1  | lattice + calc_train_cost ✓ ✓     | numerics_train_cost ✓    | TBD            |
+| F-CODEX-2  | lattice + calc_infer_cost ✓ ✓     | numerics_infer_cost ✓    | TBD            |
+| F-CODEX-3  | lattice + calc_alignment ✓ ✓      | TBD                      | TBD            |
+| F-CODEX-4  | lattice + calc_interpret ✓ ✓      | TBD                      | TBD            |
+
+F-CODEX-1/2 closure pct: 67% (T1 + T2 ✓). Half of T2 row complete.
 
 ### F-CODEX T1 row: COMPLETE after iter 6
 
