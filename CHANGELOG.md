@@ -446,6 +446,53 @@ exit 0 with empty stdout. Bypass with `RESOURCE_LOCAL_HEXA=1`.
 per falsifier. T2 #3 (solver / cross-pillar) is the final T2-row layer
 before saturation.
 
+### Added (2026-05-08 — 15th RSC iteration: numerics_train_cost_solver / F-CODEX-1 T2 #3)
+
+- `verify/numerics_train_cost_solver.hexa` — F-CODEX-1 T2 ODE solver
+  layer (10 checks via `math_pure`): the n=6 cost-ratio prediction
+  arises from the first-order ODE
+
+      dc/du = N6_EXP · c,   u = log(N·D / ND_REF),   c(0) = 1
+
+  with closed-form solution `c(u) = exp(N6_EXP·u) = (N·D/ND_REF)^0.96`.
+  Re-derived numerically by a 3-solver cascade (Euler / midpoint-RK2 /
+  RK4) and verified:
+
+  | # | Check                                      | Result          |
+  |--:|:-------------------------------------------|:----------------|
+  | 1 | anchor identity (u=0 → c=1)                | drift = 0       |
+  | 2 | RK4 forward to ND_HUGE (n=512)             | rel_err 2e-10   |
+  | 3 | RK4 backward to ND_TINY (n=512)            | rel_err 2e-10   |
+  | 4 | Midpoint forward to ND_LARGE (n=512)       | rel_err 7e-6    |
+  | 5 | Euler forward to ND_LARGE (n=64)           | rel_err 0.037   |
+  | 6 | convergence ordering Euler > Mid > RK4     | 0.33 > 4e-3 > 2e-7 |
+  | 7 | Euler 1st-order: error ratio ≈ 2 on h/2    | 1.99            |
+  | 8 | Midpoint 2nd-order: error ratio ≈ 4 on h/2 | 3.95            |
+  | 9 | RK4 4th-order: error ratio ≈ 16 on h/2     | 14.27           |
+  |10 | RK4 outputs positive + finite over 5-grid  | tiny..huge OK   |
+
+- `tests/test_numerics_train_cost_solver.hexa` — regression wrapper.
+- `tests/test_all.hexa` — CASES += solver test (now 16).
+- `cli/hexa-codex.hexa` — `verify numerics-train_cost-solver` routes.
+- `hexa.toml` — entries + `[closure].runnable_hexa_iter15` marker.
+
+### Verified (iter 15)
+
+- `RESOURCE_LOCAL_HEXA=1 hexa run verify/numerics_train_cost_solver.hexa` — 10/10 PASS.
+- `hexa run tests/test_all.hexa` — 16/16 PASS.
+
+### F-CODEX T2 #3 (solver) row: 1/4 entered after iter 15
+
+| Falsifier  | T1 ✓ ✓ | T2 #1 ✓ | T2 #2 ✓ | T2 #3 (solver) | T3 |
+|:-----------|:------:|:-------:|:-------:|:--------------:|:--:|
+| F-CODEX-1  | ✓✓     | ✓       | ✓       | **✓ (iter 15)** | – |
+| F-CODEX-2  | ✓✓     | ✓       | ✓       | TBD            | – |
+| F-CODEX-3  | ✓✓     | ✓       | ✓       | TBD            | – |
+| F-CODEX-4  | ✓✓     | ✓       | ✓       | TBD            | – |
+
+Next: F-CODEX-2/3/4 solvers (priority 6 — fill remaining T2 #3 slots),
+then priority 7 cross-pillar, reaching recipe §7.2 sat-1.
+
 ### F-CODEX T2 ROW: COMPLETE after iter 10
 
 | Falsifier  | T1 (algebraic)                    | T2 (numerics)            | T3 (empirical) |
