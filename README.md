@@ -349,17 +349,33 @@ hexa-codex calc train_cost --N 7e9 --D 1.4e12
 
 Sister repos in the `need-singularity` HEXA family:
 
-- [need-singularity/anima](https://github.com/need-singularity/anima) —
+### Cognitive substrate rollups (sister-libraries)
+
+- 👁️ [need-singularity/hexa-senses](https://github.com/need-singularity/hexa-senses) —
+  **5-verb sensory substrate** (dream + ear + empath + olfact + voice).
+  voice is formulaic-only, learned TTS FORBIDDEN.
+- 🧠 [need-singularity/hexa-mind](https://github.com/need-singularity/hexa-mind) —
+  **7-verb mental substrate** (mind + neuro + oracle + hexa_telepathy +
+  telepathy + mind_upload + superpowers). 4/7 SPECULATIVE (preregister honesty).
+
+### Domain-specific siblings
+
+- 👻 [need-singularity/anima](https://github.com/need-singularity/anima) —
   consciousness / soul cousin (phenomenal grounding adjacent to `consciousness`).
-- [need-singularity/hexa-brain](https://github.com/need-singularity/hexa-brain) —
+- 🧬 [need-singularity/hexa-brain](https://github.com/need-singularity/hexa-brain) —
   BCI sister (read-side neural substrate counterpart).
-- [need-singularity/honesty-monitor](https://github.com/need-singularity/honesty-monitor) —
+- ⚖️ [need-singularity/honesty-monitor](https://github.com/need-singularity/honesty-monitor) —
   AI honesty-bit falsifier sister (write-side validator for the SAFETY group).
-- [need-singularity/hexa-bio](https://github.com/need-singularity/hexa-bio) —
+- 🌱 [need-singularity/hexa-bio](https://github.com/need-singularity/hexa-bio) —
   4-verb molecular toolkit (same HEXA-family pattern, biology domain).
 
+The 17 + 5 + 7 = **29 verbs across cognitive sister-libraries** all derive
+from the n=6 master identity (σ·φ = n·τ = 24). hexa-codex covers AI
+*knowledge*; hexa-senses covers AI *senses*; hexa-mind covers AI *mental ops*.
+
 Upstream concept SSOT: `n6-architecture/domains/cognitive/` (declarative
-sources for all 17 verbs in this repo).
+sources for all 17 hexa-codex verbs + 5 hexa-senses verbs + 7 hexa-mind
+verbs).
 
 ---
 
