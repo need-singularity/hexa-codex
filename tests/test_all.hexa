@@ -20,7 +20,7 @@ fn _root() -> str {
 }
 
 let ROOT = _root()
-let HEXA = HOME + "/.hx/bin/hexa"
+let HEXA = HOME + "/.hx/packages/hexa/hexa.real"
 
 // (filename | expected_sentinel)
 let CASES = [
@@ -50,7 +50,7 @@ fn run_one(case: str) -> bool {
     let fname = parts[0]
     let sentinel = parts[1]
     let path = ROOT + "/tests/" + fname
-    let cmd = "HEXA_CODEX_ROOT=" + shq(ROOT) + " " + shq(HEXA) + " run " + shq(path)
+    let cmd = "RESOURCE_LOCAL_HEXA=1 HEXA_CODEX_ROOT=" + shq(ROOT) + " " + shq(HEXA) + " run " + shq(path)
     let r = exec_with_status(cmd)
     let out = to_string(r[0])
     let code = r[1]

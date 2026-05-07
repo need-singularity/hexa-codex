@@ -16,7 +16,7 @@ fn _root() -> str {
 
 let ROOT = _root()
 let SCRIPT = ROOT + "/verify/cross_doc_audit.hexa"
-let HEXA = HOME + "/.hx/bin/hexa"
+let HEXA = HOME + "/.hx/packages/hexa/hexa.real"
 
 fn shq(s: str) -> str {
     return "'" + s.replace("'", "'\\''") + "'"
@@ -24,7 +24,7 @@ fn shq(s: str) -> str {
 
 fn main() {
     println("[test_cross_doc] script: " + SCRIPT)
-    let cmd = "HEXA_CODEX_ROOT=" + shq(ROOT) + " " + shq(HEXA) + " run " + shq(SCRIPT)
+    let cmd = "RESOURCE_LOCAL_HEXA=1 HEXA_CODEX_ROOT=" + shq(ROOT) + " " + shq(HEXA) + " run " + shq(SCRIPT)
     let r = exec_with_status(cmd)
     let out = to_string(r[0])
     let code = r[1]

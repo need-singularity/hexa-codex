@@ -6,10 +6,12 @@
 
 fn main() {
     let root = env("HEXA_CODEX_ROOT")
+    let home = env("HOME")
+    let hexa = home + "/.hx/packages/hexa/hexa.real"
     let mut p = "cli/hexa-codex.hexa"
     if root.len() > 0 { p = root + "/cli/hexa-codex.hexa" }
 
-    let raw = exec("HEXA_CODEX_ROOT=" + root + " hexa run " + p + " selftest 2>&1")
+    let raw = exec("RESOURCE_LOCAL_HEXA=1 HEXA_CODEX_ROOT=" + root + " " + hexa + " run " + p + " selftest 2>&1")
     if raw.contains("__HEXA_CODEX_SELFTEST__ PASS") == false {
         println("test_selftest: FAIL (sentinel missing)")
         println(raw.trim())
