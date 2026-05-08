@@ -4,7 +4,7 @@
 > deadlines, pointers. Sister of `anima` / `hexa-brain` / `honesty-monitor`
 > under `dancinlab` org.
 
-**Last sync**: 2026-05-06 · **Current release**: v1.0.0 · **Branch**: `main`
+**Last sync**: 2026-05-08 · **Current release**: v1.0.0 (sat-1 reached, pre v1.1.0) · **Branch**: `main`
 
 ---
 
@@ -45,13 +45,16 @@ DoD:
 ## §A.3 Cycle history
 
 - **Cycle 0 (2026-05-06)** — v1.0.0 initial extraction from n6-architecture@c0f1f570. Commit `63e8283`. 17 verb / 4 그룹 cp -R.
+- **Cycle 1 (2026-05-07/08, iter 1..25)** — RSC port from Python → .hexa following `~/core/bedrock/docs/runnable_surface_recipe.md`. Commits `141bd14..149d5f0`. Recipe §7.4 priorities 1-10 + 15 closed; recipe §7.2 sat-1 saturation REACHED at iter 21. 23 .hexa verifiers + 24 regression wrappers + 3 meta verifiers (`falsifier_check.hexa`, `lint_numerics.hexa`, `saturation_check.hexa`); per-pillar T1 + T2 ×3 stack for all 4 F-CODEX falsifiers; closure pct = 4/5 per pillar (T3 row pending for sat-2). Single-command verdict: `hexa-codex verify saturation-check`. See `docs/numerics_methodology.md` for the closure-depth narrative.
 
 ## §A.4 Falsifier preregister
 
-- **F-CODEX-1** — training-cost ∝ N^σ·φ = N^24 closed-form, Chinchilla scaling law 일치?
-- **F-CODEX-2** — inference-cost ∝ context^τ = context^4, 실측 latency fit (Claude 4.7 1M ctx)?
-- **F-CODEX-3** — alignment eval n=6 axis (helpfulness · harmlessness · honesty · ...) 통합 score, HELM 비교?
-- **F-CODEX-4** — interpretability circuit count σ-φ=10 motif 통계, Anthropic dictionary-learning fit?
+- **F-CODEX-1** — training-cost ∝ N^σ·φ = N^24 closed-form, Chinchilla scaling law 일치? **sat-1: T1 ✓✓ + T2#1 ✓ + T2#2 ✓ + T2#3 ✓** (calc/numerics/parity/solver, T3 TBD)
+- **F-CODEX-2** — inference-cost ∝ context^τ = context^4, 실측 latency fit (Claude 4.7 1M ctx)? **sat-1: T1 ✓✓ + T2#1 ✓ + T2#2 ✓ + T2#3 ✓** (T3 TBD)
+- **F-CODEX-3** — alignment eval n=6 axis (helpfulness · harmlessness · honesty · ...) 통합 score, HELM 비교? **sat-1: T1 ✓✓ + T2#1 ✓ + T2#2 ✓ + T2#3 ✓** (Verlet/leapfrog, T3 TBD)
+- **F-CODEX-4** — interpretability circuit count σ-φ=10 motif 통계, Anthropic dictionary-learning fit? **sat-1: T1 ✓✓ + T2#1 ✓ + T2#2 ✓ + T2#3 ✓** (gradient flow + Lyapunov, T3 TBD)
+- **Cross-cutters (X1)**: lattice_check.hexa ✓, cross_doc_audit.hexa ✓, numerics_cross_pillar.hexa ✓, numerics_lattice_arithmetic.hexa ✓ — 4/4.
+- **Closure summary**: per-pillar pct = 4/5 = 0.80; sat-1 verdict = PASS via `verify/falsifier_check.hexa` + `verify/saturation_check.hexa`. Sat-2 requires T3 (live empirical) row per pillar.
 
 ## §A.5 Pending decisions
 
