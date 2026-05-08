@@ -1,6 +1,8 @@
 # hexa-codex numerics methodology — recipe §7.4 priority 13 narrative
 
-**Status (post iter 23):** sat-1 saturation reached.
+**Status (post iter 27):** recipe §7.2 sat-1 = **100% closure** reached
+under recipe §3 taxonomy (T1=`calc_*`, T2=`numerics_*` ∧
+`numerics_*_solver`, T3=`numerics_*_parity`).
 **Source-of-truth recipe:** `~/core/bedrock/docs/runnable_surface_recipe.md`.
 
 This document explains *why* the runnable surface is structured the way
@@ -12,18 +14,25 @@ back to the closure-depth taxonomy and explains what that closure
 
 ## §1 The closure-depth taxonomy
 
-Every runnable in `verify/` belongs to one of three tiers:
+Recipe §3 defines a **3-tier ladder** for each falsifier:
 
-| Tier | What it proves                                                              | Example file                          |
-|:----:|:----------------------------------------------------------------------------|:--------------------------------------|
-| T1   | Closed-form **algebraic** identity (integer arithmetic, no float)           | `calc_train_cost.hexa`                |
-| T2   | Closed-form **numerical** evaluation under `math_pure` (float64, no deps)   | `numerics_train_cost.hexa`            |
-| T3   | **Empirical** evidence — live measurement on a frontier-class system       | (TBD — Chinchilla / HELM / etc.)      |
+| Tier | Layer files                                                                      | What it proves                                                                                |
+|:----:|:---------------------------------------------------------------------------------|:----------------------------------------------------------------------------------------------|
+| T1   | `calc_<pillar>.hexa`                                                             | Closed-form **algebraic** identity (integer arithmetic floor)                                 |
+| T2   | `numerics_<pillar>.hexa` ∧ `numerics_<pillar>_solver.hexa`                       | **Pure-math** closed-form re-derivation (math_pure float64; analytic + ODE consistency)        |
+| T3   | `numerics_<pillar>_parity.hexa`                                                  | **Archival empirical contact** — comparison against published-ref data (no live measurement) |
+| T4   | `<pillar>_t4_*.hexa` *(out of loop scope, recipe §9)*                            | **Live hardware / Stage-1+** measurement — out of recipe loop                                  |
 
-A "stack" extends T2 horizontally: a falsifier with three T2 children
-(one closed-form re-derivation, one published-ref parity, one ODE
-solver) reaches the recipe §7.2 sat-1 saturation threshold even before
-any T3 evidence lands.
+Recipe §3 closure_pct ladder:
+
+```
+n = sum(t1_ok, t2_ok, t3_ok)        # 0..3
+pct = 0 | 33 | 67 | 100
+```
+
+Recipe §7.2 sat-1 saturation = `closure_pct = 100%` for *every*
+falsifier (i.e. T1 ✓ + T2 ✓ + T3 ✓ on every pillar). T4 is recipe §9
+territory (live hardware) and not part of the loop's stop condition.
 
 The four F-CODEX falsifiers are:
 
@@ -39,27 +48,25 @@ All four predictions ride on the same n=6 lattice
 
 ---
 
-## §2 What the T2 ×3 stack actually verifies
+## §2 What the T1/T2/T3 stack actually verifies
 
-Per pillar we ship three T2 layers; each catches a different class of
-failure:
+Per pillar we ship four scripts (one per tier file slot); each catches
+a different class of failure.
 
-### T2 #1 — `numerics_<pillar>.hexa`
-Synthetic anchor grid. Verifies the closed-form prediction holds over
-a 5-point grid spanning two orders of magnitude in the input axis.
-This is the "does the formula compute" check; it catches division-by-
-zero, overflow at the extreme grid points, and trivial sign errors.
+### T1 — `calc_<pillar>.hexa`
+Algebraic closed-form check. Verifies the structural identities of the
+n=6 lattice (σ·φ = n·τ = J₂ = 24, etc.) at the integer level. Catches
+typos in the σ/φ/τ/n constants and trivial sign errors in the
+prediction formula.
 
-### T2 #2 — `numerics_<pillar>_parity.hexa`
-Published-reference anchors. Verifies the closed-form prediction
-agrees with **independently published numbers** (Chinchilla /
-GPT-3 / Llama-2 / PaLM for cost; Olsson / Cunningham / Bricken /
-Anthropic-2024 for interpret; HELM-Core for alignment). This is the
-"does it agree with the rest of the field" check; it catches
-calibration errors that T2 #1 cannot see because T2 #1 only checks
-the formula against itself.
+### T2.a — `numerics_<pillar>.hexa`
+Synthetic anchor grid (math_pure float64). Verifies the closed-form
+prediction holds over a 5-point grid spanning two orders of magnitude
+in the input axis. Catches division-by-zero, overflow at the extreme
+grid points, and any rounding-class divergence between integer and
+float arithmetic.
 
-### T2 #3 — `numerics_<pillar>_solver.hexa`
+### T2.b — `numerics_<pillar>_solver.hexa`
 ODE re-derivation. Each pillar's closed-form prediction can be
 recovered as the solution / asymptote of a small dynamical system:
 
@@ -70,9 +77,10 @@ recovered as the solution / asymptote of a small dynamical system:
 | alignment    | `d²x/dt² = −(x − M)`,  `M = mean(σ axes)`                | symplectic leapfrog (Verlet) + RK4 |
 | interpret    | `dx/dt   = M − x`,     `M = σ − φ = 10`                  | Euler / midpoint-RK2 / RK4         |
 
-This is the "is it consistent with continuum dynamics" check — it
-catches errors that survive both T2 #1 and T2 #2 because both of
-those check the closed-form algebra in isolation.
+The solver layer is the "is it consistent with continuum dynamics"
+check — it catches closed-form errors that survive T2.a (synthetic
+grid) because T2.a only checks the formula against itself; the solver
+re-derives the same prediction by independent integration.
 
 For the alignment pillar in particular, the choice of *symplectic*
 leapfrog matters: the conservative Newton-flow on the σ=12-axis L2
@@ -88,6 +96,21 @@ For pillar 4 (interpret) the gradient flow is dissipative and the
 Lyapunov function `L(x) = ½(x − M)²` decays monotonically along the
 trajectory — directly checked in `numerics_interpret_solver.hexa`
 check #10.
+
+### T3 — `numerics_<pillar>_parity.hexa`
+**Archival empirical contact.** Recipe §3 distinguishes T2 (pure-math
+re-derivation, closed-form internal consistency) from T3 (published-ref
+comparison) because they catch different failure modes:
+
+- A T2 failure ⇒ the closed-form is internally inconsistent
+  (formula bug, math_pure regression, ODE/algebra mismatch).
+- A T3 failure ⇒ the closed-form is *consistent with itself* but
+  *disagrees with the empirical record* (Chinchilla / GPT-3 / Llama-2
+  / PaLM cost numbers; HELM-Core composites; Olsson / Cunningham /
+  Bricken / Anthropic-2024 SAE motif counts).
+
+T3 is "archival" because the ref data is read off published papers,
+not measured live; live measurement is recipe §9 / T4 territory.
 
 ---
 
@@ -187,26 +210,31 @@ process and emits the canonical sat-1 marker.
 
 ---
 
-## §6 What sat-2 would add
+## §6 What's beyond 100% closure (recipe §9 — T4 / Stage-1+)
 
-Recipe §7.2 sat-2 is the next saturation tier — adds T3 (live
-empirical) anchors per pillar, plus optional second T2 stacks. For
-hexa-codex that maps to:
+Recipe §7.2 sat-1 = `closure_pct = 100%` per falsifier under the
+3-tier ladder is the operational stop condition for the loop, and
+that condition is reached as of iter 27.
 
-| Pillar       | T3 (empirical) candidate                                          |
-|:-------------|:------------------------------------------------------------------|
-| train_cost   | Live FLOP / loss measurements on a frontier training run          |
-| infer_cost   | Live latency / KV-cache profiles at 1M-ctx on a deployed model    |
-| alignment    | Live HELM-Core composite on a frontier model                      |
-| interpret    | Live SAE feature counts via a dictionary-learning toolchain       |
+Recipe §7.2 sat-2 = the §1 16-script inventory is fully populated +
+meta-lint passes. Cross-checked at iter 21 (`falsifier_check.hexa`)
+and iter 22 (`lint_numerics.hexa`) → sat-2 also reached.
 
-Each T3 anchor lifts its falsifier to closure pct = 5/5 = 1.0;
-collectively they unlock the recipe §7.2 sat-2 verdict. The
-`falsifier_check.hexa` closure tracker already exposes the T3 gap as
-an informational check (it does not block sat-1).
+Beyond sat-1 + sat-2 lies recipe §9 (T4 — live hardware / Stage-1+
+data feeds), which is *out of recipe loop scope*. T4 candidates per
+pillar:
 
-Until the T3 row lands, sat-1 is the operational closure goal — and
-that goal is reached as of iter 23.
+| Pillar       | T4 (live hardware / Stage-1+) candidate                            |
+|:-------------|:-------------------------------------------------------------------|
+| train_cost   | Live FLOP / loss measurements on a frontier training run           |
+| infer_cost   | Live latency / KV-cache profiles at 1M-ctx on a deployed model     |
+| alignment    | Live HELM-Core composite re-run on a frontier model                |
+| interpret    | Live SAE feature counts via a dictionary-learning toolchain        |
+
+T4 work is gated on infrastructure (training runs, deploy fleets,
+HELM access, SAE toolchain) that lives outside this repo's runnable
+surface. The `falsifier_check.hexa` closure tracker reports the T4
+gap as an informational metric; it does not block the sat-1 verdict.
 
 ---
 

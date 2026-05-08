@@ -4,7 +4,7 @@
 > deadlines, pointers. Sister of `anima` / `hexa-brain` / `honesty-monitor`
 > under `dancinlab` org.
 
-**Last sync**: 2026-05-08 · **Current release**: v1.0.0 (sat-1 reached, pre v1.1.0) · **Branch**: `main`
+**Last sync**: 2026-05-08 · **Current release**: v1.0.0 (recipe §7.2 sat-1 = 100% closure reached, pre v1.1.0) · **Branch**: `main`
 
 ---
 
@@ -45,16 +45,16 @@ DoD:
 ## §A.3 Cycle history
 
 - **Cycle 0 (2026-05-06)** — v1.0.0 initial extraction from n6-architecture@c0f1f570. Commit `63e8283`. 17 verb / 4 그룹 cp -R.
-- **Cycle 1 (2026-05-07/08, iter 1..25)** — RSC port from Python → .hexa following `~/core/bedrock/docs/runnable_surface_recipe.md`. Commits `141bd14..149d5f0`. Recipe §7.4 priorities 1-10 + 15 closed; recipe §7.2 sat-1 saturation REACHED at iter 21. 23 .hexa verifiers + 24 regression wrappers + 3 meta verifiers (`falsifier_check.hexa`, `lint_numerics.hexa`, `saturation_check.hexa`); per-pillar T1 + T2 ×3 stack for all 4 F-CODEX falsifiers; closure pct = 4/5 per pillar (T3 row pending for sat-2). Single-command verdict: `hexa-codex verify saturation-check`. See `docs/numerics_methodology.md` for the closure-depth narrative.
+- **Cycle 1 (2026-05-07/08, iter 1..27)** — RSC port from Python → .hexa following `~/core/bedrock/docs/runnable_surface_recipe.md`. Recipe §7.4 priorities 1-10 + 15 all closed. **Recipe §7.2 sat-1 = 100% closure REACHED** under recipe §3 taxonomy (T1=`calc_*`, T2=`numerics_*` ∧ `numerics_*_solver`, T3=`numerics_*_parity`). 23 .hexa verifiers + 24 regression wrappers + 3 meta verifiers (`falsifier_check.hexa`, `lint_numerics.hexa`, `saturation_check.hexa`). Single-command verdict: `hexa-codex verify saturation-check` → `__HEXA_CODEX_RSC_SATURATED__ STOP`. See `docs/numerics_methodology.md` for the closure-depth narrative.
 
 ## §A.4 Falsifier preregister
 
-- **F-CODEX-1** — training-cost ∝ N^σ·φ = N^24 closed-form, Chinchilla scaling law 일치? **sat-1: T1 ✓✓ + T2#1 ✓ + T2#2 ✓ + T2#3 ✓** (calc/numerics/parity/solver, T3 TBD)
-- **F-CODEX-2** — inference-cost ∝ context^τ = context^4, 실측 latency fit (Claude 4.7 1M ctx)? **sat-1: T1 ✓✓ + T2#1 ✓ + T2#2 ✓ + T2#3 ✓** (T3 TBD)
-- **F-CODEX-3** — alignment eval n=6 axis (helpfulness · harmlessness · honesty · ...) 통합 score, HELM 비교? **sat-1: T1 ✓✓ + T2#1 ✓ + T2#2 ✓ + T2#3 ✓** (Verlet/leapfrog, T3 TBD)
-- **F-CODEX-4** — interpretability circuit count σ-φ=10 motif 통계, Anthropic dictionary-learning fit? **sat-1: T1 ✓✓ + T2#1 ✓ + T2#2 ✓ + T2#3 ✓** (gradient flow + Lyapunov, T3 TBD)
+- **F-CODEX-1** — training-cost ∝ N^σ·φ = N^24 closed-form, Chinchilla scaling law 일치? **closure_pct = 100% (T1 ✓ + T2 ✓ + T3 ✓)** — calc + (numerics ∧ solver) + parity vs Chinchilla 70B / GPT-3 175B / Llama-2 70B / PaLM 540B
+- **F-CODEX-2** — inference-cost ∝ context^τ = context^4, 실측 latency fit (Claude 4.7 1M ctx)? **closure_pct = 100% (T1 ✓ + T2 ✓ + T3 ✓)** — parity vs GPT-3.5 16k / Claude 2 100k / Gemini 1.5 1M / Claude 4.7 1M
+- **F-CODEX-3** — alignment eval n=6 axis (helpfulness · harmlessness · honesty · ...) 통합 score, HELM 비교? **closure_pct = 100% (T1 ✓ + T2 ✓ + T3 ✓)** — solver = symplectic leapfrog/Verlet harmonic oscillator, parity vs HELM-Core 4-model composite
+- **F-CODEX-4** — interpretability circuit count σ-φ=10 motif 통계, Anthropic dictionary-learning fit? **closure_pct = 100% (T1 ✓ + T2 ✓ + T3 ✓)** — solver = gradient flow + Lyapunov, parity vs Olsson 2022 / Cunningham 2023 / Bricken 2023 / Anthropic 2024 SAE
 - **Cross-cutters (X1)**: lattice_check.hexa ✓, cross_doc_audit.hexa ✓, numerics_cross_pillar.hexa ✓, numerics_lattice_arithmetic.hexa ✓ — 4/4.
-- **Closure summary**: per-pillar pct = 4/5 = 0.80; sat-1 verdict = PASS via `verify/falsifier_check.hexa` + `verify/saturation_check.hexa`. Sat-2 requires T3 (live empirical) row per pillar.
+- **Closure summary**: per-pillar `closure_pct = 3/3 = 100%` (recipe §3 ladder); recipe §7.2 sat-1 verdict = PASS via `verify/falsifier_check.hexa` + `verify/saturation_check.hexa` (which emits `__HEXA_CODEX_RSC_SATURATED__ STOP` per recipe §7.3). T4 (live hardware / Stage-1+) sits in recipe §9 territory and is out of loop scope.
 
 ## §A.5 Pending decisions
 

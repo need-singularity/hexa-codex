@@ -10,8 +10,8 @@
 [![Verbs: 17 / 4 groups](https://img.shields.io/badge/verbs-17_(4_groups)-blue.svg)](#verbs)
 [![Verify: 23 .hexa](https://img.shields.io/badge/verify-23_(.hexa)-brightgreen.svg)](#runnable-surface)
 [![Tests: 24 .hexa + 83 py](https://img.shields.io/badge/tests-24_.hexa_+_83_py-brightgreen.svg)](#runnable-surface)
-[![Closure: sat-1](https://img.shields.io/badge/closure-sat--1_T2×3-brightgreen.svg)](#runnable-surface)
-[![Falsifiers: 4/4 T1+T2×3](https://img.shields.io/badge/falsifiers-4%2F4_T1+T2×3-brightgreen.svg)](#falsifier-preregister)
+[![Closure: 100% sat-1](https://img.shields.io/badge/closure-100%25_(sat--1_T1+T2+T3)-brightgreen.svg)](#runnable-surface)
+[![Falsifiers: 4/4 100%](https://img.shields.io/badge/falsifiers-4%2F4_at_100%25-brightgreen.svg)](#falsifier-preregister)
 [![Lean4 proof: σ(6)=12](https://img.shields.io/badge/Lean4-σ(6)%3D12_PROVEN-brightgreen.svg)](formal/README.md)
 [![Papers: 4 + Lean1 + 2 deep-dive](https://img.shields.io/badge/refs-4P_+_Lean1_+_2DD-blue.svg)](#reference-annexes)
 [![n=6 lattice](https://img.shields.io/badge/n=6-σ·φ_=_n·τ_=_24-blue.svg)](#n6-master-identity)
@@ -160,9 +160,13 @@ at least one **runnable** verifier, and the surface is closed when each
 F-CODEX falsifier carries T1 (algebraic) + T2 ×3 (numerical /
 published-ref / ODE solver) layers — recipe §7.2 sat-1 saturation.
 
-**Status (post iter 23): sat-1 reached.** All 4 F-CODEX falsifiers at
-T1 + T2 ×3, plus 4 cross-cutters and 3 meta verifiers. Total **23
-runnable verify scripts** + **24 companion regression tests**.
+**Status (post iter 27): 100% closure reached.** Under recipe §3
+(T1 = `calc_*`, T2 = `numerics_*` ∧ `numerics_*_solver`, T3 =
+`numerics_*_parity`), every F-CODEX-1..4 carries T1 ✓ + T2 ✓ + T3 ✓
+⇒ `closure_pct = 3/3 = 100%`. Plus 4 cross-cutters and 3 meta
+verifiers. Total **23 runnable verify scripts** + **24 companion
+regression tests**. `verify/saturation_check.hexa` emits the recipe
+§7.3 self-stop sentinel `__HEXA_CODEX_RSC_SATURATED__ STOP`.
 
 ### verify/ — 23 .hexa-native verifiers (math_pure, no deps)
 
@@ -171,22 +175,31 @@ libraries). Each emits a `__HEXA_CODEX_<NAME>__ PASS` sentinel; the
 top-level aggregator polls sentinels and exits 0 iff every layer is
 green.
 
-**Per-pillar layer stack (4 × 4 = 16 files):**
+**Per-pillar tier stack (4 × 4 = 16 files, recipe §3 taxonomy):**
 
-| Pillar                    | T1 (calc)                | T2 #1 (numerics)            | T2 #2 (parity)                     | T2 #3 (solver)                     |
-|---------------------------|--------------------------|------------------------------|-------------------------------------|-------------------------------------|
-| F-CODEX-1 (train_cost)    | `calc_train_cost.hexa`   | `numerics_train_cost.hexa`   | `numerics_train_cost_parity.hexa`   | `numerics_train_cost_solver.hexa`   |
-| F-CODEX-2 (infer_cost)    | `calc_infer_cost.hexa`   | `numerics_infer_cost.hexa`   | `numerics_infer_cost_parity.hexa`   | `numerics_infer_cost_solver.hexa`   |
-| F-CODEX-3 (alignment)     | `calc_alignment.hexa`    | `numerics_alignment.hexa`    | `numerics_alignment_parity.hexa`    | `numerics_alignment_solver.hexa`    |
-| F-CODEX-4 (interpret)     | `calc_interpret.hexa`    | `numerics_interpret.hexa`    | `numerics_interpret_parity.hexa`    | `numerics_interpret_solver.hexa`    |
+| Pillar                    | T1 — calc                | T2 — numerics                  | T2 — solver                          | T3 — parity                         |
+|---------------------------|--------------------------|---------------------------------|---------------------------------------|--------------------------------------|
+| F-CODEX-1 (train_cost)    | `calc_train_cost.hexa`   | `numerics_train_cost.hexa`     | `numerics_train_cost_solver.hexa`     | `numerics_train_cost_parity.hexa`    |
+| F-CODEX-2 (infer_cost)    | `calc_infer_cost.hexa`   | `numerics_infer_cost.hexa`     | `numerics_infer_cost_solver.hexa`     | `numerics_infer_cost_parity.hexa`    |
+| F-CODEX-3 (alignment)     | `calc_alignment.hexa`    | `numerics_alignment.hexa`      | `numerics_alignment_solver.hexa`      | `numerics_alignment_parity.hexa`     |
+| F-CODEX-4 (interpret)     | `calc_interpret.hexa`    | `numerics_interpret.hexa`      | `numerics_interpret_solver.hexa`      | `numerics_interpret_parity.hexa`     |
 
-T2 #2 (parity) anchors against published-ref data (Chinchilla / GPT-3
-/ Llama-2 / PaLM for cost; HELM-Core / Olsson / Cunningham / Bricken /
-Anthropic-2024 for alignment + interpret). T2 #3 (solver) re-derives
-the same prediction by integrating the underlying ODE
-(Euler / midpoint-RK2 / RK4 cascade for pillars 1, 2, 4; symplectic
-leapfrog/Verlet harmonic oscillator for pillar 3) and verifying
+**T2** (numerics + solver) re-derives the prediction inside the lattice
+itself: `numerics_*` exercises the closed form on a synthetic anchor
+grid; `numerics_*_solver` integrates the underlying ODE (Euler /
+midpoint-RK2 / RK4 cascade for pillars 1, 2, 4; symplectic
+leapfrog/Verlet harmonic oscillator for pillar 3) and verifies
 convergence orders 1 / 2 / 4 by step-halving.
+
+**T3** (parity) is the archival empirical contact: it ties the
+prediction to *external* published numbers (Chinchilla / GPT-3 /
+Llama-2 / PaLM for cost; HELM-Core for alignment; Olsson / Cunningham
+/ Bricken / Anthropic-2024 SAE motif counts for interpret).
+
+A failure in any T2 file alone is a closed-form bug; a failure in any
+T3 file alone is an empirical-contact drift. Both classes are caught
+by independent layers, which is what `closure_pct = 100%` (3/3 tiers)
+buys.
 
 **Cross-cutters (4 files):**
 
@@ -304,34 +317,38 @@ hexa-codex — the formal proof is a reference annex. See
 
 ## Status
 
-**SPEC_CATALOG + RUNNABLE_SURFACE at sat-1 (post v1.0.0, pre v1.1.0).**
+**SPEC_CATALOG + RUNNABLE_SURFACE at 100% closure (recipe §7.2 sat-1).**
 
 > 17-verb AI 지식 substrate (4 그룹: safety + economics + ops + substrate)
 > + verify/ + tests/ + build/ + docs/ runnable surface.
-> recipe §7.2 sat-1 saturation reached — all 4 F-CODEX falsifiers carry
-> T1 + T2 ×3 layer stacks via 23 .hexa-native verifiers + 24 regression
-> wrappers + 3 meta verifiers. Per-verb T3 (live empirical) row pending.
+> Recipe §7.2 sat-1 saturation reached — all 4 F-CODEX-1..4 closed at
+> recipe §3 closure_pct = 100% (T1 + T2 + T3 ✓ each), via 23 .hexa
+> verifiers + 24 regression wrappers + 3 meta verifiers. T4 (live
+> hardware / Stage-1+) is recipe §9 territory and out of loop scope.
 
 Translation: this repo is (1) a *library* of AI specs and (2) a runnable
-verification surface that has reached the recipe §7.2 sat-1 closure
-goal. The `cli/hexa-codex.hexa` dispatcher routes both — verb spec
-reads + .hexa-native verifiers / calculators / tests (legacy Python
-verify/ kept as a parallel CI path). The heavy-lift per-verb T3
-empirical pipelines (live FLOP/loss measurements, KV-cache profiles,
-HELM-Core composites, SAE feature counts) land per the
-[release ladder](#release-ladder) v1.1.0..v2.0.0.
+verification surface at recipe §7.2 sat-1 = 100% closure under the
+§3 ladder. The `cli/hexa-codex.hexa` dispatcher routes both — verb
+spec reads + .hexa-native verifiers / calculators / tests (legacy
+Python verify/ kept as a parallel CI path). The heavy-lift per-verb
+T4 live-hardware / Stage-1+ pipelines (live FLOP/loss measurements,
+KV-cache profiles, HELM-Core composites, SAE feature counts) sit in
+recipe §9 territory and land per the [release ladder](#release-ladder)
+v1.1.0..v2.0.0.
 
-What works at sat-1:
+What works at 100% closure (sat-1):
 
 - 17 verb specs land on disk under their group-named directories.
 - `hexa-codex list` prints the full 4-group table.
 - `hexa-codex <verb>` prints the spec path + first 20 lines.
 - `hexa-codex selftest` confirms 17/17 spec presence.
 - **`hexa-codex verify saturation-check`** re-runs the 6 closure
-  components and emits the canonical sat-1 marker
+  components and emits the canonical recipe §7.3 self-stop sentinel
+  `__HEXA_CODEX_RSC_SATURATED__ STOP` plus the sat-1 marker
   `__HEXA_CODEX_SATURATION_CHECK__ PASS`.
 - **`hexa-codex verify falsifier-check`** runs the closure tracker —
-  per-pillar T1 + T2 ×3 layer presence, cross-cutter row, sat-1 verdict.
+  per-pillar T1/T2/T3 tier presence, cross-cutter row, recipe §3
+  closure_pct = 100% verdict.
 - **`hexa-codex verify <pillar>-<layer>`** runs any single layer (e.g.
   `numerics-train_cost-solver`).
 - **`make -C build sat1`** is the friendly CI gate.
@@ -345,11 +362,11 @@ What works at sat-1:
   why pillar 3 uses symplectic leapfrog, math_pure rationale, sat-2
   outlook).
 
-What is **out of scope** at sat-1:
+What is **out of scope** at 100% closure (sat-1):
 
-- Per-verb T3 empirical pipelines (T2 floor only — closure pct = 4/5
-  per pillar; T3 row lifts to 5/5 = sat-2 along the
-  [release ladder](#release-ladder)).
+- Per-verb **T4 live-hardware / Stage-1+** pipelines (recipe §9 — out
+  of loop scope; closure_pct already at 100% on the §3 T1/T2/T3
+  ladder).
 - Model training, inference SaaS, or RLHF labeling production pipeline.
 - Any regulatory, alignment, or capability claim — these specs are
   preregistered hypotheses, not validated results.

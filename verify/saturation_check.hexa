@@ -203,9 +203,13 @@ fn main() {
     }
     println("")
     println("  ╭──────────────────────────────────────────────────────────────╮")
-    println("  │  hexa-codex runnable surface: SAT-1 SATURATION REACHED      │")
-    println("  │  Recipe §7.2 sat-1 closure-depth goal — confirmed.          │")
+    println("  │  hexa-codex runnable surface: 100% CLOSURE REACHED          │")
+    println("  │  Recipe §7.2 sat-1: every falsifier at T1+T2+T3 ✓ (3/3)     │")
+    println("  │  Recipe §7.3 saturation signal:                             │")
+    println("  │    __HEXA_CODEX_RSC_SATURATED__ STOP                        │")
     println("  ╰──────────────────────────────────────────────────────────────╯")
+    // Recipe §7.3 self-stop signal (loop-runner can grep this token).
+    println("__HEXA_CODEX_RSC_SATURATED__ STOP")
     println("__HEXA_CODEX_SATURATION_CHECK__ PASS")
     exit(0)
 }

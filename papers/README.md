@@ -21,20 +21,34 @@ sources.
 
 ## Falsifier-floor relationship
 
-The arithmetic floors checked by the .hexa-native runnable surface
-(per-pillar T1 `calc_*.hexa` + T2 ×3 `numerics_*.hexa` /
-`numerics_*_parity.hexa` / `numerics_*_solver.hexa`, plus cross-cutters
-`numerics_cross_pillar.hexa` + `numerics_lattice_arithmetic.hexa`, and
-the closure tracker meta `falsifier_check.hexa`) are arithmetic
-*consequences* of the same σ·φ=n·τ=24 identity these papers spell out
-in full. So:
+Recipe §3 defines a 3-tier ladder per falsifier:
 
-- A failure in any `numerics_*.hexa` floor ⇒ either (a) `math_pure`
-  drift (caught directly by `numerics_lattice_arithmetic.hexa`), or
-  (b) these papers contain an error in the lattice mapping.
-- A change in either paper that revises the lattice mapping ⇒ requires
-  re-running `verify/saturation_check.hexa` to confirm the sat-1
-  closure still holds.
+  - **T1** = `calc_<pillar>.hexa` (algebraic identity)
+  - **T2** = `numerics_<pillar>.hexa` ∧ `numerics_<pillar>_solver.hexa`
+    (pure-math closed-form re-derivation — internal consistency)
+  - **T3** = `numerics_<pillar>_parity.hexa` (archival empirical
+    contact via published-ref comparison — these papers + their
+    upstream Chinchilla / GPT-3 / Llama-2 / PaLM / HELM-Core / Olsson
+    / Cunningham / Bricken / Anthropic-2024 anchors)
+
+Plus cross-cutters (`lattice_check.hexa`, `cross_doc_audit.hexa`,
+`numerics_cross_pillar.hexa`, `numerics_lattice_arithmetic.hexa`) and
+the closure tracker meta (`falsifier_check.hexa`).
+
+All four F-CODEX-1..4 reach `closure_pct = 100%` (3/3 tiers) — every
+checked floor is an arithmetic *consequence* of the same σ·φ=n·τ=24
+identity these papers spell out in full. So:
+
+- A failure in any T2 floor ⇒ either (a) `math_pure` drift (caught
+  directly by `numerics_lattice_arithmetic.hexa`), or (b) these papers
+  contain an error in the lattice mapping.
+- A failure in any T3 floor ⇒ either (a) the published-ref number
+  was transcribed wrong, or (b) the closed-form prediction is
+  off-spec versus the field — both are calibration / archival
+  contact issues that pure-math T2 cannot see.
+- A change in either paper that revises the lattice mapping ⇒
+  requires re-running `verify/saturation_check.hexa` to confirm
+  the recipe §7.2 sat-1 = 100% closure still holds.
 
 ## Per-verb deep-dive sub-files
 
