@@ -304,37 +304,52 @@ hexa-codex — the formal proof is a reference annex. See
 
 ## Status
 
-**SPEC_CATALOG_ONLY + RUNNABLE_VERIFICATION_SURFACE at v1.0.0.**
+**SPEC_CATALOG + RUNNABLE_SURFACE at sat-1 (post v1.0.0, pre v1.1.0).**
 
 > 17-verb AI 지식 substrate (4 그룹: safety + economics + ops + substrate)
-> + verify/ + tests/ + build/ runnable surface.
-> spec-first (per-verb 작동 .hexa eval pipeline은 v1.1+ 단계별 합류).
+> + verify/ + tests/ + build/ + docs/ runnable surface.
+> recipe §7.2 sat-1 saturation reached — all 4 F-CODEX falsifiers carry
+> T1 + T2 ×3 layer stacks via 23 .hexa-native verifiers + 24 regression
+> wrappers + 3 meta verifiers. Per-verb T3 (live empirical) row pending.
 
 Translation: this repo is (1) a *library* of AI specs and (2) a runnable
-verification surface at v1.0. The `cli/hexa-codex.hexa` dispatcher routes
-both — verb spec reads + Python verifiers / calculators / tests. The
-heavy-lift per-verb `.hexa` eval pipelines (falsifier sandboxes,
-cost-curve fitters, interp probes) land per the
+verification surface that has reached the recipe §7.2 sat-1 closure
+goal. The `cli/hexa-codex.hexa` dispatcher routes both — verb spec
+reads + .hexa-native verifiers / calculators / tests (legacy Python
+verify/ kept as a parallel CI path). The heavy-lift per-verb T3
+empirical pipelines (live FLOP/loss measurements, KV-cache profiles,
+HELM-Core composites, SAE feature counts) land per the
 [release ladder](#release-ladder) v1.1.0..v2.0.0.
 
-What works at v1.0:
+What works at sat-1:
 
 - 17 verb specs land on disk under their group-named directories.
 - `hexa-codex list` prints the full 4-group table.
 - `hexa-codex <verb>` prints the spec path + first 20 lines.
 - `hexa-codex selftest` confirms 17/17 spec presence.
-- **`hexa-codex verify all` runs 6 verifiers** (n6 / inventory / group /
-  release / falsifiers / reference) — 6/6 PASS in <6s.
-- **`hexa-codex calc <metric>`** runs F-CODEX-1..4 closed-form calculators.
-- **`make -C build ci`** runs verify + 73 pytest cases (all auto, no
-  bench equipment / external SDK / pip install required).
+- **`hexa-codex verify saturation-check`** re-runs the 6 closure
+  components and emits the canonical sat-1 marker
+  `__HEXA_CODEX_SATURATION_CHECK__ PASS`.
+- **`hexa-codex verify falsifier-check`** runs the closure tracker —
+  per-pillar T1 + T2 ×3 layer presence, cross-cutter row, sat-1 verdict.
+- **`hexa-codex verify <pillar>-<layer>`** runs any single layer (e.g.
+  `numerics-train_cost-solver`).
+- **`make -C build sat1`** is the friendly CI gate.
+- **`make -C build everything`** = ci (Python legacy) + 24-wrapper .hexa
+  regression + sat-1 closure + selftest.
 - **σ(6) = 12 mechanically proven** in Lean 4 (`SigmaLatticeCard.lean`,
-  `:= rfl`, no `sorry`).
+  `:= rfl`, no `sorry`); cross-checked at runtime by
+  `verify/lattice_check.hexa` and `verify/numerics_lattice_arithmetic.hexa`.
+- See **[`docs/numerics_methodology.md`](docs/numerics_methodology.md)**
+  for the closure-depth narrative (T1/T2/T3 taxonomy, why each T2 layer,
+  why pillar 3 uses symplectic leapfrog, math_pure rationale, sat-2
+  outlook).
 
-What is **out of scope** at v1.0:
+What is **out of scope** at sat-1:
 
-- Per-verb empirical eval pipelines (arithmetic floor only — empirical
-  fits land per the [release ladder](#release-ladder)).
+- Per-verb T3 empirical pipelines (T2 floor only — closure pct = 4/5
+  per pillar; T3 row lifts to 5/5 = sat-2 along the
+  [release ladder](#release-ladder)).
 - Model training, inference SaaS, or RLHF labeling production pipeline.
 - Any regulatory, alignment, or capability claim — these specs are
   preregistered hypotheses, not validated results.
@@ -350,8 +365,9 @@ What is **out of scope** at v1.0:
 # explicitly. Tracked as upstream improvement.
 hx install hexa-codex --entry cli/hexa-codex.hexa
 hexa-codex --version           # → 1.0.0
-hexa-codex verify all          # → 5/5 PASS
-hexa-codex selftest            # → 17/17 verb specs PASS
+hexa-codex verify saturation-check   # → __HEXA_CODEX_SATURATION_CHECK__ PASS  (sat-1 marker)
+hexa-codex verify falsifier-check    # → per-pillar layer presence + sat-1 verdict
+hexa-codex selftest                  # → 17/17 verb specs PASS
 ```
 
 For local development install (avoids GitHub round-trip):
@@ -370,11 +386,19 @@ cd $HEXA_CODEX_ROOT
 # List the 17 verbs:
 hexa run cli/hexa-codex.hexa list
 
-# Run all 5 verifiers (Python stdlib only):
-python3 verify/cli.py all
+# Run the .hexa-native sat-1 closure verdict:
+make -C build sat1
+# (or directly):
+RESOURCE_LOCAL_HEXA=1 ~/.hx/packages/hexa/hexa.real run verify/saturation_check.hexa
+
+# Run the 24-wrapper regression suite:
+make -C build test-hexa-all
+
+# Run the legacy Python verifiers (parallel CI path):
+make -C build verify          # Python stdlib only
 
 # Run the pytest auto suite (no pip install required):
-make -C build test
+make -C build test            # 83 cases
 
 # Run F-CODEX-1 closed-form training-cost calc:
 hexa-codex calc train_cost --N 7e9 --D 1.4e12

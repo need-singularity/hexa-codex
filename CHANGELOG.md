@@ -10,6 +10,14 @@ versions follow [SemVer](https://semver.org/spec/v2.0.0.html).
 > accumulation). Goal: reach F-CODEX-1..4 67% closure (T1 + T2 ×3 stack)
 > via .hexa-native verify/ + tests/ inventory, mirroring hexa-cern's worked
 > example. Python verify/ kept until ports retire its targets.
+>
+> **Status (post iter 24):** recipe §7.2 sat-1 saturation REACHED.
+> All 4 F-CODEX falsifiers carry T1 + T2 ×3 (4 layers each, closure
+> pct = 4/5 = 0.80). 23 .hexa verifiers + 24 regression wrappers, plus
+> 3 meta verifiers (`falsifier_check.hexa`, `lint_numerics.hexa`,
+> `saturation_check.hexa`). Single command to confirm:
+> `hexa-codex verify saturation-check` (or `make -C build sat1`).
+> See `docs/numerics_methodology.md` for the closure-depth narrative.
 
 ### Added (2026-05-07 — 1st RSC iteration: lattice_check)
 

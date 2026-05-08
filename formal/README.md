@@ -23,9 +23,13 @@ Lean 4 proof in `SigmaLatticeCard.lean` is a **kernel-checked anchor**:
 - F-CODEX-3: alignment_score = mean over **12** axes ← σ(6) = 12 (this proof)
 - F-CODEX-4: interpret_motifs = σ−φ = **10** ← σ(6) − φ(6) = 10 (corollary)
 
-The Python verifier `verify/n6_arithmetic.py` cross-checks the same
-identity at runtime; the Lean proof gives the **mathematical bedrock**
-that the Python code is faithful to.
+The .hexa-native runnable surface cross-checks the same identity at
+runtime — `verify/lattice_check.hexa` (24 algebraic invariants),
+`verify/numerics_lattice_arithmetic.hexa` (math_pure stability floor),
+and the cross-cutter `verify/numerics_cross_pillar.hexa` (which feeds
+σ·φ = n·τ = J₂ = 24 into all four pillars in one pass). The Lean proof
+gives the **mathematical bedrock** those .hexa runtime checks are
+faithful to.
 
 ## How to verify
 
@@ -37,9 +41,11 @@ lake build N6.InvariantLattice.SigmaLatticeCard
 ```
 
 The Lean 4 toolchain is **not required** for hexa-codex's runnable
-verification surface (`verify/cli.py` runs on Python stdlib only). The
-formal proof is a **reference annex** that mirrors `verify/n6_arithmetic.py`'s
-runtime claims.
+verification surface — the .hexa scripts run on `~/.hx/packages/hexa/hexa.real`
+with `RESOURCE_LOCAL_HEXA=1` and the `math_pure` runtime (no external
+deps). The formal proof is a **reference annex** that mirrors the
+runtime claims emitted by `verify/lattice_check.hexa` and
+`verify/numerics_lattice_arithmetic.hexa`.
 
 ## Provenance + sister-repo relationship
 

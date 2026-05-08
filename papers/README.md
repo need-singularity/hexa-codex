@@ -21,14 +21,20 @@ sources.
 
 ## Falsifier-floor relationship
 
-The arithmetic floors checked by `verify/falsifier_check.py` (F-CODEX-1..4)
-are arithmetic *consequences* of the same σ·φ=n·τ=24 identity these
-papers spell out in full. So:
+The arithmetic floors checked by the .hexa-native runnable surface
+(per-pillar T1 `calc_*.hexa` + T2 ×3 `numerics_*.hexa` /
+`numerics_*_parity.hexa` / `numerics_*_solver.hexa`, plus cross-cutters
+`numerics_cross_pillar.hexa` + `numerics_lattice_arithmetic.hexa`, and
+the closure tracker meta `falsifier_check.hexa`) are arithmetic
+*consequences* of the same σ·φ=n·τ=24 identity these papers spell out
+in full. So:
 
-- A failure in `verify/falsifier_check.py` ⇒ either (a) Python arithmetic
-  drift, or (b) these papers contain an error in the lattice mapping.
+- A failure in any `numerics_*.hexa` floor ⇒ either (a) `math_pure`
+  drift (caught directly by `numerics_lattice_arithmetic.hexa`), or
+  (b) these papers contain an error in the lattice mapping.
 - A change in either paper that revises the lattice mapping ⇒ requires
-  re-running `verify/cli.py all` to confirm the floors still pass.
+  re-running `verify/saturation_check.hexa` to confirm the sat-1
+  closure still holds.
 
 ## Per-verb deep-dive sub-files
 
