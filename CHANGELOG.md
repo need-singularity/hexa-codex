@@ -837,6 +837,47 @@ Remaining priority-table slots (11 build/Makefile, 12 PDF, 13 docs/
 narrative, 14 second T2 stack) are non-runnable / scope-extension
 items — the runnable surface goal is reached.
 
+### Updated (2026-05-08 — 24th RSC iteration: post-sat-1 docs + build)
+
+Three priority-11/12/13 polish updates landing together (no new
+verifiers — all are documentation / orchestration):
+
+- **README.md** — runnable-surface section rewritten:
+  - Badges updated (`verify-23` `tests-24+83` `closure-sat-1`
+    `falsifiers-4/4 T1+T2×3`).
+  - Old 5/Python-verifier table replaced by:
+    - Per-pillar T1 / T2 #1 / T2 #2 / T2 #3 layer matrix (16 files)
+    - 4-row cross-cutter table (lattice_check, cross_doc_audit,
+      numerics_cross_pillar, numerics_lattice_arithmetic)
+    - 3-row meta table (falsifier_check, lint_numerics,
+      saturation_check)
+  - New canonical commands documented:
+    `hexa-codex verify saturation-check`,
+    `RESOURCE_LOCAL_HEXA=1 hexa run verify/saturation_check.hexa`,
+    `hexa run tests/test_all.hexa` (24-wrapper).
+- **docs/numerics_methodology.md** — recipe §7.4 priority 13 narrative.
+  Single doc explaining *why* the surface is structured the way it is:
+  closure-depth taxonomy (T1/T2/T3), what T2 #1 / #2 / #3 each catch,
+  why pillar 3 specifically uses symplectic leapfrog, why
+  `math_pure`, the canonical sat-1 command, and the sat-2 outlook
+  (T3 empirical row).
+- **build/Makefile** — recipe §7.4 priority 11/12 update:
+  - `HEXA` default pinned to `~/.hx/packages/hexa/hexa.real`
+    (bypasses the `~/.hx/bin/hexa` remote-routing wrapper).
+  - `HEXA_LOCAL_ENV` exports `RESOURCE_LOCAL_HEXA=1 HEXA_CODEX_ROOT=$$PWD`
+    so any nested `hexa run` chain stays local.
+  - New targets:
+    - `verify-saturation` — one-shot sat-1 marker via
+      `verify/saturation_check.hexa`.
+    - `verify-hexa` — alias for `verify-saturation`.
+    - `test-hexa-all` — 24-wrapper regression via `tests/test_all.hexa`.
+    - `sat1` — sat-1 closure verdict with friendly summary.
+  - `everything` extended to `ci + selftest + test-hexa-all + sat1`.
+  - `help` text refreshed.
+
+This iter is documentation-only; no new verifiers, no new tests.
+sat-1 closure verdict unchanged: still PASS.
+
 ### F-CODEX T2 ROW: COMPLETE after iter 10
 
 | Falsifier  | T1 (algebraic)                    | T2 (numerics)            | T3 (empirical) |

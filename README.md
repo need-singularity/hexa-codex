@@ -8,9 +8,10 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 [![Version](https://img.shields.io/badge/version-1.0.0-informational.svg)](CHANGELOG.md)
 [![Verbs: 17 / 4 groups](https://img.shields.io/badge/verbs-17_(4_groups)-blue.svg)](#verbs)
-[![Verify: 6/6](https://img.shields.io/badge/verify-6%2F6-brightgreen.svg)](#runnable-surface)
-[![Tests: 83 passed](https://img.shields.io/badge/tests-83_passed-brightgreen.svg)](#runnable-surface)
-[![Falsifiers: 4/4 floor](https://img.shields.io/badge/falsifiers-4%2F4_floor-brightgreen.svg)](#falsifier-preregister)
+[![Verify: 23 .hexa](https://img.shields.io/badge/verify-23_(.hexa)-brightgreen.svg)](#runnable-surface)
+[![Tests: 24 .hexa + 83 py](https://img.shields.io/badge/tests-24_.hexa_+_83_py-brightgreen.svg)](#runnable-surface)
+[![Closure: sat-1](https://img.shields.io/badge/closure-sat--1_T2×3-brightgreen.svg)](#runnable-surface)
+[![Falsifiers: 4/4 T1+T2×3](https://img.shields.io/badge/falsifiers-4%2F4_T1+T2×3-brightgreen.svg)](#falsifier-preregister)
 [![Lean4 proof: σ(6)=12](https://img.shields.io/badge/Lean4-σ(6)%3D12_PROVEN-brightgreen.svg)](formal/README.md)
 [![Papers: 4 + Lean1 + 2 deep-dive](https://img.shields.io/badge/refs-4P_+_Lean1_+_2DD-blue.svg)](#reference-annexes)
 [![n=6 lattice](https://img.shields.io/badge/n=6-σ·φ_=_n·τ_=_24-blue.svg)](#n6-master-identity)
@@ -152,76 +153,97 @@ python3 verify/release_params.py  # full per-version parameter table
 
 ## Runnable surface
 
-v1.0.0 ships the **codex** (markdown spec library) **plus** a stdlib-only
-runnable verification surface that mirrors the
-[hexa-sscb](https://github.com/dancinlab/hexa-sscb) pattern.
+The runnable surface follows the
+[runnable_surface_recipe.md](https://github.com/dancinlab/bedrock/blob/main/docs/runnable_surface_recipe.md)
+closure-depth pattern. Every prediction the codex ships is paired with
+at least one **runnable** verifier, and the surface is closed when each
+F-CODEX falsifier carries T1 (algebraic) + T2 ×3 (numerical /
+published-ref / ODE solver) layers — recipe §7.2 sat-1 saturation.
 
-### verify/ — 5 verifiers, Python stdlib only
+**Status (post iter 23): sat-1 reached.** All 4 F-CODEX falsifiers at
+T1 + T2 ×3, plus 4 cross-cutters and 3 meta verifiers. Total **23
+runnable verify scripts** + **24 companion regression tests**.
 
-| Check          | Module                                | What it verifies                                  |
-|----------------|---------------------------------------|---------------------------------------------------|
-| `n6`           | `verify/n6_arithmetic.py`             | n=6 lattice identity (σ·φ = n·τ = 24) + 8 projections |
-| `inventory`    | `verify/spec_inventory.py`            | 17-verb spec presence + `@canonical` headers      |
-| `group`        | `verify/group_audit.py`               | 4-group / 17-verb consistency across 6 surfaces   |
-| `release`      | `verify/release_ladder.py`            | v1.0→v2.0 monotonicity (verbs_wired ↑, evals ↑)   |
-| `falsifiers`   | `verify/falsifier_check.py`           | F-CODEX-1..4 arithmetic floors                    |
-| `reference`    | `verify/reference_inventory.py`       | papers/ + formal/ md5 + canonical-header audit    |
+### verify/ — 23 .hexa-native verifiers (math_pure, no deps)
+
+All scripts use `self/runtime/math_pure` (no external Python / float
+libraries). Each emits a `__HEXA_CODEX_<NAME>__ PASS` sentinel; the
+top-level aggregator polls sentinels and exits 0 iff every layer is
+green.
+
+**Per-pillar layer stack (4 × 4 = 16 files):**
+
+| Pillar                    | T1 (calc)                | T2 #1 (numerics)            | T2 #2 (parity)                     | T2 #3 (solver)                     |
+|---------------------------|--------------------------|------------------------------|-------------------------------------|-------------------------------------|
+| F-CODEX-1 (train_cost)    | `calc_train_cost.hexa`   | `numerics_train_cost.hexa`   | `numerics_train_cost_parity.hexa`   | `numerics_train_cost_solver.hexa`   |
+| F-CODEX-2 (infer_cost)    | `calc_infer_cost.hexa`   | `numerics_infer_cost.hexa`   | `numerics_infer_cost_parity.hexa`   | `numerics_infer_cost_solver.hexa`   |
+| F-CODEX-3 (alignment)     | `calc_alignment.hexa`    | `numerics_alignment.hexa`    | `numerics_alignment_parity.hexa`    | `numerics_alignment_solver.hexa`    |
+| F-CODEX-4 (interpret)     | `calc_interpret.hexa`    | `numerics_interpret.hexa`    | `numerics_interpret_parity.hexa`    | `numerics_interpret_solver.hexa`    |
+
+T2 #2 (parity) anchors against published-ref data (Chinchilla / GPT-3
+/ Llama-2 / PaLM for cost; HELM-Core / Olsson / Cunningham / Bricken /
+Anthropic-2024 for alignment + interpret). T2 #3 (solver) re-derives
+the same prediction by integrating the underlying ODE
+(Euler / midpoint-RK2 / RK4 cascade for pillars 1, 2, 4; symplectic
+leapfrog/Verlet harmonic oscillator for pillar 3) and verifying
+convergence orders 1 / 2 / 4 by step-halving.
+
+**Cross-cutters (4 files):**
+
+| Verifier                              | What it checks                                                      |
+|---------------------------------------|---------------------------------------------------------------------|
+| `lattice_check.hexa`                  | 24 lattice algebraic invariants (σ·φ = n·τ = J₂ = 24, σ²=144, …)    |
+| `cross_doc_audit.hexa`                | Taxonomy + falsifier-prefix + provenance + master identity across docs |
+| `numerics_cross_pillar.hexa`          | Cross-pillar identities (F1×F2 composite, F3×F4 product, coupled ODE) |
+| `numerics_lattice_arithmetic.hexa`    | math_pure stability floor (associativity, log/exp/pow round-trips)  |
+
+**Meta (3 files):**
+
+| Verifier                          | What it does                                                       |
+|-----------------------------------|--------------------------------------------------------------------|
+| `falsifier_check.hexa`            | Closure tracker — per-pillar layer presence + sat-1 verdict gate   |
+| `lint_numerics.hexa`              | Recipe §4 invariants 1-5 over every `numerics_*.hexa`              |
+| `saturation_check.hexa`           | Aggregate self-stop signal — re-runs 6 closure components          |
 
 ```bash
-python3 verify/cli.py all          # 5/5 PASS in <2s
-python3 verify/cli.py --json       # CI-friendly machine output
-python3 verify/cli.py n6           # single check
+hexa-codex verify all                              # full sweep, sat-1 verdict
+hexa-codex verify saturation-check                 # one-shot sat-1 marker
+hexa-codex verify falsifier-check                  # closure tracker
+hexa-codex verify lint-numerics                    # recipe §4 invariants
+hexa-codex verify numerics-train_cost-solver       # one specific layer
+RESOURCE_LOCAL_HEXA=1 hexa run verify/saturation_check.hexa
+# → __HEXA_CODEX_SATURATION_CHECK__ PASS  (when at sat-1)
 ```
 
-Plus 5 calculators and 4 analyzers:
+Each script also runs standalone:
+`RESOURCE_LOCAL_HEXA=1 hexa run verify/<name>.hexa`. The
+`RESOURCE_LOCAL_HEXA=1` env routes the local interpreter
+(`~/.hx/packages/hexa/hexa.real`) instead of the `hexa-r ubu-1`
+remote-routing wrapper that ships with the resource toolkit.
 
-| Tool                            | Purpose                                       |
-|---------------------------------|-----------------------------------------------|
-| `verify/calc_train_cost.py`     | F-CODEX-1 closed form (N^J₂ vs Chinchilla)    |
-| `verify/calc_infer_cost.py`     | F-CODEX-2 closed form (context^τ)             |
-| `verify/calc_alignment.py`      | F-CODEX-3 12-axis HELM-comparable aggregator  |
-| `verify/calc_interpret.py`      | F-CODEX-4 motif counter (σ−φ=10)              |
-| `verify/calc_quality_scale.py`  | quality_scale Chinchilla-comparable fit       |
-| `verify/lattice_explore.py`     | n=k lattice arithmetic explorer               |
-| `verify/release_params.py`      | per-release parameter registry                |
-| `verify/verb_query.py`          | verb info / spec lookup tool                  |
+### tests/ — 24 .hexa regression wrappers + 83 pytest auto
 
-### tests/ — 62 pytest auto + 1 hexa
-
-```bash
-make -C build test          # pytest -m auto (62 cases, <20s)
-make -C build test-hexa     # pytest -m hexa (requires hexa-lang)
-hexa run tests/test_selftest.hexa   # 17/17 spec presence (.hexa-native)
-```
-
-Suite breakdown: `test_n6_invariants.py` (12) · `test_verifiers.py` (8) ·
-`test_calculators.py` (15) · `test_release_ladder.py` (5) ·
-`test_spec_inventory.py` (22) · `test_install_hexa.py` (1, hexa marker).
-
-### build/Makefile — fan-out to verify + tests + selftest + pdf
+Each `verify/*.hexa` script has a companion `tests/test_*.hexa`
+wrapper that re-runs the verifier, greps the sentinel, and exits 0/1.
+`tests/test_all.hexa` aggregates all 24 wrappers; the legacy 83 pytest
+auto-cases continue to cover the spec / inventory / group / lattice
+side.
 
 ```bash
-make -C build verify        # all 5 verifiers
-make -C build verify-json   # JSON for CI
-make -C build test          # pytest auto suite
-make -C build selftest      # 17-verb .hexa selftest
-make -C build install-test  # hx install hexa-codex --entry cli/hexa-codex.hexa
-make -C build pdf VERB=alignment   # one-off per-verb PDF (pandoc)
-make -C build ci            # verify + test
-make -C build everything    # ci + selftest + hexa-tests
+RESOURCE_LOCAL_HEXA=1 HEXA_CODEX_ROOT="$PWD" \
+    ~/.hx/packages/hexa/hexa.real run tests/test_all.hexa   # 24/24 PASS
+python3 -m pytest tests/ -m auto                            # 83 PASS
 ```
 
 ### cli/hexa-codex.hexa — extended subcommands
 
-In addition to `list` / `selftest` / `<verb>`, the CLI now routes:
-
 ```bash
-hexa-codex verify [check]      # n6 / inventory / group / release / falsifiers / reference / all
-hexa-codex calc <metric>       # train_cost / infer_cost / alignment / interpret / quality_scale
-hexa-codex inventory           # spec presence + canonical-header audit
-hexa-codex lattice [n]         # n=k lattice explorer
-hexa-codex test [mark]         # pytest tests/ -m {auto|hexa}
-hexa-codex status              # one-shot health JSON
+hexa-codex verify [target]       # any .hexa verifier; e.g. saturation-check, falsifier-check
+hexa-codex calc <metric>         # train_cost / infer_cost / alignment / interpret / quality_scale
+hexa-codex inventory             # 17-verb spec presence + canonical-header audit
+hexa-codex lattice [n]           # n=k lattice explorer
+hexa-codex test [mark]           # pytest tests/ -m {auto|hexa}
+hexa-codex status                # one-shot health JSON
 ```
 
 ---

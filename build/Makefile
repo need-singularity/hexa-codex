@@ -17,10 +17,15 @@
 
 ROOT     := ..
 PYTHON   ?= python3
-HEXA     ?= /Users/ghost/.hx/bin/hexa
+# HEXA points at the real local interpreter to bypass the ~/.hx/bin/hexa
+# wrapper that unconditionally routes `run` / `batch` to `hexa-r ubu-1`.
+# RESOURCE_LOCAL_HEXA=1 is also exported so any nested `hexa run` chain
+# stays local even when invoked through the wrapper.
+HEXA     ?= /Users/ghost/.hx/packages/hexa/hexa.real
 HX       ?= /Users/ghost/.hx/bin/hx
 PANDOC   := pandoc
 OUT      := out
+HEXA_LOCAL_ENV := RESOURCE_LOCAL_HEXA=1 HEXA_CODEX_ROOT=$$PWD
 
 PANDOC_FLAGS := \
   --pdf-engine=xelatex \
@@ -33,23 +38,36 @@ PANDOC_FLAGS := \
   --toc \
   --toc-depth=2
 
-.PHONY: all verify verify-json test test-hexa selftest install-test pdf clean check ci everything help
+.PHONY: all verify verify-json verify-hexa verify-saturation test test-hexa test-hexa-all selftest install-test pdf clean check ci everything help
 
 all: ci
 
 # ── runnable surface fan-out ─────────────────────────────────────────
 
+# Legacy Python verify (kept for the spec/inventory/group/release
+# checks; the .hexa-native runnable surface is the primary path now).
 verify:
 	@cd $(ROOT) && $(PYTHON) verify/cli.py all
 
 verify-json:
 	@cd $(ROOT) && $(PYTHON) verify/cli.py all --json
 
+# .hexa-native verify all — runs the saturation_check aggregator which
+# re-runs the 6 closure components and emits the sat-1 marker.
+verify-hexa: verify-saturation
+
+verify-saturation:
+	@cd $(ROOT) && $(HEXA_LOCAL_ENV) $(HEXA) run verify/saturation_check.hexa
+
 test:
 	@cd $(ROOT) && $(PYTHON) -m pytest tests/ -m auto -v
 
 test-hexa:
 	@cd $(ROOT) && $(PYTHON) -m pytest tests/ -m hexa -v
+
+# Full .hexa regression — 24 wrappers via tests/test_all.hexa.
+test-hexa-all:
+	@cd $(ROOT) && $(HEXA_LOCAL_ENV) $(HEXA) run tests/test_all.hexa
 
 selftest:
 	@cd $(ROOT) && HEXA_CODEX_ROOT=$$PWD $(HEXA) run cli/hexa-codex.hexa selftest
@@ -94,22 +112,36 @@ check:
 ci: verify test
 	@echo
 	@echo "  ✓ ci surface PASSED"
-	@echo "    · verify   — 5 verifiers (n6/inventory/group/release/falsifiers)"
+	@echo "    · verify   — Python verifiers (n6/inventory/group/release/falsifiers)"
 	@echo "    · test     — pytest tests/ -m auto"
 
-everything: ci selftest test-hexa
-	@echo "  ✓ everything PASSED (ci + selftest + hexa-lang tests)"
+# sat-1 surface — .hexa-native primary path. Single command that re-runs
+# the 6 closure components and exits 0 iff the recipe §7.2 sat-1 gate
+# passes.
+sat1: verify-saturation
+	@echo
+	@echo "  ✓ sat-1 closure verified"
+	@echo "    · saturation_check  — falsifier_check + lint + cross-pillar +"
+	@echo "                          lattice_arithmetic + lattice_check +"
+	@echo "                          cross_doc_audit  →  sat-1 PASS"
+
+everything: ci selftest test-hexa-all sat1
+	@echo "  ✓ everything PASSED (ci + selftest + 24 .hexa tests + sat-1)"
 
 help:
 	@echo "hexa-codex/build/Makefile targets:"
-	@echo "  verify        run all 5 verifiers"
-	@echo "  verify-json   JSON output for CI"
-	@echo "  test          pytest -m auto"
-	@echo "  test-hexa     pytest -m hexa (requires hexa-lang)"
-	@echo "  selftest      cli/hexa-codex.hexa selftest"
-	@echo "  install-test  hx install hexa-codex (with --entry workaround)"
-	@echo "  pdf VERB=...  build a per-verb PDF"
-	@echo "  ci            verify + test (default)"
-	@echo "  everything    ci + selftest + hexa tests"
-	@echo "  check         toolchain probe"
-	@echo "  clean         remove build artifacts"
+	@echo "  verify         Python legacy verifiers"
+	@echo "  verify-json    JSON output for CI"
+	@echo "  verify-hexa    .hexa-native verify (alias for verify-saturation)"
+	@echo "  verify-saturation  one-shot sat-1 marker (recipe §7.2 gate)"
+	@echo "  test           pytest -m auto (83 cases)"
+	@echo "  test-hexa      pytest -m hexa (requires hexa-lang)"
+	@echo "  test-hexa-all  full 24-wrapper regression (tests/test_all.hexa)"
+	@echo "  selftest       cli/hexa-codex.hexa selftest"
+	@echo "  install-test   hx install hexa-codex (with --entry workaround)"
+	@echo "  pdf VERB=...   build a per-verb PDF"
+	@echo "  ci             Python verify + test (legacy CI)"
+	@echo "  sat1           .hexa-native sat-1 closure verdict"
+	@echo "  everything     ci + selftest + .hexa tests + sat-1"
+	@echo "  check          toolchain probe"
+	@echo "  clean          remove build artifacts"
