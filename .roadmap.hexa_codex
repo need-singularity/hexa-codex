@@ -45,7 +45,7 @@ DoD:
 ## §A.3 Cycle history
 
 - **Cycle 0 (2026-05-06)** — v1.0.0 initial extraction from n6-architecture@c0f1f570. Commit `63e8283`. 17 verb / 4 그룹 cp -R.
-- **Cycle 1 (2026-05-07/08, iter 1..27)** — RSC port from Python → .hexa following `~/core/bedrock/docs/runnable_surface_recipe.md`. Recipe §7.4 priorities 1-10 + 15 all closed. **Recipe §7.2 sat-1 = 100% closure REACHED** under recipe §3 taxonomy (T1=`calc_*`, T2=`numerics_*` ∧ `numerics_*_solver`, T3=`numerics_*_parity`). 23 .hexa verifiers + 24 regression wrappers + 3 meta verifiers (`falsifier_check.hexa`, `lint_numerics.hexa`, `saturation_check.hexa`). Single-command verdict: `hexa-codex verify saturation-check` → `__HEXA_CODEX_RSC_SATURATED__ STOP`. See `docs/numerics_methodology.md` for the closure-depth narrative.
+- **Cycle 1 (2026-05-07/08, iter 1..28)** — RSC port from Python → .hexa following `~/core/bedrock/docs/runnable_surface_recipe.md`. Recipe §7.4 priorities 1-10 + 15 all closed. **Recipe §7.2 sat-1 = 100% closure REACHED at iter 27** under recipe §3 taxonomy (T1=`calc_*`, T2=`numerics_*` ∧ `numerics_*_solver`, T3=`numerics_*_parity`). 23 .hexa verifiers + 24 regression wrappers + 3 meta verifiers (`falsifier_check.hexa`, `lint_numerics.hexa`, `saturation_check.hexa`). Operator docs: `docs/numerics_methodology.md` (closure-depth narrative), `docs/closure_status.md` (per-pillar snapshot), `docs/quick_reference.md` (operator one-pager). Single-command verdict: `hexa-codex verify saturation-check` → `__HEXA_CODEX_RSC_SATURATED__ STOP`.
 
 ## §A.4 Falsifier preregister
 
