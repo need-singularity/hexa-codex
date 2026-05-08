@@ -229,6 +229,7 @@ runnable_hexa_iter24 = "2026-05-08 (post-sat-1 docs+build update — recipe §7.
 runnable_hexa_iter25 = "2026-05-08 (doc-surface sat-1 alignment — README Status section sat-1-aware, install commands switch to verify/saturation_check.hexa, CHANGELOG header sat-1 status banner, papers/README.md falsifier-floor list updated to the .hexa runnable surface, formal/README.md How-to-verify swaps Python n6_arithmetic.py for lattice_check.hexa + numerics_lattice_arithmetic.hexa + numerics_cross_pillar.hexa)"
 runnable_hexa_iter26 = "2026-05-08 (.roadmap.hexa_codex Cycle 1 entry + per-falsifier sat-1 status; last-sync bumped to 2026-05-08; current release tag annotated 'sat-1 reached, pre v1.1.0')"
 runnable_hexa_iter27 = "2026-05-08 (closure-taxonomy correction — recipe §3 says T1=calc, T2=numerics+solver, T3=parity (archival empirical contact); falsifier_check.hexa now reports closure_pct = 100% (3/3 tiers) per F-CODEX-1..4; saturation_check.hexa emits recipe §7.3 self-stop sentinel __HEXA_CODEX_RSC_SATURATED__ STOP; CHANGELOG/README/roadmap rewritten for 100%; F-CODEX-1..4 ALL at 100% closure)"
+runnable_hexa_iter28 = "2026-05-08 (operator-facing docs amplification — new docs/closure_status.md (static per-pillar 100%-closure snapshot with tier file paths + check counts) + docs/quick_reference.md (sat-1 verdict + component runs + per-falsifier layer runs + regression suites + env notes + recipe pointer table); README Status section links to both)"
 
 # ── Scope honesty (raw#10 C3) ─────────────────────────────
 [scope]

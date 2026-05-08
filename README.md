@@ -361,6 +361,9 @@ What works at 100% closure (sat-1):
   for the closure-depth narrative (T1/T2/T3 taxonomy, why each T2 layer,
   why pillar 3 uses symplectic leapfrog, math_pure rationale, sat-2
   outlook).
+- See **[`docs/closure_status.md`](docs/closure_status.md)** for the
+  static per-pillar closure snapshot and **[`docs/quick_reference.md`](docs/quick_reference.md)**
+  for the operator command list.
 
 What is **out of scope** at 100% closure (sat-1):
 

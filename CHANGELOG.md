@@ -947,7 +947,33 @@ by `verify/falsifier_check.hexa` 10/10 + `verify/saturation_check.hexa`
 10/10. T4 (live hardware) row remains an informational gap report —
 recipe §9 territory, out of loop scope.
 
-### F-CODEX T2 ROW: COMPLETE after iter 10
+### Added (2026-05-08 — 28th RSC iteration: docs/closure_status.md + docs/quick_reference.md)
+
+Two new operator-facing reference docs covering the same surface from
+different angles. No new verifiers, no new tests.
+
+- **`docs/closure_status.md`** — static per-pillar closure snapshot.
+  Source-of-truth for "where each F-CODEX falsifier sits on the
+  recipe §3 ladder right now". For each F-CODEX-1..4:
+  - Tier table with file paths + check counts + what each tier proves
+  - Cross-cutter (X1) row + Meta (M) row tables
+  - "How to re-confirm" sub-section with the canonical commands
+  - Inventory totals (16 pillar + 4 cross + 3 meta = 23 verifiers)
+  - "What is NOT covered" sub-section (T4 / recipe §9)
+  - The runtime verdict (`verify/saturation_check.hexa`) is
+    authoritative if it ever drifts from this snapshot.
+- **`docs/quick_reference.md`** — operator one-pager.
+  - §1 single sat-1 verdict command
+  - §2 component runs (closure tracker, lint, lattice, cross-doc, …)
+  - §3 per-falsifier layer runs (T1 / T2 / T3 invocations)
+  - §4 regression suites (test-hexa-all, pytest, selftest, everything)
+  - §5 PDF (per-verb, on-demand)
+  - §6 env notes (`RESOURCE_LOCAL_HEXA`, `HEXA_CODEX_ROOT`)
+  - §7 recipe pointer table (§3 / §4 / §7.2 / §7.3 / §7.4 / §9)
+- **`README.md`** — Status section adds links to the two new docs.
+
+100% closure verdict unchanged. This iter is documentation
+amplification only.
 
 | Falsifier  | T1 (algebraic)                    | T2 (numerics)            | T3 (empirical) |
 |:-----------|:----------------------------------|:-------------------------|:--------------:|
