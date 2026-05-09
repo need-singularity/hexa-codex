@@ -1,6 +1,6 @@
-<!-- @canonical: n6-architecture@0570a835:domains/cognitive/ai-safety/ai-safety.md -->
+<!-- @canonical: canon@d1640e62:domains/cognitive/ai-safety/ai-safety.md -->
 <!-- @extracted: 2026-05-06 -->
-<!-- @md5_at_extraction: fefc9c4ab9302d107806fe42252fb9f9 -->
+<!-- @md5_at_extraction: a26140e45d2035ac8efdebea7b9e50eb -->
 ---
 domain: ai-safety
 requires:

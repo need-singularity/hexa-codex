@@ -1,4 +1,4 @@
--- @canonical: n6-architecture@0c65155a:formal/lean4/N6/InvariantLattice/SigmaLatticeCard.lean
+-- @canonical: canon@0c65155a:formal/lean4/N6/InvariantLattice/SigmaLatticeCard.lean
 -- @extracted: 2026-05-07
 -- @md5_at_extraction: c8ed2f17322e1e4f9ded8afa697e0317
 -- @absorbed_into: hexa-codex (P3 formal substrate — F-CL-FORMAL-1 σ(6)=12 PROVEN, no sorry)

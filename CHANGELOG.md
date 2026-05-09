@@ -64,7 +64,7 @@ versions follow [SemVer](https://semver.org/spec/v2.0.0.html).
     `README.md` verb table.
   - Falsifier prefix: F-CODEX-1..4 appear in roadmap §A.4 + hexa.toml
     `[falsifiers]` + README's preregister table.
-  - Provenance: `n6-architecture@c0f1f570` cited in hexa.toml + README +
+  - Provenance: `canon@c0f1f570` cited in hexa.toml + README +
     CHANGELOG.
   - Master identity string `σ(6)·φ(6)=n·τ(6)=J₂=24` agrees across roadmap +
     hexa.toml + README.
@@ -1002,7 +1002,7 @@ Next: numerics_*.hexa T2 layer (recipe §7.4 priority 4).
 
 ### Added
 
-- Initial extraction from `n6-architecture@c0f1f570` —
+- Initial extraction from `canon@c0f1f570` —
   17-verb AI knowledge substrate organized in 4 groups:
   - **safety** (6): alignment, safety, welfare, adversarial, consciousness, interpret
   - **economics** (3): train_cost, infer_cost, quality_scale

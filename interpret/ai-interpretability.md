@@ -1,4 +1,4 @@
-<!-- @canonical: n6-architecture@0570a835:domains/cognitive/ai-interpretability/ai-interpretability.md -->
+<!-- @canonical: canon@d1640e62:domains/cognitive/ai-interpretability/ai-interpretability.md -->
 <!-- @extracted: 2026-05-06 -->
 <!-- @md5_at_extraction: 4a43c49fb55d77bd45a800f75b43ea9d -->
 ---

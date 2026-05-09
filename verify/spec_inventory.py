@@ -55,7 +55,7 @@ GROUP_EXPECTED = {"safety": 6, "economics": 3, "ops": 4, "substrate": 4}
 TOTAL_EXPECTED = sum(GROUP_EXPECTED.values())
 
 # Per-verb deep-dive sub-files (extensions to a verb's seed spec — absorbed
-# from n6-architecture papers/ when a verb has falsifier or measurement-
+# from canon papers/ when a verb has falsifier or measurement-
 # protocol material that is too long for the seed spec). Optional — verbs
 # without sub-files just have their seed spec.
 VERB_DEEPDIVES = {

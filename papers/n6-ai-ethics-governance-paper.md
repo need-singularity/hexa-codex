@@ -1,4 +1,4 @@
-<!-- @canonical: n6-architecture@7b1d5617:papers/n6-ai-ethics-governance-paper.md -->
+<!-- @canonical: canon@7b1d5617:papers/n6-ai-ethics-governance-paper.md -->
 <!-- @extracted: 2026-05-07 -->
 <!-- @md5_at_extraction: 8cb6ae2ddbf503aa5597b1e853cf3258 -->
 <!-- @absorbed_into: hexa-codex (P4 reference paper — ai-ethics+governance σ·φ=24 overlay; atlas.n6 0/24 EXACT, MATURITY=LOW) -->

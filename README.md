@@ -3,7 +3,7 @@
 > 17-verb AI knowledge substrate organized in **4 groups**: safety + economics
 > + ops + substrate. A library-style (codex) spec catalog — each verb ships
 > a closed-form candidate spec + falsifier preregister, extracted from
-> n6-architecture (`domains/cognitive/`) on 2026-05-06.
+> canon (`domains/cognitive/`) on 2026-05-06.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 [![Version](https://img.shields.io/badge/version-1.0.0-informational.svg)](CHANGELOG.md)
@@ -23,7 +23,7 @@
 `hexa-codex` is a **standalone AI knowledge substrate** — a *codex*
 (library) of AI-domain specs that the rest of the `dancinlab` stack
 imports declaratively. Each verb is a single closed-form spec markdown
-extracted unchanged from `n6-architecture/domains/cognitive/`, organized
+extracted unchanged from `canon/domains/cognitive/`, organized
 into four orthogonal groups so that consumers can navigate by concern.
 
 The codex framing matters because:
@@ -42,7 +42,7 @@ The codex framing matters because:
 ## Verbs
 
 17 verb specs / 4 groups. All sources are unchanged `.md` files from
-`n6-architecture@c0f1f570`.
+`canon@c0f1f570`.
 
 ### SAFETY (6)
 
@@ -263,7 +263,7 @@ hexa-codex status                # one-shot health JSON
 
 ## Reference annexes
 
-Cross-cutting AI/governance atlases absorbed from `n6-architecture/papers/`:
+Cross-cutting AI/governance atlases absorbed from `canon/papers/`:
 
 | Paper | What it does | Maturity |
 |-------|--------------|----------|
@@ -454,7 +454,7 @@ The 17 + 5 + 7 = **29 verbs across cognitive sister-libraries** all derive
 from the n=6 master identity (σ·φ = n·τ = 24). hexa-codex covers AI
 *knowledge*; hexa-senses covers AI *senses*; hexa-mind covers AI *mental ops*.
 
-Upstream concept SSOT: `n6-architecture/domains/cognitive/` (declarative
+Upstream concept SSOT: `canon/domains/cognitive/` (declarative
 sources for all 17 hexa-codex verbs + 5 hexa-senses verbs + 7 hexa-mind
 verbs).
 

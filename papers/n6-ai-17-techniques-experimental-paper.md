@@ -1,4 +1,4 @@
-<!-- @canonical: n6-architecture@0c65155a:papers/n6-ai-17-techniques-experimental-paper.md -->
+<!-- @canonical: canon@0c65155a:papers/n6-ai-17-techniques-experimental-paper.md -->
 <!-- @extracted: 2026-05-07 -->
 <!-- @md5_at_extraction: 145b8b294b396289bdba6a1e6502e290 -->
 <!-- @absorbed_into: hexa-codex (P1 reference paper — 17 verb σ·φ=24 coordinate map) -->

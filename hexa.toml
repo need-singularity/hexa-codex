@@ -2,7 +2,7 @@
 #
 # Spec: shared/hexa-lang/hexa-toml-spec.json (version 1.0.0)
 # Distribution target: hx install hexa-codex
-# Provenance: extracted from n6-architecture@c0f1f570 on 2026-05-06
+# Provenance: extracted from canon@c0f1f570 on 2026-05-06
 #             (domains/cognitive/ai-* + cognitive-architecture + causal-chain
 #              + youth-ai-labeling-rlhf-hub — 17 verb / 4 group)
 
@@ -73,7 +73,7 @@ install = "install.hexa"
 
 # ── Modules manifest (17 verb / 4 group, spec-first) ─────
 # Each verb ships as a single .md spec file at <verb>/<source>.md
-# under the original n6-architecture name (file-renames deferred).
+# under the original canon name (file-renames deferred).
 # Wire-up of .hexa modules + falsifier ODE/Bayesian sandboxes is
 # deferred to post-v1.0 cycles; v1.0 is a docs/spec catalog only.
 [modules]
@@ -199,9 +199,9 @@ verifiers_pass    = "6/6"
 acceptance_pass   = "62/62 pytest auto + 17/17 verb spec presence (.hexa selftest)"
 falsifier_floor   = "4/4 arithmetic-floor PASS (empirical evals land v1.1+)"
 verdict           = "SPEC_CATALOG_ONLY + RUNNABLE_VERIFICATION_SURFACE + FORMAL_PROOF_ANCHOR"
-extracted_from    = "n6-architecture@c0f1f570 on 2026-05-06"
+extracted_from    = "canon@c0f1f570 on 2026-05-06"
 runnable_added_on = "2026-05-07 (verify/ + build/ + python tests/, mirroring hexa-sscb pattern)"
-references_added_on = "2026-05-07 (papers/ + formal/ from n6-architecture@0c65155a, P1+P2+P3)"
+references_added_on = "2026-05-07 (papers/ + formal/ from canon@0c65155a, P1+P2+P3)"
 runnable_hexa_iter1 = "2026-05-07 (verify/lattice_check.hexa 24/24 PASS — recipe §7.4 priority 1; T1 floor for F-CODEX-1..4)"
 runnable_hexa_iter2 = "2026-05-07 (verify/cross_doc_audit.hexa 15/15 PASS — recipe §7.4 cross-cutter; 17-verb/4-group + falsifier prefix + provenance + master identity all agree)"
 runnable_hexa_iter3 = "2026-05-07 (verify/calc_train_cost.hexa 8/8 PASS — recipe §7.4 priority 3; F-CODEX-1 T1 calc; J₂=σ·φ=24, exp 24/25=0.96 Chinchilla-comparable)"

@@ -1,4 +1,4 @@
-<!-- @canonical: n6-architecture@0570a835:domains/cognitive/cognitive-architecture/cognitive-architecture.md -->
+<!-- @canonical: canon@d1640e62:domains/cognitive/cognitive-architecture/cognitive-architecture.md -->
 <!-- @extracted: 2026-05-06 -->
 <!-- @md5_at_extraction: 817eeee875158ba9669e77342d916456 -->
 <!-- gold-standard: shared/harness/sample.md -->

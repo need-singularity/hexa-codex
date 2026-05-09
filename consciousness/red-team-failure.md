@@ -1,4 +1,4 @@
-<!-- @canonical: n6-architecture@7b1d5617:papers/consciousness-red-team-n6-failure-2026-04-15.md -->
+<!-- @canonical: canon@7b1d5617:papers/consciousness-red-team-n6-failure-2026-04-15.md -->
 <!-- @extracted: 2026-05-07 -->
 <!-- @md5_at_extraction: 3fe1ec4b5b8d4a92a2772aa4e2b423cf -->
 <!-- @absorbed_into: hexa-codex consciousness/ deep-dive (BT-19 red-team refutation — verdict MISS, [7?]→[5] grade downgrade) -->

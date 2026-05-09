@@ -129,7 +129,7 @@ fn _print_caveats() {
     println("--- caveats (raw#10 C3) ---")
     println("  1. SPEC_CATALOG_ONLY at v1.0.0. 0/17 verbs ship a working .hexa")
     println("     module; each verb is a single .md spec (closed-form candidate +")
-    println("     falsifier preregister) imported from n6-architecture@c0f1f570.")
+    println("     falsifier preregister) imported from canon@c0f1f570.")
     println("  2. Falsifier deadlines + thresholds in each verb spec are")
     println("     INITIAL-GUESS — revision planned alongside per-verb sandboxes.")
     println("  3. Group taxonomy (safety / economics / ops / substrate) is a")
@@ -412,7 +412,7 @@ fn cmd_selftest(a: [str]) {
 
 fn cmd_version() {
     println("hexa-codex " + VERSION)
-    println("standalone AI knowledge substrate (HEXA family — extracted from n6-architecture@c0f1f570 on 2026-05-06)")
+    println("standalone AI knowledge substrate (HEXA family — extracted from canon@c0f1f570 on 2026-05-06)")
     println("license: MIT")
     println("repo:    https://github.com/dancinlab/hexa-codex")
 }

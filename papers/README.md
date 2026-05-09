@@ -1,6 +1,6 @@
 # 📄 hexa-codex / papers — reference annexes
 
-Reference papers absorbed from `n6-architecture/papers/` (provenance commit
+Reference papers absorbed from `canon/papers/` (provenance commit
 `0c65155a`, extracted 2026-05-07). Each file carries a `@canonical`
 header so its upstream coordinate is recoverable.
 
@@ -60,7 +60,7 @@ their seed spec. These live in the verb's directory rather than `papers/`:
 | `consciousness` | [`consciousness/measurement-protocol.md`](../consciousness/measurement-protocol.md) | BT-19 α_IIT·α_GWT=1 reproducible EEG/fMRI protocol |
 | `consciousness` | [`consciousness/red-team-failure.md`](../consciousness/red-team-failure.md) | BT-19 red-team refutation (verdict MISS, [7?]→[5] downgrade) — falsifier-discipline-in-action |
 
-The pattern: when the upstream `n6-architecture/papers/` ships
+The pattern: when the upstream `canon/papers/` ships
 verb-specific protocols or refutation reports, hexa-codex absorbs them
 **inside the verb's directory** (not under `papers/`) so a single
 `hexa-codex consciousness` invocation can route to all consciousness

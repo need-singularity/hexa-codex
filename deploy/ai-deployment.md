@@ -1,4 +1,4 @@
-<!-- @canonical: n6-architecture@0570a835:domains/cognitive/ai-deployment/ai-deployment.md -->
+<!-- @canonical: canon@d1640e62:domains/cognitive/ai-deployment/ai-deployment.md -->
 <!-- @extracted: 2026-05-06 -->
 <!-- @md5_at_extraction: 03a930efd9c3c0990f5c78f88d830d00 -->
 ---

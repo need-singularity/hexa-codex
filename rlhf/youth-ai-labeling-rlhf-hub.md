@@ -1,6 +1,6 @@
-<!-- @canonical: n6-architecture@0570a835:domains/cognitive/youth-ai-labeling-rlhf-hub/youth-ai-labeling-rlhf-hub.md -->
+<!-- @canonical: canon@d1640e62:domains/cognitive/youth-ai-labeling-rlhf-hub/youth-ai-labeling-rlhf-hub.md -->
 <!-- @extracted: 2026-05-06 -->
-<!-- @md5_at_extraction: 14991a09788927308ca4f431d352cac9 -->
+<!-- @md5_at_extraction: 14ebb5c088e9cab689c7ccbd6b5714c3 -->
 <!-- gold-standard: shared/harness/sample.md -->
 <!-- @doc(type=paper) -->
 ---
@@ -977,7 +977,7 @@ Test plan:
 | University of Cape Town / Stellenbosch / UWC | recruitment partner | multilingual specialist sourcing |
 | SA YES (Youth Employment Service) | tax-break administrator | 18-29 hire tax credit |
 | Surge AI / Scale AI / Anthropic / OpenAI | customer / platform | premium-tier task supplier + reseller |
-| n6-architecture private framework | own_doc_lint / own31 lint | docs gate |
+| canon private framework | own_doc_lint / own31 lint | docs gate |
 
 ## §19 ACCEPTANCE / MISS criteria (own#12 pre-declared)
 

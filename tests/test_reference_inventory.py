@@ -40,7 +40,7 @@ def test_reference_present(relpath):
 def test_reference_has_canonical_provenance(relpath):
     text = (ROOT / relpath).read_text(encoding="utf-8")[:1024]
     assert "@canonical" in text, f"{relpath}: no @canonical header"
-    assert "n6-architecture@" in text, f"{relpath}: no n6-architecture@<sha> coord"
+    assert "canon@" in text, f"{relpath}: no canon@<sha> coord"
     assert re.search(r"@md5_at_extraction:\s*[0-9a-f]{32}", text), (
         f"{relpath}: no @md5_at_extraction header"
     )

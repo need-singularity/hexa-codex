@@ -1,6 +1,6 @@
-<!-- @canonical: n6-architecture@0570a835:domains/cognitive/ai-quality-scale/ai-quality-scale.md -->
+<!-- @canonical: canon@d1640e62:domains/cognitive/ai-quality-scale/ai-quality-scale.md -->
 <!-- @extracted: 2026-05-06 -->
-<!-- @md5_at_extraction: 99222b65d331fa514d0b0fbcef1b5f3a -->
+<!-- @md5_at_extraction: 0774b35d69a29591ddd3e3ab8ce00bc0 -->
 ---
 domain: ai-quality-scale
 requires:

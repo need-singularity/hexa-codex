@@ -2,7 +2,7 @@
 
 Mechanically-checked proofs of the n=6 lattice identities that underpin
 hexa-codex's 17-verb / 4-group taxonomy. Absorbed from
-`n6-architecture/formal/lean4/N6/InvariantLattice/` (provenance commit
+`canon/formal/lean4/N6/InvariantLattice/` (provenance commit
 `0c65155a`, extracted 2026-05-07).
 
 ## What is proven
@@ -52,5 +52,5 @@ runtime claims emitted by `verify/lattice_check.hexa` and
 `SigmaLatticeCard.lean` is also referenced by `hexa-bio` (per its
 preamble: *"Pairs with: hexa-bio/weave/spec/lean4_mechanical_layer_v0.scaffold.md
 §2.1"*). hexa-codex absorbs the proof file as a **read-only mirror** —
-the SSOT remains `n6-architecture/formal/lean4/`. Updates flow upstream
+the SSOT remains `canon/formal/lean4/`. Updates flow upstream
 first.

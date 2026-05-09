@@ -8,7 +8,7 @@ provenance header, and have an md5 that matches the recorded digest.
 
 If a file's md5 drifts away from the recorded value, this verifier
 flags it WARN — the upstream may have evolved and the absorption
-needs a refresh from n6-architecture.
+needs a refresh from canon.
 
 Run:
     python3 verify/reference_inventory.py
@@ -86,7 +86,7 @@ def _md5(path: Path) -> str:
 
 def _has_canonical(path: Path) -> bool:
     head = path.read_text(encoding="utf-8")[:1024]
-    return "@canonical" in head and "n6-architecture@" in head
+    return "@canonical" in head and "canon@" in head
 
 
 def _has_md5_at_extraction(path: Path) -> bool:

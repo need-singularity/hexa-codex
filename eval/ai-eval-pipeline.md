@@ -1,4 +1,4 @@
-<!-- @canonical: n6-architecture@0570a835:domains/cognitive/ai-eval-pipeline/ai-eval-pipeline.md -->
+<!-- @canonical: canon@d1640e62:domains/cognitive/ai-eval-pipeline/ai-eval-pipeline.md -->
 <!-- @extracted: 2026-05-06 -->
 <!-- @md5_at_extraction: 52575c0764d878fbbb681f348d07902b -->
 ---

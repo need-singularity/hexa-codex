@@ -1,7 +1,7 @@
 # hexa-codex v1.0.0 — Release Notes
 
 **Release date**: 2026-05-06
-**Provenance**: extracted from `n6-architecture@c0f1f570`
+**Provenance**: extracted from `canon@c0f1f570`
 **License**: MIT
 **Verdict**: `SPEC_CATALOG_ONLY` (raw#10 honest C3)
 
@@ -13,7 +13,7 @@
   (safety + economics + ops + substrate) lands as a standalone
   `dancinlab/hexa-codex` repo.
 - Each verb is the unchanged closed-form spec `.md` from
-  `n6-architecture/domains/cognitive/`, preserved verbatim under a
+  `canon/domains/cognitive/`, preserved verbatim under a
   group-relevant directory name (`alignment/`, `train_cost/`, etc).
 - Placeholder CLI dispatcher (`cli/hexa-codex.hexa`) routes by verb and
   prints spec path + a 20-line head; `selftest` confirms 17/17 specs on disk.
@@ -69,4 +69,4 @@ What does **not** ship:
 - Wire the first per-verb falsifier sandbox (likely `interpret` or
   `eval`, both have the cleanest measurement protocols upstream).
 - Surface a `hexa-codex audit` cross-check against
-  `n6-architecture@c0f1f570` to detect drift in the upstream specs.
+  `canon@c0f1f570` to detect drift in the upstream specs.

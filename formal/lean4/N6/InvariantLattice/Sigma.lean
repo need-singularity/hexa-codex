@@ -1,4 +1,4 @@
--- @canonical: n6-architecture@0c65155a:formal/lean4/N6/InvariantLattice/Sigma.lean
+-- @canonical: canon@0c65155a:formal/lean4/N6/InvariantLattice/Sigma.lean
 -- @extracted: 2026-05-07
 -- @md5_at_extraction: 77da6c22ccd0d2d27782e1fdd26afe42
 -- @absorbed_into: hexa-codex (P3 formal substrate — σ definition for SigmaLatticeCard)

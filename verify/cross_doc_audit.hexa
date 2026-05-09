@@ -6,12 +6,12 @@
 //
 //   1. 17-verb / 4-group taxonomy   — hexa.toml [modules] vs CLI VERBS_* vs README table
 //   2. F-CODEX-1..4 falsifier prefix — roadmap §A.4 + hexa.toml [falsifiers] + README
-//   3. n6-architecture@c0f1f570 provenance — hexa.toml + README + CHANGELOG
+//   3. canon@c0f1f570 provenance — hexa.toml + README + CHANGELOG
 //   4. master identity string σ(6)·φ(6)=n·τ(6)=J₂=24 — roadmap + hexa.toml + README
 //   5. release ladder v1.0.0..v2.0.0 — roadmap §A.2 + README + CHANGELOG
 //   6. lifecycle quartet (pretrain/SFT/RLHF/deploy) — roadmap §A.1 + hexa.toml
 //   7. HELM 12-dim capability bin — roadmap §A.1 + hexa.toml + README
-//   8. paper provenance headers (@canonical: n6-architecture@<sha>) — every papers/*.md
+//   8. paper provenance headers (@canonical: canon@<sha>) — every papers/*.md
 //   9. Lean formal anchor — formal/lean4/N6/InvariantLattice/Sigma.lean + formal/README.md
 //
 // Run:
@@ -193,12 +193,12 @@ fn check_falsifiers_cross_doc() {
     }
 }
 
-// Check 7 — Provenance n6-architecture@c0f1f570 in hexa.toml + README + CHANGELOG
+// Check 7 — Provenance canon@c0f1f570 in hexa.toml + README + CHANGELOG
 fn check_provenance_initial() {
     let toml = _read(DOC_TOML)
     let rdme = _read(DOC_README)
     let chlg = _read(DOC_CHANGELOG)
-    let phrase = "n6-architecture@c0f1f570"
+    let phrase = "canon@c0f1f570"
     let in_toml = _has(toml, phrase)
     let in_rdme = _has(rdme, phrase)
     let in_chlg = _has(chlg, phrase)
@@ -268,12 +268,12 @@ fn check_helm_bin() {
            "roadmap=" + str(road_ok) + " toml=" + str(toml_ok) + " readme=" + str(rdme_ok))
 }
 
-// Check 12 — Each papers/*.md ships @canonical: n6-architecture@<sha> header
+// Check 12 — Each papers/*.md ships @canonical: canon@<sha> header
 fn check_paper_provenance_headers() {
     let mut missing = []
     for p in PAPER_FILES {
         let txt = _read(ROOT + "/" + p)
-        let ok = _has(txt, "@canonical: n6-architecture@") &&
+        let ok = _has(txt, "@canonical: canon@") &&
                  _has(txt, "@md5_at_extraction:") &&
                  _has(txt, "@absorbed_into: hexa-codex")
     if ok == false { missing.push(p) }

@@ -1,4 +1,4 @@
-<!-- @canonical: n6-architecture@7b1d5617:papers/consciousness-measurement-protocol-2026-04-15.md -->
+<!-- @canonical: canon@7b1d5617:papers/consciousness-measurement-protocol-2026-04-15.md -->
 <!-- @extracted: 2026-05-07 -->
 <!-- @md5_at_extraction: 89486e86358b5896a78508328b13e1b1 -->
 <!-- @absorbed_into: hexa-codex consciousness/ deep-dive (BT-19 α_IIT·α_GWT=1 reproducible measurement protocol) -->

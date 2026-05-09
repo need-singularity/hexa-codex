@@ -1,4 +1,4 @@
-<!-- @canonical: n6-architecture@0570a835:domains/cognitive/ai-multimodal/ai-multimodal.md -->
+<!-- @canonical: canon@d1640e62:domains/cognitive/ai-multimodal/ai-multimodal.md -->
 <!-- @extracted: 2026-05-06 -->
 <!-- @md5_at_extraction: dead6d30b5161b9743e1201f00c0a240 -->
 ---

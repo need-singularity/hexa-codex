@@ -1,6 +1,6 @@
-<!-- @canonical: n6-architecture@0570a835:domains/cognitive/ai-consciousness/ai-consciousness.md -->
+<!-- @canonical: canon@d1640e62:domains/cognitive/ai-consciousness/ai-consciousness.md -->
 <!-- @extracted: 2026-05-06 -->
-<!-- @md5_at_extraction: c19f2ef532752520116afbcbe036d698 -->
+<!-- @md5_at_extraction: f35ff172d759e93100ea6b53aa36e79d -->
 ---
 domain: ai-consciousness
 requires:

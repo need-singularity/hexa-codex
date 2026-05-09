@@ -1,4 +1,4 @@
-<!-- @canonical: n6-architecture@7b1d5617:papers/n6-governance-safety-urban-paper.md -->
+<!-- @canonical: canon@7b1d5617:papers/n6-governance-safety-urban-paper.md -->
 <!-- @extracted: 2026-05-07 -->
 <!-- @md5_at_extraction: cf976a760eb0128f19372060ce57960f -->
 <!-- @absorbed_into: hexa-codex (P5 reference paper — governance+safety+urban σ·φ=24 overlay; atlas.n6 58/58 EXACT, MATURITY=HIGH) -->

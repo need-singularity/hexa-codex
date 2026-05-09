@@ -5,7 +5,7 @@ hexa-codex verify/n6_arithmetic.py — n=6 lattice arithmetic identity check.
 Standalone arithmetic verifier for the n=6 master identity declared in
 .roadmap.hexa_codex §A.1 (sister-row of hexa-sscb's own 1).
 
-Master identity (n6-architecture/atlas.n6 @P n=6 [11*]):
+Master identity (canon/atlas.n6 @P n=6 [11*]):
     σ(6) · φ(6) = n · τ(6) = J₂ = 24
        12  ·  2  =  6  ·  4 = 24
 
