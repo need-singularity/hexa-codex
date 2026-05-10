@@ -5,6 +5,7 @@
 > a closed-form candidate spec + falsifier preregister, extracted from
 > canon (`domains/cognitive/`) on 2026-05-06.
 
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.20102600.svg)](https://doi.org/10.5281/zenodo.20102600)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 [![Version](https://img.shields.io/badge/version-1.0.0-informational.svg)](CHANGELOG.md)
 [![Verbs: 17 / 4 groups](https://img.shields.io/badge/verbs-17_(4_groups)-blue.svg)](#verbs)
