@@ -1,0 +1,88 @@
+#!hexa strict
+// SPDX-License-Identifier: MIT
+// @allow-silent-exit-file
+// @allow-bare-exec-file
+// hexa-codex/verify/numerics_interpret_t4_parity.hexa
+//
+// T4 live forge empirical parity verifier for the interpret verb.
+//
+// STAGE 0 STUB. Real parity logic activates once forge T4 PRs land
+// under outbox/hexa-codex/interpret/. Until then this verifier emits
+// a PENDING sentinel and explains what it will check.
+//
+// Pattern source:   verify/numerics_interpret_parity.hexa  (T3 layer)
+// F-CODEX bind:     F-CODEX-4 T4 analog  (D-007 tree-sitter idiom audit)
+// Forge landing:    ~/core/hexa-forge/outbox/hexa-codex/interpret/
+// Verb spec:        interpret/ai-interpretability.md  (S7 VERIFY tol band)
+//
+// Sentinels:
+//   PASS    = T4 parity holds (forge nums inside F-CODEX-4 tolerance)
+//   PENDING = no forge PR for this verb yet (v0.1.2 default)
+//   FAIL    = T4 anomaly (forge nums contradict arithmetic floor)
+//
+// Per plan-decisions-pending.md D-023:
+//   T4 anomaly does NOT auto-tombstone the F-CODEX-4 arithmetic floor.
+//   Open a paired decision in this ledger instead.
+
+let HOME = env("HOME")
+
+fn _root() -> str {
+    let r = env("HEXA_CODEX_ROOT")
+    if r.len() > 0 { return r }
+    let pwd = exec("pwd").trim()
+    if pwd.len() > 0 { return pwd }
+    return HOME + "/core/hexa-codex"
+}
+
+let ROOT = _root()
+let VERB = "interpret"
+let VERB_UPPER = "INTERPRET"
+let F_CODEX = "F-CODEX-4 T4 analog (D-007)"
+let OUTBOX = HOME + "/core/hexa-forge/outbox/hexa-codex/" + VERB
+
+// Expected numeric fields per ~/core/hexa-forge/tool/emit_t4.py load_measured():
+let EXPECTED_FIELDS = "native_idiom_correct_count, translated_pattern_count, ratio, tree_sitter_rule_pack_version"
+
+let FALSIFIERS = ["F-CODEX-4 T4 analog (interpret forge empirical tree-sitter idiom audit)"]
+
+fn sentinel_pending() {
+    println("__HEXA_CODEX_T4_" + VERB_UPPER + "_PARITY__ PENDING")
+    println("  reason: no forge T4 PR found at outbox/hexa-codex/" + VERB + "/")
+    println("  expected fields (per ~/core/hexa-forge/tool/emit_t4.py): " + EXPECTED_FIELDS)
+    println("  F-CODEX bind: " + F_CODEX)
+    println("  lift trigger: forge v0.1.3 tree-sitter rule pack ships (D-023)")
+    println("  T3 archival floor: verify/numerics_" + VERB + "_parity.hexa (PASS, unaffected)")
+}
+
+fn sentinel_pass(run_id: str) {
+    println("__HEXA_CODEX_T4_" + VERB_UPPER + "_PARITY__ PASS")
+    println("  forge run: " + run_id)
+    println("  F-CODEX bind: " + F_CODEX)
+    println("  closure_pct: 4/4 = 100% (T4 added)")
+}
+
+fn sentinel_fail(run_id: str, reason: str) {
+    println("__HEXA_CODEX_T4_" + VERB_UPPER + "_PARITY__ FAIL")
+    println("  forge run: " + run_id)
+    println("  reason: " + reason)
+    println("  follow-up: open paired decision in plan-decisions-pending.md per D-023")
+}
+
+fn check_t4_parity() {
+    // STAGE 0: stub returns PENDING. No forge T4 PR exists yet.
+    // STAGE 1 (post forge style audit): scan outbox/hexa-codex/interpret/*.md,
+    //   parse the Numbers table, verify native_idiom_correct_count and
+    //   ratio against F-CODEX-4 motif-count floor (see
+    //   interpret/ai-interpretability.md S7 VERIFY for tolerance constants).
+    sentinel_pending()
+}
+
+fn main() {
+    println("========================================================================")
+    println("  hexa-codex T4 parity verifier (stage 0 stub) verb: " + VERB)
+    println("  F-CODEX bind: " + F_CODEX)
+    println("  Outbox watch: " + OUTBOX + "/")
+    println("========================================================================")
+    check_t4_parity()
+    exit(0)
+}

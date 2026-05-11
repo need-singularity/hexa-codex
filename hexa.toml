@@ -145,6 +145,18 @@ verify = [
     "verify/falsifier_check.hexa",             # closure tracker meta — sat-1 gate (.hexa, recipe §7.4 priority 9)
     "verify/lint_numerics.hexa",               # meta lint — recipe §4 invariants 1-5 (.hexa, recipe §7.4 priority 10)
     "verify/saturation_check.hexa",            # aggregate sat-1 self-stop signal (.hexa, recipe §7.4 priority 15)
+    # ── T4 layer skeletons (stage 0 stubs — emit PENDING until forge T4 PRs land per D-023) ──
+    "verify/numerics_train_cost_t4_parity.hexa",     # F-CODEX-1 T4 (D-004) — forge SFT loss-vs-FLOP
+    "verify/numerics_infer_cost_t4_parity.hexa",     # F-CODEX-2 T4 (D-005) — forge latency + KV-cache profile
+    "verify/numerics_quality_scale_t4_parity.hexa",  # cross-cutter T4 — forge HumanEval+/hexa-eval/5-NL aggregate
+    "verify/numerics_safety_t4_parity.hexa",         # F-CODEX-3 T4 input — forge 5-NL refusal matrix
+    "verify/numerics_alignment_t4_parity.hexa",      # F-CODEX-3 T4 primary (D-006) — forge HELM-Core 12-axis composite
+    "verify/numerics_adversarial_t4_parity.hexa",    # F-CODEX-3 stress — forge red-team failure modes
+    "verify/numerics_interpret_t4_parity.hexa",      # F-CODEX-4 T4 analog (D-007) — forge tree-sitter idiom audit
+    "verify/numerics_rlhf_t4_parity.hexa",           # substrate input T4 — forge DPO yield + judge quality
+    "verify/numerics_eval_t4_parity.hexa",           # meta T4 — forge Mk handoff template progression
+    "verify/numerics_agent_serving_t4_parity.hexa",  # F-CODEX-2 SLO input — forge tool-use schema iteration
+    "verify/numerics_deploy_t4_parity.hexa",         # ops input T4 — forge hardware-tier deployment recipes
 ]
 build = [
     "build/Makefile",               # verify + test + ci + per-verb pdf fan-out

@@ -1,0 +1,88 @@
+#!hexa strict
+// SPDX-License-Identifier: MIT
+// @allow-silent-exit-file
+// @allow-bare-exec-file
+// hexa-codex/verify/numerics_deploy_t4_parity.hexa
+//
+// T4 live forge empirical parity verifier for the deploy verb.
+//
+// STAGE 0 STUB. Real parity logic activates once forge T4 PRs land
+// under outbox/hexa-codex/deploy/. Until then this verifier emits
+// a PENDING sentinel and explains what it will check.
+//
+// Pattern source:   verify/numerics_infer_cost_parity.hexa  (T3 layer)
+// F-CODEX bind:     ops input (hardware-tier deployment recipes)
+// Forge landing:    ~/core/hexa-forge/outbox/hexa-codex/deploy/
+// Verb spec:        deploy/ai-deployment.md  (S7 VERIFY tol band)
+//
+// Sentinels:
+//   PASS    = T4 parity holds (recipe count + verified targets cover spec floor)
+//   PENDING = no forge PR for this verb yet (v0.1.2 default)
+//   FAIL    = T4 anomaly (recipe regression vs prior set)
+//
+// Per plan-decisions-pending.md D-023:
+//   T4 anomaly does NOT auto-tombstone any F-CODEX arithmetic floor.
+//   Open a paired decision in this ledger instead.
+
+let HOME = env("HOME")
+
+fn _root() -> str {
+    let r = env("HEXA_CODEX_ROOT")
+    if r.len() > 0 { return r }
+    let pwd = exec("pwd").trim()
+    if pwd.len() > 0 { return pwd }
+    return HOME + "/core/hexa-codex"
+}
+
+let ROOT = _root()
+let VERB = "deploy"
+let VERB_UPPER = "DEPLOY"
+let F_CODEX = "ops input (hardware-tier deployment recipes; no single F-CODEX bind)"
+let OUTBOX = HOME + "/core/hexa-forge/outbox/hexa-codex/" + VERB
+
+// Expected numeric fields per ~/core/hexa-forge/tool/emit_t4.py load_measured():
+let EXPECTED_FIELDS = "tier_recipes_count, verified_targets"
+
+let FALSIFIERS = ["deploy ops T4 (forge empirical hardware-tier recipe count + verified targets)"]
+
+fn sentinel_pending() {
+    println("__HEXA_CODEX_T4_" + VERB_UPPER + "_PARITY__ PENDING")
+    println("  reason: no forge T4 PR found at outbox/hexa-codex/" + VERB + "/")
+    println("  expected fields (per ~/core/hexa-forge/tool/emit_t4.py): " + EXPECTED_FIELDS)
+    println("  F-CODEX bind: " + F_CODEX)
+    println("  lift trigger: forge v0.1.3 deployment recipe ladder (D-023)")
+    println("  T3 archival floor: none (deploy is ops input, not a primary F-CODEX pillar)")
+}
+
+fn sentinel_pass(run_id: str) {
+    println("__HEXA_CODEX_T4_" + VERB_UPPER + "_PARITY__ PASS")
+    println("  forge run: " + run_id)
+    println("  F-CODEX bind: " + F_CODEX)
+    println("  closure_pct: ops input row +T4 layer")
+}
+
+fn sentinel_fail(run_id: str, reason: str) {
+    println("__HEXA_CODEX_T4_" + VERB_UPPER + "_PARITY__ FAIL")
+    println("  forge run: " + run_id)
+    println("  reason: " + reason)
+    println("  follow-up: open paired decision in plan-decisions-pending.md per D-023")
+}
+
+fn check_t4_parity() {
+    // STAGE 0: stub returns PENDING. No forge T4 PR exists yet.
+    // STAGE 1 (post forge deployment ladder): scan outbox/hexa-codex/deploy/*.md,
+    //   parse the Numbers table, verify tier_recipes_count >= spec minimum
+    //   and verified_targets covers M4/Studio/H100 baseline (see
+    //   deploy/ai-deployment.md S7 VERIFY for hardware coverage rules).
+    sentinel_pending()
+}
+
+fn main() {
+    println("========================================================================")
+    println("  hexa-codex T4 parity verifier (stage 0 stub) verb: " + VERB)
+    println("  F-CODEX bind: " + F_CODEX)
+    println("  Outbox watch: " + OUTBOX + "/")
+    println("========================================================================")
+    check_t4_parity()
+    exit(0)
+}

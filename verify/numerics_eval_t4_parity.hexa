@@ -1,0 +1,88 @@
+#!hexa strict
+// SPDX-License-Identifier: MIT
+// @allow-silent-exit-file
+// @allow-bare-exec-file
+// hexa-codex/verify/numerics_eval_t4_parity.hexa
+//
+// T4 live forge empirical parity verifier for the eval verb.
+//
+// STAGE 0 STUB. Real parity logic activates once forge T4 PRs land
+// under outbox/hexa-codex/eval/. Until then this verifier emits
+// a PENDING sentinel and explains what it will check.
+//
+// Pattern source:   verify/numerics_train_cost_parity.hexa  (T3 layer)
+// F-CODEX bind:     meta (wraps F-CODEX-1..4; Mk handoff progression)
+// Forge landing:    ~/core/hexa-forge/outbox/hexa-codex/eval/
+// Verb spec:        eval/ai-eval-pipeline.md  (S7 VERIFY tol band)
+//
+// Sentinels:
+//   PASS    = T4 parity holds (meta progression monotone)
+//   PENDING = no forge PR for this verb yet (v0.1.2 default)
+//   FAIL    = T4 anomaly (Mk regression vs prior template)
+//
+// Per plan-decisions-pending.md D-023:
+//   T4 anomaly does NOT auto-tombstone any F-CODEX arithmetic floor.
+//   Open a paired decision in this ledger instead.
+
+let HOME = env("HOME")
+
+fn _root() -> str {
+    let r = env("HEXA_CODEX_ROOT")
+    if r.len() > 0 { return r }
+    let pwd = exec("pwd").trim()
+    if pwd.len() > 0 { return pwd }
+    return HOME + "/core/hexa-codex"
+}
+
+let ROOT = _root()
+let VERB = "eval"
+let VERB_UPPER = "EVAL"
+let F_CODEX = "meta (wraps F-CODEX-1..4; Mk handoff template progression)"
+let OUTBOX = HOME + "/core/hexa-forge/outbox/hexa-codex/" + VERB
+
+// Expected numeric fields per ~/core/hexa-forge/tool/emit_t4.py load_measured():
+let EXPECTED_FIELDS = "mk_handoff_template_version, delta_from_previous"
+
+let FALSIFIERS = ["eval meta T4 (forge empirical Mk handoff template progression)"]
+
+fn sentinel_pending() {
+    println("__HEXA_CODEX_T4_" + VERB_UPPER + "_PARITY__ PENDING")
+    println("  reason: no forge T4 PR found at outbox/hexa-codex/" + VERB + "/")
+    println("  expected fields (per ~/core/hexa-forge/tool/emit_t4.py): " + EXPECTED_FIELDS)
+    println("  F-CODEX bind: " + F_CODEX)
+    println("  lift trigger: forge v0.1.3 eval methodology refinement (D-023)")
+    println("  T3 archival floor: none (eval is meta-wrapper, not a primary F-CODEX pillar)")
+}
+
+fn sentinel_pass(run_id: str) {
+    println("__HEXA_CODEX_T4_" + VERB_UPPER + "_PARITY__ PASS")
+    println("  forge run: " + run_id)
+    println("  F-CODEX bind: " + F_CODEX)
+    println("  closure_pct: meta row +T4 layer (wraps F-1..4)")
+}
+
+fn sentinel_fail(run_id: str, reason: str) {
+    println("__HEXA_CODEX_T4_" + VERB_UPPER + "_PARITY__ FAIL")
+    println("  forge run: " + run_id)
+    println("  reason: " + reason)
+    println("  follow-up: open paired decision in plan-decisions-pending.md per D-023")
+}
+
+fn check_t4_parity() {
+    // STAGE 0: stub returns PENDING. No forge T4 PR exists yet.
+    // STAGE 1 (post forge Mk template revision): scan outbox/hexa-codex/eval/*.md,
+    //   parse the Numbers table, verify mk_handoff_template_version is monotone
+    //   ascending and delta_from_previous shows non-regression (see
+    //   eval/ai-eval-pipeline.md S7 VERIFY for monotonicity rules).
+    sentinel_pending()
+}
+
+fn main() {
+    println("========================================================================")
+    println("  hexa-codex T4 parity verifier (stage 0 stub) verb: " + VERB)
+    println("  F-CODEX bind: " + F_CODEX)
+    println("  Outbox watch: " + OUTBOX + "/")
+    println("========================================================================")
+    check_t4_parity()
+    exit(0)
+}

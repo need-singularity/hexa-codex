@@ -1,0 +1,88 @@
+#!hexa strict
+// SPDX-License-Identifier: MIT
+// @allow-silent-exit-file
+// @allow-bare-exec-file
+// hexa-codex/verify/numerics_quality_scale_t4_parity.hexa
+//
+// T4 live forge empirical parity verifier for the quality_scale verb.
+//
+// STAGE 0 STUB. Real parity logic activates once forge T4 PRs land
+// under outbox/hexa-codex/quality_scale/. Until then this verifier
+// emits a PENDING sentinel and explains what it will check.
+//
+// Pattern source:   verify/numerics_train_cost_parity.hexa  (T3 layer)
+// F-CODEX bind:     cross-cutter (no single F-CODEX bind; aggregates F-1/F-2)
+// Forge landing:    ~/core/hexa-forge/outbox/hexa-codex/quality_scale/
+// Verb spec:        quality_scale/ai-quality-scale.md  (S7 VERIFY tol band)
+//
+// Sentinels:
+//   PASS    = T4 parity holds (forge nums inside cross-cutter tolerance)
+//   PENDING = no forge PR for this verb yet (v0.1.2 default)
+//   FAIL    = T4 anomaly (forge nums contradict arithmetic floor)
+//
+// Per plan-decisions-pending.md D-023:
+//   T4 anomaly does NOT auto-tombstone the F-CODEX arithmetic floor.
+//   Open a paired decision in this ledger instead.
+
+let HOME = env("HOME")
+
+fn _root() -> str {
+    let r = env("HEXA_CODEX_ROOT")
+    if r.len() > 0 { return r }
+    let pwd = exec("pwd").trim()
+    if pwd.len() > 0 { return pwd }
+    return HOME + "/core/hexa-codex"
+}
+
+let ROOT = _root()
+let VERB = "quality_scale"
+let VERB_UPPER = "QUALITY_SCALE"
+let F_CODEX = "cross-cutter (HumanEval+/hexa-eval/5-NL aggregate; no single F-CODEX bind)"
+let OUTBOX = HOME + "/core/hexa-forge/outbox/hexa-codex/" + VERB
+
+// Expected numeric fields per ~/core/hexa-forge/tool/emit_t4.py load_measured():
+let EXPECTED_FIELDS = "humaneval_plus_pass1, hexa_eval_pass, swe_bench_lite, live_code_bench, five_nl_pass_aggregate"
+
+let FALSIFIERS = ["quality_scale cross-cutter T4 (forge HumanEval+/hexa-eval/5-NL aggregate parity)"]
+
+fn sentinel_pending() {
+    println("__HEXA_CODEX_T4_" + VERB_UPPER + "_PARITY__ PENDING")
+    println("  reason: no forge T4 PR found at outbox/hexa-codex/" + VERB + "/")
+    println("  expected fields (per ~/core/hexa-forge/tool/emit_t4.py): " + EXPECTED_FIELDS)
+    println("  F-CODEX bind: " + F_CODEX)
+    println("  lift trigger: forge v0.1.3 eval harness lands (D-023)")
+    println("  T3 archival floor: none (quality_scale is cross-cutter, not a primary F-CODEX pillar)")
+}
+
+fn sentinel_pass(run_id: str) {
+    println("__HEXA_CODEX_T4_" + VERB_UPPER + "_PARITY__ PASS")
+    println("  forge run: " + run_id)
+    println("  F-CODEX bind: " + F_CODEX)
+    println("  closure_pct: cross-cutter row +T4 layer")
+}
+
+fn sentinel_fail(run_id: str, reason: str) {
+    println("__HEXA_CODEX_T4_" + VERB_UPPER + "_PARITY__ FAIL")
+    println("  forge run: " + run_id)
+    println("  reason: " + reason)
+    println("  follow-up: open paired decision in plan-decisions-pending.md per D-023")
+}
+
+fn check_t4_parity() {
+    // STAGE 0: stub returns PENDING. No forge T4 PR exists yet.
+    // STAGE 1 (post forge eval harness): scan outbox/hexa-codex/quality_scale/*.md,
+    //   parse the Numbers table, verify pass-rate aggregates against
+    //   Chinchilla-comparable fits + 5-NL minimum thresholds (see
+    //   quality_scale/ai-quality-scale.md S7 VERIFY for tolerance constants).
+    sentinel_pending()
+}
+
+fn main() {
+    println("========================================================================")
+    println("  hexa-codex T4 parity verifier (stage 0 stub) verb: " + VERB)
+    println("  F-CODEX bind: " + F_CODEX)
+    println("  Outbox watch: " + OUTBOX + "/")
+    println("========================================================================")
+    check_t4_parity()
+    exit(0)
+}

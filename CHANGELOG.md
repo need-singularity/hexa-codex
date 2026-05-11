@@ -34,6 +34,8 @@ versions follow [SemVer](https://semver.org/spec/v2.0.0.html).
 >
 > See `docs/numerics_methodology.md` for the closure-depth narrative.
 
+- T4 layer prep (2026-05-11): 11 stage-0 `verify/numerics_<verb>_t4_parity.hexa` stubs added (train_cost, infer_cost, quality_scale, safety, alignment, adversarial, interpret, rlhf, eval, agent_serving, deploy) — receiving side for forge → hexa-codex T4 empirical PRs per `outbox/hexa-codex/README.md §3` and D-023; each emits `__HEXA_CODEX_T4_<VERB>_PARITY__ PENDING` until forge v0.1.3 SFT begins. T1/T2/T3 stack unchanged.
+
 ### Added (2026-05-07 — 1st RSC iteration: lattice_check)
 
 - `verify/lattice_check.hexa` — n=6 invariant lattice audit (24 checks):
