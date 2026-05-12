@@ -3043,4 +3043,83 @@ this session. T4 +22pp is the first compile-RL win; gates ③ ④ all closed str
 The IDEA.md priority matrix says (1) first (zero-cost manifest fix, big payoff), then (2)
 as the v0.4.x line opener.
 
+### 2026-05-13 00:30 KST — round 37: T4 struct-variant manifest fix + repo absorption — v0.4.0 v2 re-scored at 89.47% Mk.I strict (T4 77→89%, +1.80pp overall); hexa-forge repo retired into hexa-codex/lm_foundry/
+
+**Two things this round: (1) the zero-cost manifest fix that the round-36 spec
+called for, lifting T4 77→89%, and (2) the absorption of the standalone
+`hexa-forge` repo into `hexa-codex/lm_foundry/`.**
+
+**Manifest fix (Phase-A pattern again).** Round 36's analysis found 12 of the
+100 T4 (`ast_equality`) prompts ask the model to emit hexa-canon-INVALID
+struct variants (`enum Command { Move { x: i32, y: i32 }, Quit, Say(String) }`)
+— hexa-canon has no struct variants (verified: `Parse error at N:M: expected
+identifier, got LBrace` on real `hexa_cc`). These 12 prompts were eval design
+defects: no model can satisfy them. Normalized all 12 in
+`eval/hexa-eval/manifest-mk1.jsonl`: `Foo { x: T1, y: T2 }` → `Foo(T1, T2)`
+(tuple variant — the canonical hexa form). Backup at
+`eval/hexa-eval/manifest-mk1.pre-r37-T4struct.jsonl.bak`. Re-scored the
+**existing v0.4.0 v2 adapter** (no retrain) on Vast.ai A100 SXM4 80GB JP
+($1.17/hr, ~35 min, ~$0.7 — pip + adapter download + 665-task score).
+
+**Mk.I 665 STRICT (T4-corrected manifest, bf16, fair):**
+
+| family | v2 (old manifest) | **v2 (T4-fixed, r37)** | Δ |
+|--------|-------------------|------------------------|---|
+| **overall**     | 87.67% | **89.47%** (595/665) | **+1.80** |
+| T1 syntax       | 97.6%  | 97.6%  | 0 |
+| T2 atlas        | 96.0%  | 96.0%  | 0 |
+| T3 @grace       | 65.0%  | 65.0%  | 0 |
+| **T4 enum**     | 77.0%  | **89.0%** | **+12.0** |
+| T5 HX-codes     | 96.9%  | 96.9%  | 0 |
+| T6 linker triples | 98.5% | 98.5%  | 0 |
+| T7 stdlib layering | 87.9% | 87.9% | 0 |
+| T8 refusal      | 82.5%  | 82.5%  | 0 |
+
+**The 12-prompt manifest fix converts to T4 +12pp / overall +1.80pp by
+construction** — those 12 prompts had completions that compiled fine under
+tuple-variant gold but failed under struct-variant gold (which no completion
+could satisfy). T4's 11 remaining fails (100−89) are pure-generic cases
+(`Option<T>`, `Validated<T>`, etc.) — still amenable to more RL (Lever 4 v3
+with higher generic-bait or more epochs would close them; the model emits
+`enum Option<T> { ... }` on those, Rust-style). **Practical T4 ceiling is
+now ~100% reachable** — no more manifest defects, just the residual generic
+prior to RL away.
+
+**Forge ladder, final standalone state:**
+54.7 → 59.3 → 63.5 → 61.2 → 62.3 (3B r8-r13 plateau) → 72.33 (7B r2) →
+77.74 (r3) → 77.14 (r4 strict) → **83.76** (r4 + Phase-A T3 fix) →
+**87.67** (v0.4.0-rl-t4-v2 compile-RL) → **89.47** (r37 T4-manifest fix).
+**+34.77pp from the first measured 3B run to the v0.4.0 GA candidate.**
+Gates ③ (Mk.I ≥ 80%) and ④ (5-NL ≥ 90%) both closed strictly with room.
+
+**Repo absorption.** The standalone `hexa-forge` repo is retired and its
+entire working tree is now `hexa-codex/lm_foundry/` (commit 4ca1431 in
+hexa-codex). `hexa-codex` was always forge's sister (serving / inference);
+the merge consolidates the two. dancinlab-wide files
+(`AGENTS.md` / `LATTICE_POLICY.md` / `LIMIT_BREAKTHROUGH.md` / `LICENSE` /
+`CITATION.cff`) live at the codex root, not duplicated under `lm_foundry/`.
+HF artifacts keep the `dancinlab/hexa-forge-*` prefix as artifact identity
+(36 repos; renaming would break `from_pretrained` refs in published recipes).
+
+**Round 37 commits:** this ROADMAP entry (now `lm_foundry/ROADMAP.md`) ·
+`lm_foundry/eval/hexa-eval/manifest-mk1.jsonl` (12 T4 struct→tuple) +
+`.pre-r37-T4struct.jsonl.bak` · `lm_foundry/bench-cold/v0.4.0-rl-t4-v2-rescored/`
+(gitignored — SoT is HF) · hexa-codex `CHANGELOG.md` absorption entry ·
+hexa-codex `.gitignore` (lm_foundry/ patterns) · `lm_foundry/README.md`
+(codex-tone rewrite).
+
+**dancinlab/* repos LIVE: 36** (unchanged — r37 is a manifest+rescore op,
+no new HF artifact). GA candidate adapter:
+`dancinlab/hexa-forge-code-7b-qwen2.5-lora-r64-v0.4.0-rl-t4-v2`.
+
+**Where it stands after round 37:** **v0.4.0 GA candidate = 89.47% Mk.I
+strict** (595/665). The code-LLM line has done what SFT + Phase-A fixes +
+compile-RL can do; the next gain is either (a) Lever 4 v3 to close T4's
+last 11 generic cases (→ ~91%), or (b) the **§12 self-aware delegation
+architecture** — the v0.4.x line — which is the bigger structural step
+(the model recognizes its competence boundary and routes to
+Claude/OpenAI/Gemini/Wilson). Per the IDEA.md priority matrix, (a) is the
+cheap quick win, (b) is the line opener. The forge — now `lm_foundry/` —
+is materially complete as a specialist-knowledge code-LLM.
+
 
