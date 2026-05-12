@@ -1,0 +1,173 @@
+#!hexa strict
+// hexa-forge/cli/hexa-forge.hexa — standalone hexa-forge CLI router
+//
+// Domain-LLM FOUNDRY router. Spec-first dispatcher: each verb subcmd
+// resolves a research recipe doc (dataset + tokenizer + training stage
+// + eval harness + serving contract) and prints the headline.
+//
+// v0.1.0 ships 2 seed verbs:
+//   - code  → docs/code-llm.md   (programming-only LLM)
+//   - bio   → docs/bio-llm.md    (HEXA-BIO domain LLM)
+//
+// Scope discipline: hexa-forge is the RESEARCH + RECIPE substrate.
+// Model serving / inference  → hexa-codex CLI.
+// Genomics & wet-lab data    → hexa-bio CLI.
+// Cognitive verbs            → hexa-mind.
+//
+// Root resolution: $HEXA_FORGE_ROOT env, else inferred from $0.
+//
+// raw#9 hexa-only, raw#15 read-only.
+
+let VERSION = "0.1.0"
+
+let HOME = env("HOME")
+let HEXA_FORGE_ROOT_ENV = env("HEXA_FORGE_ROOT")
+
+fn hexa_forge_root() -> str {
+    if HEXA_FORGE_ROOT_ENV.len() > 0 { return HEXA_FORGE_ROOT_ENV }
+    let inferred = exec("dirname \"$(dirname \"$0\")\" 2>/dev/null || true").trim()
+    if inferred.len() > 0 { return inferred }
+    return HOME + "/.hexa-forge"  // @allow-devpath
+}
+
+let HF = hexa_forge_root()
+
+// 2-doc spec registry: verb_name → (subdir, filename) under docs/
+let VERBS = [
+    ["code", "docs", "code-llm.md"],
+    ["bio",  "docs", "bio-llm.md"],
+]
+
+fn shq(s: str) -> str {
+    return "'" + s.replace("'", "'\\''") + "'"
+}
+
+fn _file_exists(p: str) -> bool {
+    let r = exec("[ -f " + shq(p) + " ] && echo yes || echo no").trim()
+    return r == "yes"
+}
+
+fn _spec_path(subdir: str, fname: str) -> str {
+    return HF + "/" + subdir + "/" + fname
+}
+
+fn _print_spec_headline(verb: str, spec_path: str) {
+    if _file_exists(spec_path) == false {
+        println("ERROR: spec doc not found: " + spec_path)
+        println("  (set HEXA_FORGE_ROOT or run from repo root)")
+        return
+    }
+    println("hexa-forge " + verb + " — recipe doc:")
+    println("  " + spec_path)
+    println("")
+    println("--- doc head (first 30 lines) ---")
+    let raw = exec("head -30 " + shq(spec_path) + " 2>&1")
+    println(raw.trim())
+    println("--- end doc head ---")
+    println("")
+    println("__HEXA_FORGE_" + verb.to_upper() + "__ PASS")
+}
+
+fn _print_caveats() {
+    println("")
+    println("--- caveats ---")
+    println("  1. v0.1.0 ships SPEC ONLY — no trained weights, no inference server, no eval runs.")
+    println("  2. model serving / inference        → hexa-codex CLI.")
+    println("  3. genomics & wet-lab primary data  → hexa-bio CLI (paired with `forge bio`).")
+    println("  4. cognitive verbs                  → hexa-mind.")
+    println("  5. training compute provisioning    → out of scope (use upstream cloud / on-prem).")
+}
+
+fn cmd_status(a: [str]) {
+    println("hexa-forge " + VERSION + " status — domain-LLM foundry (2-verb seed)")
+    println("")
+    println("  scope: RESEARCH + RECIPE only (no weights, no serving)")
+    println("    code   docs/code-llm.md     programming-only LLM")
+    println("    bio    docs/bio-llm.md      HEXA-BIO domain LLM")
+    println("")
+    println("  verdict: RESEARCH_FIRST (2/2 recipe specs; 0/2 trained)")
+    println("  cross-link: codex→serving · bio→data · mind→cognitive · chip→fabric · grid→transport")
+    _print_caveats()
+}
+
+fn cmd_verb(verb: str) {
+    for row in VERBS {
+        if row[0] == verb {
+            _print_spec_headline(verb, _spec_path(row[1], row[2]))
+            return
+        }
+    }
+    println("hexa-forge: unknown verb: " + verb)
+    println("(try `hexa-forge status` for the verb list)")
+    exit(2)
+}
+
+fn cmd_selftest(a: [str]) {
+    println("hexa-forge selftest — 2-doc presence check")
+    println("")
+    let mut count = 0
+    for row in VERBS {
+        let verb = row[0]
+        let path = _spec_path(row[1], row[2])
+        if _file_exists(path) {
+            println("  [PASS] " + verb)
+            count = count + 1
+        } else {
+            println("  [FAIL] " + verb + " (missing: " + path + ")")
+        }
+    }
+    println("")
+    println("docs_present = " + str(count) + " / 2")
+    if count == 2 {
+        println("__HEXA_FORGE_SELFTEST__ PASS")
+    } else {
+        println("__HEXA_FORGE_SELFTEST__ FAIL")
+        exit(1)
+    }
+}
+
+fn cmd_version() {
+    println("hexa-forge " + VERSION)
+    println("standalone domain-LLM foundry (HEXA family — fresh-authored on 2026-05-10)")
+    println("license: MIT")
+    println("repo:    https://github.com/dancinlab/hexa-forge")
+}
+
+fn cmd_help() {
+    println("hexa-forge " + VERSION + " — standalone domain-LLM FOUNDRY CLI")
+    println("")
+    println("usage: hexa-forge <subcmd> [flags...]")
+    println("")
+    println("verb subcommands (2-doc seed bundle):")
+    for row in VERBS {
+        println("  " + row[0])
+    }
+    println("")
+    println("utility:")
+    println("  status          2-doc table + cross-link + caveats")
+    println("  selftest        2-doc presence check")
+    println("")
+    println("global flags: --version, --help, -h")
+    println("env:          HEXA_FORGE_ROOT (override repo root)")
+    println("")
+    println("cross-link (call sibling repo / CLI directly):")
+    println("  model serving / inference  → hexa-codex serve")
+    println("  genomics & wet-lab data    → hexa-bio")
+    println("  cognitive verbs            → hexa-mind  (pending)")
+    println("  neuromorphic training fab  → hexa-chip")
+    println("  federated training trans.  → hexa-grid")
+}
+
+fn main(args: [str]) {
+    if args.len() < 2 { cmd_help(); return }
+    let sub = args[1]
+
+    if sub == "--version" || sub == "-v" { cmd_version(); return }
+    if sub == "--help"    || sub == "-h" { cmd_help();    return }
+
+    if sub == "status"   { cmd_status(args);   return }
+    if sub == "selftest" { cmd_selftest(args); return }
+    if sub == "help"     { cmd_help();         return }
+
+    cmd_verb(sub)
+}

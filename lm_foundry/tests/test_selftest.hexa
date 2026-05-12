@@ -1,0 +1,52 @@
+#!hexa strict
+// tests/test_selftest.hexa — full 2-doc selftest harness for hexa-forge
+//
+// Pass criterion: __HEXA_FORGE_SELFTEST__ PASS sentinel present
+// (and 2 docs accounted for under docs/).
+//
+// Cost: $0 (orchestrates the dispatcher; no training work).
+
+let VERB_PARENT = "docs"
+let VERB_DOCS: [str] = [
+    "code-llm.md",
+    "bio-llm.md",
+]
+
+fn _file_exists(p: str) -> bool {
+    let r = exec("[ -f \"" + p + "\" ] && echo yes || echo no").trim()
+    return r == "yes"
+}
+
+fn main() {
+    let mut root = env("HEXA_FORGE_ROOT")
+    if root.len() == 0 { root = exec("pwd").trim() }
+
+    let mut missing: [str] = []
+    for d in VERB_DOCS {
+        if _file_exists(root + "/" + VERB_PARENT + "/" + d) == false { missing = missing + [d] }
+    }
+    let n_present = 2 - missing.len()
+    println("test_selftest: docs present = " + str(n_present) + " / 2")
+    if missing.len() > 0 {
+        println("test_selftest: FAIL — missing docs:")
+        for m in missing { println("  - " + m) }
+        exit(1)
+    }
+
+    let cli = root + "/cli/hexa-forge.hexa"
+    let cli_ok = exec("[ -f \"" + cli + "\" ] && echo y || echo n").trim()
+    if cli_ok != "y" {
+        println("test_selftest: FAIL — cli/hexa-forge.hexa missing")
+        exit(1)
+    }
+
+    let cmd = "HEXA_FORGE_ROOT=\"" + root + "\" hexa run \"" + cli + "\" selftest 2>&1"
+    let raw = exec(cmd)
+    if raw.contains("__HEXA_FORGE_SELFTEST__ PASS") {
+        println("test_selftest: PASS — 2/2 docs + dispatcher sentinel OK")
+        return
+    }
+    println("test_selftest: FAIL — sentinel not found")
+    println(raw.trim())
+    exit(1)
+}

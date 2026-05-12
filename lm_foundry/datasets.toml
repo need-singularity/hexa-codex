@@ -1,0 +1,2124 @@
+# =============================================================================
+# datasets.toml — hexa-forge dataset registry (v0.1.2 corpus audit)
+# =============================================================================
+#
+# Cross-link: docs/code-llm.md §STRUCT (stage table) +
+#             ROADMAP.md §4 item 4 (initial schema) +
+#             TODO.md §2 v0.2.0 cross-cutting infra item 1 (central registry).
+#
+# Source findings:
+#   - papers/tier-a-findings.md        (Tier A — language-native idiom canon)
+#   - papers/tier-b-findings.md        (Tier B — cross-language principles)
+#   - papers/tier-c-findings.md        (Tier C — post-mortem canon)
+#   - papers/tier-e-findings.md        (Tier E — anti-corpus / DPO negatives)
+#   - papers/frontend-f1-findings.md   (F-1 frameworks + design systems)
+#   - papers/frontend-f2-findings.md   (F-2 native web platform + CSS)
+#   - papers/frontend-f3-findings.md   (F-3 perf + a11y + AI-native UI)
+#
+# -----------------------------------------------------------------------------
+# README — how this file is used
+# -----------------------------------------------------------------------------
+#
+# Versioning:
+#   - `[meta] schema_version` MUST be bumped any time the entry schema changes
+#     (new required field, renamed field, removed field, semantics shift).
+#   - `[meta] entry_revision` SHOULD be bumped on data-only edits
+#     (URL fixes, license corrections, tokens_actual fills).
+#   - When in doubt, bump entry_revision; only the curator-of-record
+#     bumps schema_version.
+#
+# Consumed by:
+#   - `tool/license_clean_scan.py` — reads every `license` field, cross-checks
+#       against the SPDX allowlist (MIT / Apache-2.0 / BSD-* / ISC / 0BSD /
+#       Unlicense / CC0-1.0 / CC-BY-* / PSF / PostgreSQL / public-domain /
+#       Zlib / MPL-2.0). Fails the build on GPL/AGPL/SSPL/NC/ND or unknown.
+#       Entries marked "QUOTE-ONLY" are skipped from bulk-train and routed
+#       to the excerpt-only sub-corpus.
+#   - `tool/stack_v2_sample.py` (planned) — fetches the dataset, computes
+#       `sha256_corpus`, tokenizes with the Qwen tokenizer, and writes the
+#       observed `tokens_actual` back into this file (commit-time).
+#   - `tool/tokenize.py` (planned) — same flow for the Tier A/B/C/E
+#       anchor sources listed below.
+#
+# Forbidden content:
+#   - DO NOT inline license text. License obligations live in the
+#     accompanying NOTICE/LICENSE files, not in this manifest.
+#   - DO NOT inline corpus content. This file is a manifest only.
+#     Any `notes` field longer than ~120 chars is a smell.
+#   - DO NOT add entries that lack a verified `url`. If a source is
+#     `UNVERIFIED` in the findings docs and has no usable URL, omit it
+#     entirely; if it has a tentative URL, set `fetch_status = "url-broken"`.
+#
+# Naming convention:
+#   [datasets.code.<stage>.<id>] where
+#     - <stage> ∈ { pretrain-bias | domain-bias | build-trace | diff-edit
+#                   | repair | hexa-native | philosophy | db-native
+#                   | firmware-native | hexa-firmware }
+#     - <id> is a stable kebab-case slug, never reused, never renamed.
+#
+# Hard exclusions (re-checked at audit-time):
+#   - Apple Human Interface Guidelines (proprietary; F-1 hard blocker).
+#   - GPL/LGPL/AGPL/GFDL content (only ever QUOTE-ONLY excerpts).
+#   - Common Crawl raw dumps (post-2024 AI-slop saturation).
+#   - medium.com / dev.to / hashnode / substack post-2023-01-01.
+#
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# [schema] — entry shape
+# -----------------------------------------------------------------------------
+# Each dataset entry: [datasets.<verb>.<stage>.<id>]
+#
+# Fields (all strings unless noted):
+#   url                 # canonical source URL (verified by the curator)
+#   license             # SPDX id — one of:
+#                       #   MIT | Apache-2.0 | BSD-3-Clause | BSD-2-Clause
+#                       #   | ISC | Unlicense | CC0-1.0 | CC-BY-4.0
+#                       #   | CC-BY-3.0 | CC-BY-SA-4.0 | CC-BY-SA-2.0
+#                       #   | PSF | PostgreSQL | "public-domain" | Zlib
+#                       #   | MPL-2.0 | 0BSD | "MIT OR Apache-2.0"
+#                       # — or "QUOTE-ONLY" for GPL/LGPL/GFDL/Elastic 2.0/SSPL
+#                       # — or "UNKNOWN" when blocking on a license check
+#   attribution         # REQUIRED if license is CC-BY-*; string template
+#                       # (e.g. "© <authors>, CC-BY-4.0, <source-url>")
+#   weight              # float — multiplier in mix; default 1.0;
+#                       # hexa-canon = 10.0
+#   tier                # A | B | C | D | E | F1 | F2 | F3
+#   tokens_est          # rough order of magnitude: "10K" | "100K" | "1M" | "10M"
+#   tokens_actual       # populated after tool/stack_v2_sample.py or
+#                       # tool/tokenize.py run; "" until then
+#   fetch_status        # "pending" | "fetched" | "blocked-by-license" | "url-broken"
+#   notes               # 1-line caveat (optional, <120 chars)
+#   sha256_corpus       # populated post-fetch; "" until then
+# -----------------------------------------------------------------------------
+#
+# Weight policy (cross-link: docs/code-llm.md §STRUCT):
+#   - Tier D `hexa-canon` / `hexa-native` entries  →  weight = 10.0
+#   - All other entries (Tier A/B/C/E/F1/F2/F3)    →  weight = 1.0 (default)
+#
+# Perplexity gate (D-NEW-TC-E, must — applied PRE-MIX, upstream of this file):
+#   `tool/corpus_quality_filter.py` (planned, v0.2.0 §5 infra) runs a
+#   per-source perplexity filter on the `pretrain-bias` Stack v2 permissive
+#   subset before the sampling pipeline reads entries from this manifest.
+#   Tier A/B/C/D/E entries here are curator-vetted and bypass the gate.
+#
+# Synthetic-share ceiling (D-NEW-TC-B, must):
+#   Per-stage cap: `synth_share ≤ 0.80` of effective tokens. Enforced at
+#   sampling time (not encoded per-entry here). The `philosophy` stage's
+#   ×5-10 principle×idiom synth must respect this cap; a 5-generation
+#   variance monitor watches for Shumailov-style collapse.
+# -----------------------------------------------------------------------------
+
+[meta]
+schema_version  = "0.1.0"
+entry_revision  = "0.1.2"
+last_audit_date = "2026-05-11"
+audit_phase     = "v0.1.2 corpus audit"
+verb            = "code"
+notes           = "Initial registry; tokens_actual + sha256_corpus filled post-fetch."
+
+# =============================================================================
+# Tier A — language-native idiom canon  →  stage = philosophy
+# Source: papers/tier-a-findings.md
+# =============================================================================
+
+# -------- Python --------
+
+[datasets.code.philosophy.pep-8]
+url           = "https://peps.python.org/pep-0008/"
+license       = "public-domain"
+weight        = 1.0
+tier          = "A"
+tokens_est    = "10K"
+tokens_actual = ""
+fetch_status  = "pending"
+notes         = "Style guide; placed in public domain."
+sha256_corpus = ""
+
+[datasets.code.philosophy.pep-20]
+url           = "https://peps.python.org/pep-0020/"
+license       = "public-domain"
+weight        = 10.0
+tier          = "A"
+tokens_est    = "10K"
+tokens_actual = ""
+fetch_status  = "pending"
+notes         = "Zen of Python; tiny, high-signal, ×10 weight."
+sha256_corpus = ""
+
+[datasets.code.philosophy.pep-257]
+url           = "https://peps.python.org/pep-0257/"
+license       = "public-domain"
+weight        = 1.0
+tier          = "A"
+tokens_est    = "10K"
+tokens_actual = ""
+fetch_status  = "pending"
+notes         = "Docstring conventions."
+sha256_corpus = ""
+
+[datasets.code.philosophy.python-stdlib-rationale]
+url           = "https://docs.python.org/3/library/"
+license       = "PSF"
+weight        = 1.0
+tier          = "A"
+tokens_est    = "1M"
+tokens_actual = ""
+fetch_status  = "pending"
+notes         = "Cherry-pick rationale prose; PSF v2 + 0BSD code; preserve notice."
+sha256_corpus = ""
+
+[datasets.code.philosophy.python-tutorial]
+url           = "https://docs.python.org/3/tutorial/"
+license       = "PSF"
+weight        = 1.0
+tier          = "A"
+tokens_est    = "100K"
+tokens_actual = ""
+fetch_status  = "pending"
+notes         = "Canonical Python tutorial; 16 chapters."
+sha256_corpus = ""
+
+[datasets.code.philosophy.python-howto]
+url           = "https://docs.python.org/3/howto/"
+license       = "PSF"
+weight        = 1.0
+tier          = "A"
+tokens_est    = "100K"
+tokens_actual = ""
+fetch_status  = "pending"
+notes         = "20+ guides — functional-programming, enum, descriptors, sorting."
+sha256_corpus = ""
+
+[datasets.code.philosophy.python-itertools-recipes]
+url           = "https://docs.python.org/3/library/itertools.html"
+license       = "PSF"
+weight        = 1.0
+tier          = "A"
+tokens_est    = "10K"
+tokens_actual = ""
+fetch_status  = "pending"
+notes         = "Canonical Pythonic-iteration patterns."
+sha256_corpus = ""
+
+[datasets.code.philosophy.google-python-styleguide]
+url           = "https://google.github.io/styleguide/pyguide.html"
+license       = "CC-BY-3.0"
+attribution   = "© Google Inc., CC-BY-3.0, https://google.github.io/styleguide/pyguide.html"
+weight        = 1.0
+tier          = "A"
+tokens_est    = "10K"
+tokens_actual = ""
+fetch_status  = "pending"
+notes         = "Industry-influential supplementary canon."
+sha256_corpus = ""
+
+[datasets.code.philosophy.peps-index]
+url           = "https://peps.python.org/"
+license       = "public-domain"
+weight        = 1.0
+tier          = "A"
+tokens_est    = "10M"
+tokens_actual = ""
+fetch_status  = "pending"
+notes         = "Pre-filter to Informational/Process + design Standards-Track PEPs."
+sha256_corpus = ""
+
+# -------- Rust --------
+
+[datasets.code.philosophy.rust-api-guidelines]
+url           = "https://rust-lang.github.io/api-guidelines/"
+license       = "MIT OR Apache-2.0"
+weight        = 1.0
+tier          = "A"
+tokens_est    = "10K"
+tokens_actual = ""
+fetch_status  = "pending"
+notes         = "11 chapters; rust-lang/api-guidelines."
+sha256_corpus = ""
+
+[datasets.code.philosophy.rust-book]
+url           = "https://doc.rust-lang.org/book/"
+license       = "MIT OR Apache-2.0"
+weight        = 1.0
+tier          = "A"
+tokens_est    = "100K"
+tokens_actual = ""
+fetch_status  = "pending"
+notes         = "The Rust Book; web text is open even though print is by No Starch."
+sha256_corpus = ""
+
+[datasets.code.philosophy.rust-nomicon]
+url           = "https://doc.rust-lang.org/nomicon/"
+license       = "MIT OR Apache-2.0"
+weight        = 1.0
+tier          = "A"
+tokens_est    = "10K"
+tokens_actual = ""
+fetch_status  = "pending"
+notes         = "Dark arts of unsafe Rust; incomplete per its own warning."
+sha256_corpus = ""
+
+[datasets.code.philosophy.rust-clippy]
+url           = "https://github.com/rust-lang/rust-clippy"
+license       = "MIT OR Apache-2.0"
+weight        = 1.0
+tier          = "A"
+tokens_est    = "1M"
+tokens_actual = ""
+fetch_status  = "pending"
+notes         = "Lint-doc strings from clippy_lints/src/**/*.rs; pairs into Tier E."
+sha256_corpus = ""
+
+[datasets.code.philosophy.rust-reference]
+url           = "https://doc.rust-lang.org/reference/"
+license       = "MIT OR Apache-2.0"
+weight        = 1.0
+tier          = "A"
+tokens_est    = "100K"
+tokens_actual = ""
+fetch_status  = "pending"
+notes         = "Language spec; more formal than the Book."
+sha256_corpus = ""
+
+[datasets.code.philosophy.rust-rfcs]
+url           = "https://rust-lang.github.io/rfcs/"
+license       = "MIT OR Apache-2.0"
+weight        = 1.0
+tier          = "A"
+tokens_est    = "1M"
+tokens_actual = ""
+fetch_status  = "pending"
+notes         = "Filter to MERGED RFCs only; rationale + alternatives = design canon."
+sha256_corpus = ""
+
+[datasets.code.philosophy.rustc-dev-guide]
+url           = "https://rustc-dev-guide.rust-lang.org/"
+license       = "MIT OR Apache-2.0"
+weight        = 1.0
+tier          = "A"
+tokens_est    = "100K"
+tokens_actual = ""
+fetch_status  = "pending"
+notes         = "Compiler internals; valuable for AST-faithful refactor signal."
+sha256_corpus = ""
+
+[datasets.code.philosophy.rust-edition-guide]
+url           = "https://doc.rust-lang.org/edition-guide/"
+license       = "MIT OR Apache-2.0"
+weight        = 1.0
+tier          = "A"
+tokens_est    = "10K"
+tokens_actual = ""
+fetch_status  = "url-broken"
+notes         = "UNVERIFIED in findings; verify before bulk-train."
+sha256_corpus = ""
+
+# -------- TypeScript --------
+
+[datasets.code.philosophy.ts-handbook]
+url           = "https://www.typescriptlang.org/docs/handbook/"
+license       = "CC-BY-4.0"
+attribution   = "© Microsoft, CC-BY-4.0, https://www.typescriptlang.org/docs/handbook/"
+weight        = 1.0
+tier          = "A"
+tokens_est    = "100K"
+tokens_actual = ""
+fetch_status  = "pending"
+notes         = "Prose CC-BY-4.0; code MIT. Preserve provenance front-matter."
+sha256_corpus = ""
+
+[datasets.code.philosophy.ts-declaration-dos-and-donts]
+url           = "https://www.typescriptlang.org/docs/handbook/declaration-files/do-s-and-don-ts.html"
+license       = "CC-BY-4.0"
+attribution   = "© Microsoft, CC-BY-4.0, https://www.typescriptlang.org/docs/handbook/declaration-files/do-s-and-don-ts.html"
+weight        = 1.0
+tier          = "A"
+tokens_est    = "10K"
+tokens_actual = ""
+fetch_status  = "pending"
+notes         = "Canonical what-not-to-do file."
+sha256_corpus = ""
+
+[datasets.code.philosophy.tsconfig-reference]
+url           = "https://www.typescriptlang.org/tsconfig"
+license       = "CC-BY-4.0"
+attribution   = "© Microsoft, CC-BY-4.0, https://www.typescriptlang.org/tsconfig"
+weight        = 1.0
+tier          = "A"
+tokens_est    = "10K"
+tokens_actual = ""
+fetch_status  = "pending"
+notes         = "Per-flag rationale; strict mode anchor."
+sha256_corpus = ""
+
+[datasets.code.philosophy.tc39-proposals-index]
+url           = "https://github.com/tc39/proposals"
+license       = "UNKNOWN"
+weight        = 1.0
+tier          = "A"
+tokens_est    = "1M"
+tokens_actual = ""
+fetch_status  = "blocked-by-license"
+notes         = "Per-proposal repo license-scan required; index has no root LICENSE."
+sha256_corpus = ""
+
+[datasets.code.philosophy.ecma-262-spec]
+url           = "https://tc39.es/ecma262/"
+license       = "QUOTE-ONLY"
+weight        = 1.0
+tier          = "A"
+tokens_est    = "100K"
+tokens_actual = ""
+fetch_status  = "blocked-by-license"
+notes         = "ECMA royalty-free policy differs from CC/MIT; quote-only."
+sha256_corpus = ""
+
+[datasets.code.philosophy.definitely-typed-contributing]
+url           = "https://github.com/DefinitelyTyped/DefinitelyTyped"
+license       = "MIT"
+weight        = 1.0
+tier          = "A"
+tokens_est    = "10K"
+tokens_actual = ""
+fetch_status  = "pending"
+notes         = "Canonical how-to-write-good-.d.ts; pairs with handbook Do's and Don'ts."
+sha256_corpus = ""
+
+# -------- Go --------
+
+[datasets.code.philosophy.effective-go]
+url           = "https://go.dev/doc/effective_go"
+license       = "CC-BY-4.0"
+attribution   = "© The Go Authors, CC-BY-4.0, https://go.dev/doc/effective_go"
+weight        = 1.0
+tier          = "A"
+tokens_est    = "10K"
+tokens_actual = ""
+fetch_status  = "pending"
+notes         = "go.dev confirmed CC-BY-4.0 site-wide."
+sha256_corpus = ""
+
+[datasets.code.philosophy.go-code-review-comments]
+url           = "https://go.dev/wiki/CodeReviewComments"
+license       = "CC-BY-4.0"
+attribution   = "© The Go Authors, CC-BY-4.0, https://go.dev/wiki/CodeReviewComments"
+weight        = 1.0
+tier          = "A"
+tokens_est    = "10K"
+tokens_actual = ""
+fetch_status  = "pending"
+notes         = "Wiki license inheritance is implicit; verify before bulk-include."
+sha256_corpus = ""
+
+[datasets.code.philosophy.go-proverbs]
+url           = "https://go-proverbs.github.io/"
+license       = "MIT"
+weight        = 1.0
+tier          = "A"
+tokens_est    = "10K"
+tokens_actual = ""
+fetch_status  = "pending"
+notes         = "19 proverbs; Pike's talk transcript."
+sha256_corpus = ""
+
+[datasets.code.philosophy.go-language-spec]
+url           = "https://go.dev/ref/spec"
+license       = "CC-BY-4.0"
+attribution   = "© The Go Authors, CC-BY-4.0, https://go.dev/ref/spec"
+weight        = 1.0
+tier          = "A"
+tokens_est    = "100K"
+tokens_actual = ""
+fetch_status  = "pending"
+notes         = "Reference but rationale-rich."
+sha256_corpus = ""
+
+[datasets.code.philosophy.go-faq]
+url           = "https://go.dev/doc/faq"
+license       = "CC-BY-4.0"
+attribution   = "© The Go Authors, CC-BY-4.0, https://go.dev/doc/faq"
+weight        = 1.0
+tier          = "A"
+tokens_est    = "10K"
+tokens_actual = ""
+fetch_status  = "pending"
+notes         = "Pure why-X-and-not-Y design rationale."
+sha256_corpus = ""
+
+[datasets.code.philosophy.go-blog]
+url           = "https://go.dev/blog/all"
+license       = "CC-BY-4.0"
+attribution   = "© The Go Authors, CC-BY-4.0, https://go.dev/blog/"
+weight        = 1.0
+tier          = "A"
+tokens_est    = "1M"
+tokens_actual = ""
+fetch_status  = "pending"
+notes         = "Filter to design/idiom posts."
+sha256_corpus = ""
+
+# -------- C --------
+
+[datasets.code.philosophy.cert-c]
+url           = "https://wiki.sei.cmu.edu/confluence/display/c/SEI+CERT+C+Coding+Standard"
+license       = "CC-BY-4.0"
+attribution   = "© Carnegie Mellon SEI, CC-BY-4.0, https://wiki.sei.cmu.edu/confluence/display/c/SEI+CERT+C+Coding+Standard"
+weight        = 1.0
+tier          = "A"
+tokens_est    = "1M"
+tokens_actual = ""
+fetch_status  = "pending"
+notes         = "Upgraded from partial to full include; load-bearing C row."
+sha256_corpus = ""
+
+[datasets.code.philosophy.linux-kernel-coding-style]
+url           = "https://www.kernel.org/doc/html/latest/process/coding-style.html"
+license       = "QUOTE-ONLY"
+weight        = 1.0
+tier          = "A"
+tokens_est    = "10K"
+tokens_actual = ""
+fetch_status  = "blocked-by-license"
+notes         = "GPL-2.0 family; excerpt-only under fair-use."
+sha256_corpus = ""
+
+[datasets.code.philosophy.c99-rationale]
+url           = "https://www.open-std.org/jtc1/sc22/wg14/www/C99RationaleV5.10.pdf"
+license       = "QUOTE-ONLY"
+weight        = 1.0
+tier          = "A"
+tokens_est    = "100K"
+tokens_actual = ""
+fetch_status  = "pending"
+notes         = "WG14 free distribution but no formal CC/MIT."
+sha256_corpus = ""
+
+[datasets.code.philosophy.gnu-c-standards]
+url           = "https://www.gnu.org/prep/standards/"
+license       = "QUOTE-ONLY"
+weight        = 1.0
+tier          = "A"
+tokens_est    = "10K"
+tokens_actual = ""
+fetch_status  = "url-broken"
+notes         = "UNVERIFIED; GFDL is copyleft — same risk as kernel docs."
+sha256_corpus = ""
+
+[datasets.code.philosophy.c-faq]
+url           = "https://c-faq.com/"
+license       = "QUOTE-ONLY"
+weight        = 1.0
+tier          = "A"
+tokens_est    = "100K"
+tokens_actual = ""
+fetch_status  = "url-broken"
+notes         = "UNVERIFIED; non-commercial copy permission only."
+sha256_corpus = ""
+
+[datasets.code.philosophy.openbsd-style-9]
+url           = "https://man.openbsd.org/style.9"
+license       = "BSD-3-Clause"
+weight        = 1.0
+tier          = "A"
+tokens_est    = "10K"
+tokens_actual = ""
+fetch_status  = "url-broken"
+notes         = "UNVERIFIED license-on-page; assumed BSD-3 from OpenBSD docs."
+sha256_corpus = ""
+
+# -------- Zig --------
+
+[datasets.code.philosophy.zig-language-reference]
+url           = "https://ziglang.org/documentation/master/"
+license       = "MIT"
+weight        = 1.0
+tier          = "A"
+tokens_est    = "100K"
+tokens_actual = ""
+fetch_status  = "pending"
+notes         = "Repo ziglang/zig confirmed MIT."
+sha256_corpus = ""
+
+[datasets.code.philosophy.zig-overview]
+url           = "https://ziglang.org/learn/overview/"
+license       = "MIT"
+weight        = 1.0
+tier          = "A"
+tokens_est    = "10K"
+tokens_actual = ""
+fetch_status  = "pending"
+notes         = "Authoritative no-hidden-control-flow philosophy doc."
+sha256_corpus = ""
+
+[datasets.code.philosophy.zig-why-zig]
+url           = "https://ziglang.org/learn/why_zig_rust_d_cpp/"
+license       = "MIT"
+weight        = 1.0
+tier          = "A"
+tokens_est    = "10K"
+tokens_actual = ""
+fetch_status  = "pending"
+notes         = "Direct comparative philosophy."
+sha256_corpus = ""
+
+[datasets.code.philosophy.zig-build-system]
+url           = "https://ziglang.org/learn/build-system/"
+license       = "MIT"
+weight        = 1.0
+tier          = "A"
+tokens_est    = "10K"
+tokens_actual = ""
+fetch_status  = "url-broken"
+notes         = "UNVERIFIED but assumed MIT per repo-canon."
+sha256_corpus = ""
+
+[datasets.code.philosophy.zig-stdlib-doc-comments]
+url           = "https://github.com/ziglang/zig"
+license       = "MIT"
+weight        = 1.0
+tier          = "A"
+tokens_est    = "100K"
+tokens_actual = ""
+fetch_status  = "pending"
+notes         = "Doc-comments from lib/std/; canonical-idiom-by-example."
+sha256_corpus = ""
+
+# -------- SQL --------
+
+[datasets.code.philosophy.postgresql-docs]
+url           = "https://www.postgresql.org/docs/current/"
+license       = "PostgreSQL"
+weight        = 1.0
+tier          = "A"
+tokens_est    = "10M"
+tokens_actual = ""
+fetch_status  = "pending"
+notes         = "Filter to SQL-idiom chapters; skip server-admin."
+sha256_corpus = ""
+
+[datasets.code.philosophy.postgresql-internals]
+url           = "https://www.postgresql.org/docs/current/internals.html"
+license       = "PostgreSQL"
+weight        = 1.0
+tier          = "A"
+tokens_est    = "100K"
+tokens_actual = ""
+fetch_status  = "pending"
+notes         = "Planner + MVCC rationale — design-philosophy gold."
+sha256_corpus = ""
+
+[datasets.code.philosophy.sqlite-about]
+url           = "https://www.sqlite.org/about.html"
+license       = "public-domain"
+weight        = 1.0
+tier          = "A"
+tokens_est    = "100K"
+tokens_actual = ""
+fetch_status  = "pending"
+notes         = "Includes When-To-Use, How-Tested, WAL — high signal."
+sha256_corpus = ""
+
+[datasets.code.philosophy.sqlite-lang-reference]
+url           = "https://www.sqlite.org/lang.html"
+license       = "public-domain"
+weight        = 1.0
+tier          = "A"
+tokens_est    = "100K"
+tokens_actual = ""
+fetch_status  = "url-broken"
+notes         = "UNVERIFIED page-level URL; SQLite is public-domain overall."
+sha256_corpus = ""
+
+# =============================================================================
+# Tier B — cross-language engineering principle canon  →  stage = philosophy
+# Source: papers/tier-b-findings.md
+# =============================================================================
+
+[datasets.code.philosophy.aposd-extract]
+url           = "https://web.stanford.edu/~ouster/cgi-bin/aposd.php"
+license       = "QUOTE-ONLY"
+weight        = 1.0
+tier          = "B"
+tokens_est    = "10K"
+tokens_actual = ""
+fetch_status  = "pending"
+notes         = "Ousterhout 2nd-ed extract PDF only; full book paid."
+sha256_corpus = ""
+
+[datasets.code.philosophy.pragprog-tips]
+url           = "https://pragprog.com/tips/"
+license       = "QUOTE-ONLY"
+weight        = 1.0
+tier          = "B"
+tokens_est    = "10K"
+tokens_actual = ""
+fetch_status  = "pending"
+notes         = "Publisher-permissioned on own site, not CC; excerpt-only."
+sha256_corpus = ""
+
+[datasets.code.philosophy.wikipedia-solid-dry-yagni-kiss]
+url           = "https://en.wikipedia.org/wiki/SOLID"
+license       = "CC-BY-SA-4.0"
+attribution   = "Wikipedia contributors, CC-BY-SA-4.0, https://en.wikipedia.org/wiki/SOLID"
+weight        = 1.0
+tier          = "B"
+tokens_est    = "10K"
+tokens_actual = ""
+fetch_status  = "pending"
+notes         = "Cluster: SOLID/DRY/YAGNI/KISS; ~4 articles × ~5-10K."
+sha256_corpus = ""
+
+[datasets.code.philosophy.worse-is-better]
+url           = "https://www.dreamsongs.com/RiseOfWorseIsBetter.html"
+license       = "QUOTE-ONLY"
+weight        = 1.0
+tier          = "B"
+tokens_est    = "10K"
+tokens_actual = ""
+fetch_status  = "blocked-by-license"
+notes         = "CC-BY-NC-SA 3.0 — NC blocks bulk training; excerpt-only saga."
+sha256_corpus = ""
+
+[datasets.code.philosophy.cathedral-and-bazaar]
+url           = "http://www.catb.org/~esr/writings/cathedral-bazaar/cathedral-bazaar/"
+license       = "Unlicense"
+weight        = 1.0
+tier          = "B"
+tokens_est    = "100K"
+tokens_actual = ""
+fetch_status  = "pending"
+notes         = "OPL v2.0 no-options (treat as permissive); use IA mirror if cert is bad."
+sha256_corpus = ""
+
+[datasets.code.philosophy.out-of-the-tar-pit]
+url           = "http://curtclifton.net/papers/MoseleyMarks06a.pdf"
+license       = "QUOTE-ONLY"
+weight        = 1.0
+tier          = "B"
+tokens_est    = "10K"
+tokens_actual = ""
+fetch_status  = "pending"
+notes         = "No SPDX header; de-facto public via academic mirrors."
+sha256_corpus = ""
+
+[datasets.code.philosophy.no-silver-bullet]
+url           = "https://worrydream.com/refs/Brooks_1986_-_No_Silver_Bullet.pdf"
+license       = "QUOTE-ONLY"
+weight        = 1.0
+tier          = "B"
+tokens_est    = "10K"
+tokens_actual = ""
+fetch_status  = "pending"
+notes         = "IEEE / Brooks; academic fair-use only."
+sha256_corpus = ""
+
+[datasets.code.philosophy.danluu]
+url           = "https://danluu.com/"
+license       = "UNKNOWN"
+weight        = 1.0
+tier          = "B"
+tokens_est    = "100K"
+tokens_actual = ""
+fetch_status  = "blocked-by-license"
+notes         = "Original spec claim was wrong; no license stated on /about/."
+sha256_corpus = ""
+
+[datasets.code.philosophy.ewd-340-humble-programmer]
+url           = "https://www.cs.utexas.edu/~EWD/transcriptions/EWD03xx/EWD340.html"
+license       = "QUOTE-ONLY"
+weight        = 1.0
+tier          = "B"
+tokens_est    = "10K"
+tokens_actual = ""
+fetch_status  = "pending"
+notes         = "Dijkstra 1972 Turing lecture; UT Austin reproduced w/ permission."
+sha256_corpus = ""
+
+[datasets.code.philosophy.trusting-trust]
+url           = "https://www.cs.cmu.edu/~rdriley/487/papers/Thompson_1984_ReflectionsonTrustingTrust.pdf"
+license       = "QUOTE-ONLY"
+weight        = 1.0
+tier          = "B"
+tokens_est    = "10K"
+tokens_actual = ""
+fetch_status  = "pending"
+notes         = "Thompson 1983 Turing lecture; ACM educational-use only."
+sha256_corpus = ""
+
+[datasets.code.philosophy.naur-theory-building]
+url           = "https://pages.cs.wisc.edu/~remzi/Naur.pdf"
+license       = "QUOTE-ONLY"
+weight        = 1.0
+tier          = "B"
+tokens_est    = "10K"
+tokens_actual = ""
+fetch_status  = "pending"
+notes         = "1985 essay; academic mirrors; fair-use."
+sha256_corpus = ""
+
+[datasets.code.philosophy.hoare-hints-pl-design]
+url           = "https://www.cs.yale.edu/flint/cs428/doc/HintsPL.pdf"
+license       = "QUOTE-ONLY"
+weight        = 1.0
+tier          = "B"
+tokens_est    = "10K"
+tokens_actual = ""
+fetch_status  = "pending"
+notes         = "Stanford TR 1973; widely mirrored; fair-use."
+sha256_corpus = ""
+
+[datasets.code.philosophy.stepanov-notes]
+url           = "https://stepanovpapers.com/notes.pdf"
+license       = "QUOTE-ONLY"
+weight        = 1.0
+tier          = "B"
+tokens_est    = "100K"
+tokens_actual = ""
+fetch_status  = "pending"
+notes         = "Author-hosted lecture notes; license unverified."
+sha256_corpus = ""
+
+[datasets.code.philosophy.google-eng-practices]
+url           = "https://google.github.io/eng-practices/"
+license       = "CC-BY-3.0"
+attribution   = "© Google Inc., CC-BY-3.0, https://google.github.io/eng-practices/"
+weight        = 1.0
+tier          = "B"
+tokens_est    = "10K"
+tokens_actual = ""
+fetch_status  = "pending"
+notes         = "Code-review playbook; CC-BY 3.0 confirmed in repo LICENSE."
+sha256_corpus = ""
+
+[datasets.code.philosophy.sicp-2e]
+url           = "https://sarabander.github.io/sicp/html/"
+license       = "CC-BY-SA-4.0"
+attribution   = "© Abelson, Sussman, Sussman, CC-BY-SA-4.0, https://sarabander.github.io/sicp/html/"
+weight        = 1.0
+tier          = "B"
+tokens_est    = "100K"
+tokens_actual = ""
+fetch_status  = "pending"
+notes         = "Re-licensed ~2016 under CC-BY-SA-4.0 by MIT Press."
+sha256_corpus = ""
+
+[datasets.code.philosophy.htdp-2e]
+url           = "https://htdp.org/2023-8-14/Book/"
+license       = "QUOTE-ONLY"
+weight        = 1.0
+tier          = "B"
+tokens_est    = "100K"
+tokens_actual = ""
+fetch_status  = "blocked-by-license"
+notes         = "CC-BY-NC-ND 4.0 — ND blocks derivatives; excerpt-only."
+sha256_corpus = ""
+
+[datasets.code.philosophy.mit-6005]
+url           = "https://web.mit.edu/6.005/www/archive/"
+license       = "QUOTE-ONLY"
+weight        = 1.0
+tier          = "B"
+tokens_est    = "100K"
+tokens_actual = ""
+fetch_status  = "blocked-by-license"
+notes         = "CC-BY-NC-SA 4.0 — NC blocks commercial training."
+sha256_corpus = ""
+
+[datasets.code.philosophy.drewdevault-blog]
+url           = "https://drewdevault.com/"
+license       = "CC-BY-SA-2.0"
+attribution   = "© Drew DeVault, CC-BY-SA-2.0, https://drewdevault.com/"
+weight        = 1.0
+tier          = "B"
+tokens_est    = "100K"
+tokens_actual = ""
+fetch_status  = "pending"
+notes         = "10 years of systems-engineering posts; CC-BY-SA 2.0 footer."
+sha256_corpus = ""
+
+[datasets.code.philosophy.sre-workbook]
+url           = "https://sre.google/workbook/table-of-contents/"
+license       = "CC-BY-4.0"
+attribution   = "© Google, CC-BY-4.0, https://sre.google/workbook/"
+weight        = 1.0
+tier          = "B"
+tokens_est    = "100K"
+tokens_actual = ""
+fetch_status  = "pending"
+notes         = "Promoted over the SRE Book (BY-NC-ND); license clarity matters."
+sha256_corpus = ""
+
+[datasets.code.philosophy.sre-book]
+url           = "https://sre.google/sre-book/table-of-contents/"
+license       = "QUOTE-ONLY"
+weight        = 1.0
+tier          = "B"
+tokens_est    = "100K"
+tokens_actual = ""
+fetch_status  = "blocked-by-license"
+notes         = "CC-BY-NC-ND 4.0; principle chapters only as excerpts."
+sha256_corpus = ""
+
+[datasets.code.philosophy.clean-code-critique-qntm]
+url           = "https://qntm.org/clean"
+license       = "QUOTE-ONLY"
+weight        = 1.0
+tier          = "B"
+tokens_est    = "10K"
+tokens_actual = ""
+fetch_status  = "pending"
+notes         = "qntm critique; pair with Clean Code claim as DPO contrast."
+sha256_corpus = ""
+
+[datasets.code.philosophy.clean-code-critique-abramov]
+url           = "https://overreacted.io/goodbye-clean-code/"
+license       = "QUOTE-ONLY"
+weight        = 1.0
+tier          = "B"
+tokens_est    = "10K"
+tokens_actual = ""
+fetch_status  = "pending"
+notes         = "Abramov Goodbye-Clean-Code essay; author copyright."
+sha256_corpus = ""
+
+[datasets.code.philosophy.aposd-vs-clean-code-debate]
+url           = "https://github.com/johnousterhout/aposd-vs-clean-code"
+license       = "QUOTE-ONLY"
+weight        = 1.0
+tier          = "B"
+tokens_est    = "10K"
+tokens_actual = ""
+fetch_status  = "pending"
+notes         = "Ousterhout↔Martin GitHub debate; both authors agreed publicly."
+sha256_corpus = ""
+
+# =============================================================================
+# Tier C — post-mortem canon (operational philosophy) →  stage = philosophy
+# Source: papers/tier-c-findings.md (URL corrections applied)
+# =============================================================================
+
+[datasets.code.philosophy.aws-builders-library]
+url           = "https://aws.amazon.com/builders-library/"
+license       = "QUOTE-ONLY"
+weight        = 1.0
+tier          = "C"
+tokens_est    = "100K"
+tokens_actual = ""
+fetch_status  = "pending"
+notes         = "© Amazon; no explicit reuse grant; fair-use research only."
+sha256_corpus = ""
+
+[datasets.code.philosophy.aws-pes]
+url           = "https://aws.amazon.com/premiumsupport/technology/pes/"
+license       = "QUOTE-ONLY"
+weight        = 1.0
+tier          = "C"
+tokens_est    = "10K"
+tokens_actual = ""
+fetch_status  = "pending"
+notes         = "URL corrected from source list; 5-year retention guaranteed."
+sha256_corpus = ""
+
+[datasets.code.philosophy.github-availability-report]
+url           = "https://github.blog/tag/github-availability-report/"
+license       = "QUOTE-ONLY"
+weight        = 1.0
+tier          = "C"
+tokens_est    = "100K"
+tokens_actual = ""
+fetch_status  = "pending"
+notes         = "URL corrected from source list (was githubstatus.com)."
+sha256_corpus = ""
+
+[datasets.code.philosophy.cloudflare-postmortem-tag]
+url           = "https://blog.cloudflare.com/tag/post-mortem/"
+license       = "QUOTE-ONLY"
+weight        = 1.0
+tier          = "C"
+tokens_est    = "100K"
+tokens_actual = ""
+fetch_status  = "pending"
+notes         = "robots.txt explicitly ai-train=yes — highest-clarity in Tier C."
+sha256_corpus = ""
+
+[datasets.code.philosophy.danluu-postmortem]
+url           = "https://danluu.com/postmortem-lessons/"
+license       = "UNKNOWN"
+weight        = 1.0
+tier          = "C"
+tokens_est    = "10K"
+tokens_actual = ""
+fetch_status  = "blocked-by-license"
+notes         = "Original CC-BY claim is UNVERIFIED; treat as fair-use until clarified."
+sha256_corpus = ""
+
+[datasets.code.philosophy.k8s-postmortems]
+url           = "https://github.com/kubernetes/community/tree/master/sig-cluster-lifecycle/postmortems"
+license       = "Apache-2.0"
+weight        = 1.0
+tier          = "C"
+tokens_est    = "10K"
+tokens_actual = ""
+fetch_status  = "pending"
+notes         = "URL corrected from source list; volume is small (1-2 markdown)."
+sha256_corpus = ""
+
+[datasets.code.philosophy.azure-pir]
+url           = "https://azure.status.microsoft/en-us/status/history/"
+license       = "QUOTE-ONLY"
+weight        = 1.0
+tier          = "C"
+tokens_est    = "100K"
+tokens_actual = ""
+fetch_status  = "pending"
+notes         = "© Microsoft; blameless-by-template; 5-year retention."
+sha256_corpus = ""
+
+[datasets.code.philosophy.gcp-incidents-json]
+url           = "https://status.cloud.google.com/incidents.json"
+license       = "QUOTE-ONLY"
+weight        = 1.0
+tier          = "C"
+tokens_est    = "100K"
+tokens_actual = ""
+fetch_status  = "pending"
+notes         = "Structured machine-readable feed; trivially ingestible."
+sha256_corpus = ""
+
+[datasets.code.philosophy.discord-engineering]
+url           = "https://discord.com/category/engineering"
+license       = "QUOTE-ONLY"
+weight        = 1.0
+tier          = "C"
+tokens_est    = "10K"
+tokens_actual = ""
+fetch_status  = "pending"
+notes         = "Voice/session post-mortems; small but vivid."
+sha256_corpus = ""
+
+[datasets.code.philosophy.stripe-engineering]
+url           = "https://stripe.com/blog/engineering"
+license       = "QUOTE-ONLY"
+weight        = 1.0
+tier          = "C"
+tokens_est    = "10K"
+tokens_actual = ""
+fetch_status  = "pending"
+notes         = "Sparse but the 2019-07-10 RCA is genre-defining."
+sha256_corpus = ""
+
+[datasets.code.philosophy.heroku-postmortems]
+url           = "https://www.heroku.com/blog/"
+license       = "QUOTE-ONLY"
+weight        = 1.0
+tier          = "C"
+tokens_est    = "10K"
+tokens_actual = ""
+fetch_status  = "pending"
+notes         = "Filter to postmortem/incident-review/outage posts."
+sha256_corpus = ""
+
+[datasets.code.philosophy.datadog-mar2023]
+url           = "https://www.datadoghq.com/blog/2023-03-08-multiregion-infrastructure-connectivity-issue/"
+license       = "QUOTE-ONLY"
+weight        = 1.0
+tier          = "C"
+tokens_est    = "10K"
+tokens_actual = ""
+fetch_status  = "pending"
+notes         = "4 deep-dive posts; canon-grade multi-region cascade story."
+sha256_corpus = ""
+
+[datasets.code.philosophy.fastly-june-2021]
+url           = "https://www.fastly.com/blog/summary-of-june-8-outage"
+license       = "QUOTE-ONLY"
+weight        = 1.0
+tier          = "C"
+tokens_est    = "10K"
+tokens_actual = ""
+fetch_status  = "pending"
+notes         = "Textbook valid-config-triggers-latent-bug cascade."
+sha256_corpus = ""
+
+[datasets.code.philosophy.pypi-blog]
+url           = "https://blog.pypi.org/"
+license       = "QUOTE-ONLY"
+weight        = 1.0
+tier          = "C"
+tokens_est    = "10K"
+tokens_actual = ""
+fetch_status  = "pending"
+notes         = "Supply-chain registry post-mortems; PSF + ToB fair-use."
+sha256_corpus = ""
+
+[datasets.code.philosophy.gitlab-handbook-incident]
+url           = "https://handbook.gitlab.com/handbook/engineering/incident-management/"
+license       = "CC-BY-SA-4.0"
+attribution   = "© GitLab Inc., CC-BY-SA-4.0, https://handbook.gitlab.com/"
+weight        = 1.0
+tier          = "C"
+tokens_est    = "10K"
+tokens_actual = ""
+fetch_status  = "pending"
+notes         = "Famously CC-BY-SA; verify per-page; mask team-member-1 in db1 case."
+sha256_corpus = ""
+
+[datasets.code.philosophy.k8s-failure-stories]
+url           = "https://k8s.af/"
+license       = "UNKNOWN"
+weight        = 1.0
+tier          = "C"
+tokens_est    = "100K"
+tokens_actual = ""
+fetch_status  = "blocked-by-license"
+notes         = "Use as seed list; linked sources retain own licenses."
+sha256_corpus = ""
+
+[datasets.code.philosophy.surfing-complexity]
+url           = "https://surfingcomplexity.blog/"
+license       = "QUOTE-ONLY"
+weight        = 1.0
+tier          = "C"
+tokens_est    = "100K"
+tokens_actual = ""
+fetch_status  = "pending"
+notes         = "Resilience-engineering meta-analysis; teaches how to read postmortems."
+sha256_corpus = ""
+
+[datasets.code.philosophy.awesome-postmortem]
+url           = "https://github.com/saystone/awesome-postmortem"
+license       = "CC0-1.0"
+weight        = 1.0
+tier          = "C"
+tokens_est    = "10K"
+tokens_actual = ""
+fetch_status  = "pending"
+notes         = "Stale (last update 2019-2021); use as link-spine seed."
+sha256_corpus = ""
+
+[datasets.code.philosophy.awesome-tech-postmortems]
+url           = "https://github.com/snakescott/awesome-tech-postmortems"
+license       = "CC-BY-4.0"
+attribution   = "© snakescott, CC-BY-4.0, https://github.com/snakescott/awesome-tech-postmortems"
+weight        = 1.0
+tier          = "C"
+tokens_est    = "10K"
+tokens_actual = ""
+fetch_status  = "pending"
+notes         = "Stale; link-spine only."
+sha256_corpus = ""
+
+[datasets.code.philosophy.increment-magazine]
+url           = "https://increment.com/issues/"
+license       = "QUOTE-ONLY"
+weight        = 1.0
+tier          = "C"
+tokens_est    = "100K"
+tokens_actual = ""
+fetch_status  = "pending"
+notes         = "Dormant since Nov-2021; stable corpus; magazine-edited prose."
+sha256_corpus = ""
+
+# =============================================================================
+# Tier E — anti-corpus (DPO negatives)  →  stage = repair
+# Source: papers/tier-e-findings.md
+# =============================================================================
+
+[datasets.code.repair.clippy-lint-docs]
+url           = "https://rust-lang.github.io/rust-clippy/master/index.html"
+license       = "MIT OR Apache-2.0"
+weight        = 1.0
+tier          = "E"
+tokens_est    = "1M"
+tokens_actual = ""
+fetch_status  = "pending"
+notes         = "814 lints; rule + rationale + example = native DPO pair."
+sha256_corpus = ""
+
+[datasets.code.repair.ruff-rule-docs]
+url           = "https://docs.astral.sh/ruff/rules/"
+license       = "MIT"
+weight        = 1.0
+tier          = "E"
+tokens_est    = "1M"
+tokens_actual = ""
+fetch_status  = "pending"
+notes         = "900+ rules; filter to safe-fix subset for DPO."
+sha256_corpus = ""
+
+[datasets.code.repair.golangci-lint-docs]
+url           = "https://golangci-lint.run/docs/linters/"
+license       = "QUOTE-ONLY"
+weight        = 1.0
+tier          = "E"
+tokens_est    = "100K"
+tokens_actual = ""
+fetch_status  = "pending"
+notes         = "Runner GPL-3; quote rule docs under fair-use, do not redistribute binary."
+sha256_corpus = ""
+
+[datasets.code.repair.clang-tidy-checks]
+url           = "https://clang.llvm.org/extra/clang-tidy/checks/list.html"
+license       = "Apache-2.0"
+attribution   = "© LLVM, Apache-2.0 w/ LLVM exception, https://clang.llvm.org/extra/clang-tidy/checks/list.html"
+weight        = 1.0
+tier          = "E"
+tokens_est    = "100K"
+tokens_actual = ""
+fetch_status  = "pending"
+notes         = "600+ checks; CERT/MISRA categories already encode anti-idiom rationale."
+sha256_corpus = ""
+
+# =============================================================================
+# Frontend F-1 — frameworks + meta + design + state + types
+# Source: papers/frontend-f1-findings.md  →  stage = domain-bias
+# (NOTE: Apple HIG is intentionally EXCLUDED — F-1 hard blocker.)
+# =============================================================================
+
+# -------- Component frameworks --------
+
+[datasets.code.domain-bias.react-docs]
+url           = "https://react.dev/"
+license       = "MIT"
+weight        = 1.0
+tier          = "F1"
+tokens_est    = "100K"
+tokens_actual = ""
+fetch_status  = "pending"
+notes         = "Learn + Reference + Blog (incl. React 19 / 19.2 / Compiler 1.0 posts)."
+sha256_corpus = ""
+
+[datasets.code.domain-bias.vue-docs]
+url           = "https://vuejs.org/"
+license       = "MIT"
+weight        = 1.0
+tier          = "F1"
+tokens_est    = "100K"
+tokens_actual = ""
+fetch_status  = "pending"
+notes         = "Composition API canon; teach <script setup>."
+sha256_corpus = ""
+
+[datasets.code.domain-bias.svelte-docs]
+url           = "https://svelte.dev/"
+license       = "MIT"
+weight        = 1.0
+tier          = "F1"
+tokens_est    = "100K"
+tokens_actual = ""
+fetch_status  = "pending"
+notes         = "Runes canon + v5 migration guide."
+sha256_corpus = ""
+
+[datasets.code.domain-bias.solidjs-docs]
+url           = "https://docs.solidjs.com/"
+license       = "MIT"
+weight        = 1.0
+tier          = "F1"
+tokens_est    = "10K"
+tokens_actual = ""
+fetch_status  = "pending"
+notes         = "Fine-grained reactivity; SolidStart still pre-1.0."
+sha256_corpus = ""
+
+[datasets.code.domain-bias.angular-docs]
+url           = "https://angular.dev/"
+license       = "MIT"
+weight        = 1.0
+tier          = "F1"
+tokens_est    = "100K"
+tokens_actual = ""
+fetch_status  = "pending"
+notes         = "Signals + zoneless + @if/@for/@switch canon (v20+)."
+sha256_corpus = ""
+
+[datasets.code.domain-bias.qwik-docs]
+url           = "https://qwik.dev/docs/"
+license       = "MIT"
+weight        = 0.5
+tier          = "F1"
+tokens_est    = "10K"
+tokens_actual = ""
+fetch_status  = "pending"
+notes         = "Resumability; minority share (2-5%) — down-weight."
+sha256_corpus = ""
+
+[datasets.code.domain-bias.htmx-docs]
+url           = "https://htmx.org/"
+license       = "BSD-2-Clause"
+weight        = 1.0
+tier          = "F1"
+tokens_est    = "10K"
+tokens_actual = ""
+fetch_status  = "pending"
+notes         = "Hypermedia-driven; first-class alt to SPA."
+sha256_corpus = ""
+
+[datasets.code.domain-bias.alpine-docs]
+url           = "https://alpinejs.dev/"
+license       = "MIT"
+weight        = 1.0
+tier          = "F1"
+tokens_est    = "10K"
+tokens_actual = ""
+fetch_status  = "pending"
+notes         = "Pairs with HTMX for local UI toggles."
+sha256_corpus = ""
+
+[datasets.code.domain-bias.preact-docs]
+url           = "https://preactjs.com/"
+license       = "MIT"
+weight        = 1.0
+tier          = "F1"
+tokens_est    = "10K"
+tokens_actual = ""
+fetch_status  = "pending"
+notes         = "Lightweight React-API alternative for islands."
+sha256_corpus = ""
+
+[datasets.code.domain-bias.lit-docs]
+url           = "https://lit.dev/"
+license       = "BSD-3-Clause"
+weight        = 1.0
+tier          = "F1"
+tokens_est    = "10K"
+tokens_actual = ""
+fetch_status  = "pending"
+notes         = "Web components + Signals preview."
+sha256_corpus = ""
+
+# -------- Meta-frameworks --------
+
+[datasets.code.domain-bias.nextjs-docs]
+url           = "https://nextjs.org/docs"
+license       = "MIT"
+weight        = 1.0
+tier          = "F1"
+tokens_est    = "100K"
+tokens_actual = ""
+fetch_status  = "pending"
+notes         = "App Router canon; Pages Router in maintenance."
+sha256_corpus = ""
+
+[datasets.code.domain-bias.nuxt-docs]
+url           = "https://nuxt.com/docs"
+license       = "MIT"
+weight        = 1.0
+tier          = "F1"
+tokens_est    = "100K"
+tokens_actual = ""
+fetch_status  = "pending"
+notes         = "Nuxt 4 + app/ layout."
+sha256_corpus = ""
+
+[datasets.code.domain-bias.sveltekit-docs]
+url           = "https://kit.svelte.dev/"
+license       = "MIT"
+weight        = 1.0
+tier          = "F1"
+tokens_est    = "100K"
+tokens_actual = ""
+fetch_status  = "pending"
+notes         = "Paired with Svelte 5 runes."
+sha256_corpus = ""
+
+[datasets.code.domain-bias.react-router-docs]
+url           = "https://reactrouter.com/"
+license       = "MIT"
+weight        = 1.0
+tier          = "F1"
+tokens_est    = "100K"
+tokens_actual = ""
+fetch_status  = "pending"
+notes         = "Remix v2 merged in; teach Framework Mode."
+sha256_corpus = ""
+
+[datasets.code.domain-bias.astro-docs]
+url           = "https://docs.astro.build/"
+license       = "MIT"
+weight        = 1.0
+tier          = "F1"
+tokens_est    = "100K"
+tokens_actual = ""
+fetch_status  = "pending"
+notes         = "Server Islands + Content Layer 2.0."
+sha256_corpus = ""
+
+[datasets.code.domain-bias.tanstack-start-docs]
+url           = "https://tanstack.com/start/latest"
+license       = "MIT"
+weight        = 1.0
+tier          = "F1"
+tokens_est    = "100K"
+tokens_actual = ""
+fetch_status  = "pending"
+notes         = "v1 RC; no-RSC just-React philosophy."
+sha256_corpus = ""
+
+[datasets.code.domain-bias.qwik-city-docs]
+url           = "https://qwik.dev/docs/qwikcity/"
+license       = "MIT"
+weight        = 0.5
+tier          = "F1"
+tokens_est    = "10K"
+tokens_actual = ""
+fetch_status  = "pending"
+notes         = "Resumable loaders/actions; minority adoption."
+sha256_corpus = ""
+
+[datasets.code.domain-bias.solidstart-docs]
+url           = "https://start.solidjs.com/"
+license       = "MIT"
+weight        = 0.7
+tier          = "F1"
+tokens_est    = "10K"
+tokens_actual = ""
+fetch_status  = "pending"
+notes         = "Pre-1.0 / 2.0-alpha in 2026; mark experimental."
+sha256_corpus = ""
+
+# -------- Design system + headless --------
+
+[datasets.code.domain-bias.shadcn-ui-docs]
+url           = "https://ui.shadcn.com/"
+license       = "MIT"
+weight        = 1.0
+tier          = "F1"
+tokens_est    = "10K"
+tokens_actual = ""
+fetch_status  = "pending"
+notes         = "Copy-paste default; supports Radix and Base UI primitives."
+sha256_corpus = ""
+
+[datasets.code.domain-bias.radix-ui-docs]
+url           = "https://www.radix-ui.com/"
+license       = "MIT"
+weight        = 1.0
+tier          = "F1"
+tokens_est    = "10K"
+tokens_actual = ""
+fetch_status  = "pending"
+notes         = "Headless primitives; most-deployed primitive set in 2026."
+sha256_corpus = ""
+
+[datasets.code.domain-bias.base-ui-docs]
+url           = "https://base-ui.com/"
+license       = "MIT"
+weight        = 1.0
+tier          = "F1"
+tokens_est    = "10K"
+tokens_actual = ""
+fetch_status  = "pending"
+notes         = "MUI team's headless successor; v1 Feb 2026."
+sha256_corpus = ""
+
+[datasets.code.domain-bias.react-aria-docs]
+url           = "https://react-spectrum.adobe.com/react-aria/"
+license       = "Apache-2.0"
+attribution   = "© Adobe Inc., Apache-2.0, https://react-spectrum.adobe.com/react-aria/"
+weight        = 1.0
+tier          = "F1"
+tokens_est    = "100K"
+tokens_actual = ""
+fetch_status  = "pending"
+notes         = "Deepest a11y + i18n primitives; 50+ components."
+sha256_corpus = ""
+
+[datasets.code.domain-bias.ark-ui-docs]
+url           = "https://ark-ui.com/"
+license       = "MIT"
+weight        = 1.0
+tier          = "F1"
+tokens_est    = "10K"
+tokens_actual = ""
+fetch_status  = "pending"
+notes         = "Chakra cross-framework (React/Vue/Solid) primitives."
+sha256_corpus = ""
+
+[datasets.code.domain-bias.material-design-3]
+url           = "https://m3.material.io/"
+license       = "Apache-2.0"
+attribution   = "© Google LLC, Apache-2.0, https://m3.material.io/"
+weight        = 1.0
+tier          = "F1"
+tokens_est    = "100K"
+tokens_actual = ""
+fetch_status  = "pending"
+notes         = "M3 Expressive 2025-26; do not bundle icon binaries."
+sha256_corpus = ""
+
+# Apple HIG (Liquid Glass) intentionally EXCLUDED.
+# License is proprietary Apple Developer; F-1 hard blocker per findings.
+
+[datasets.code.domain-bias.tailwind-docs]
+url           = "https://tailwindcss.com/docs"
+license       = "MIT"
+weight        = 1.0
+tier          = "F1"
+tokens_est    = "100K"
+tokens_actual = ""
+fetch_status  = "pending"
+notes         = "v4 GA Jan 2025; teach @theme + @import 'tailwindcss'."
+sha256_corpus = ""
+
+[datasets.code.domain-bias.cva-docs]
+url           = "https://cva.style/docs"
+license       = "Apache-2.0"
+attribution   = "© Joe Bell, Apache-2.0, https://cva.style/docs"
+weight        = 1.0
+tier          = "F1"
+tokens_est    = "10K"
+tokens_actual = ""
+fetch_status  = "pending"
+notes         = "Variant API; standard in shadcn-derived codebases."
+sha256_corpus = ""
+
+[datasets.code.domain-bias.panda-css-docs]
+url           = "https://panda-css.com/"
+license       = "MIT"
+weight        = 1.0
+tier          = "F1"
+tokens_est    = "10K"
+tokens_actual = ""
+fetch_status  = "pending"
+notes         = "Zero-runtime CSS-in-TS; RSC-compatible."
+sha256_corpus = ""
+
+[datasets.code.domain-bias.vanilla-extract-docs]
+url           = "https://vanilla-extract.style/"
+license       = "MIT"
+weight        = 1.0
+tier          = "F1"
+tokens_est    = "10K"
+tokens_actual = ""
+fetch_status  = "pending"
+notes         = "Zero-runtime stylesheets-in-TS; fully typed."
+sha256_corpus = ""
+
+[datasets.code.domain-bias.stylex-docs]
+url           = "https://stylexjs.com/"
+license       = "MIT"
+weight        = 1.0
+tier          = "F1"
+tokens_est    = "10K"
+tokens_actual = ""
+fetch_status  = "pending"
+notes         = "Meta's atomic zero-runtime CSS-in-JS."
+sha256_corpus = ""
+
+# -------- State + forms + URL state --------
+
+[datasets.code.domain-bias.tc39-signals-proposal]
+url           = "https://github.com/tc39/proposal-signals"
+license       = "CC-BY-4.0"
+attribution   = "TC39, CC-BY-4.0, https://github.com/tc39/proposal-signals"
+weight        = 1.0
+tier          = "F1"
+tokens_est    = "10K"
+tokens_actual = ""
+fetch_status  = "pending"
+notes         = "Stage 1 proposal README; cite commit hash."
+sha256_corpus = ""
+
+[datasets.code.domain-bias.tanstack-query-docs]
+url           = "https://tanstack.com/query/latest"
+license       = "MIT"
+weight        = 1.0
+tier          = "F1"
+tokens_est    = "100K"
+tokens_actual = ""
+fetch_status  = "pending"
+notes         = "Default for server state across React/Solid/Vue/Svelte/Angular."
+sha256_corpus = ""
+
+[datasets.code.domain-bias.tanstack-router-docs]
+url           = "https://tanstack.com/router/latest"
+license       = "MIT"
+weight        = 1.0
+tier          = "F1"
+tokens_est    = "100K"
+tokens_actual = ""
+fetch_status  = "pending"
+notes         = "Typed search params canon."
+sha256_corpus = ""
+
+[datasets.code.domain-bias.tanstack-form-docs]
+url           = "https://tanstack.com/form/latest"
+license       = "MIT"
+weight        = 1.0
+tier          = "F1"
+tokens_est    = "10K"
+tokens_actual = ""
+fetch_status  = "pending"
+notes         = "Headless cross-framework forms; type-safe."
+sha256_corpus = ""
+
+[datasets.code.domain-bias.zustand-docs]
+url           = "https://github.com/pmndrs/zustand"
+license       = "MIT"
+weight        = 1.0
+tier          = "F1"
+tokens_est    = "10K"
+tokens_actual = ""
+fetch_status  = "pending"
+notes         = "Default client UI state for new React projects."
+sha256_corpus = ""
+
+[datasets.code.domain-bias.jotai-docs]
+url           = "https://jotai.org/"
+license       = "MIT"
+weight        = 1.0
+tier          = "F1"
+tokens_est    = "10K"
+tokens_actual = ""
+fetch_status  = "pending"
+notes         = "Atomic state; ~2M weekly."
+sha256_corpus = ""
+
+[datasets.code.domain-bias.redux-toolkit-docs]
+url           = "https://redux-toolkit.js.org/"
+license       = "MIT"
+weight        = 0.7
+tier          = "F1"
+tokens_est    = "10K"
+tokens_actual = ""
+fetch_status  = "pending"
+notes         = "Enterprise-legacy canon; not new-project canon — down-weight."
+sha256_corpus = ""
+
+[datasets.code.domain-bias.react-hook-form-docs]
+url           = "https://react-hook-form.com/"
+license       = "MIT"
+weight        = 1.0
+tier          = "F1"
+tokens_est    = "10K"
+tokens_actual = ""
+fetch_status  = "pending"
+notes         = "Default forms in 2026; uncontrolled, minimum re-renders."
+sha256_corpus = ""
+
+[datasets.code.domain-bias.vee-validate-docs]
+url           = "https://vee-validate.logaretm.com/"
+license       = "MIT"
+weight        = 1.0
+tier          = "F1"
+tokens_est    = "10K"
+tokens_actual = ""
+fetch_status  = "pending"
+notes         = "Idiomatic Vue forms; schema-driven."
+sha256_corpus = ""
+
+[datasets.code.domain-bias.nuqs-docs]
+url           = "https://nuqs.dev/"
+license       = "MIT"
+weight        = 1.0
+tier          = "F1"
+tokens_est    = "10K"
+tokens_actual = ""
+fetch_status  = "pending"
+notes         = "Type-safe URL state; 6 KB."
+sha256_corpus = ""
+
+# -------- Type-safety + RPC + runtimes + validation --------
+
+[datasets.code.domain-bias.trpc-docs]
+url           = "https://trpc.io/docs"
+license       = "MIT"
+weight        = 1.0
+tier          = "F1"
+tokens_est    = "10K"
+tokens_actual = ""
+fetch_status  = "pending"
+notes         = "End-to-end TS types without codegen."
+sha256_corpus = ""
+
+[datasets.code.domain-bias.hono-docs]
+url           = "https://hono.dev/"
+license       = "MIT"
+weight        = 1.0
+tier          = "F1"
+tokens_est    = "10K"
+tokens_actual = ""
+fetch_status  = "pending"
+notes         = "Native Cloudflare Workers; lightest e2e-typed option."
+sha256_corpus = ""
+
+[datasets.code.domain-bias.orpc-docs]
+url           = "https://orpc.unnoq.com/"
+license       = "MIT"
+weight        = 1.0
+tier          = "F1"
+tokens_est    = "10K"
+tokens_actual = ""
+fetch_status  = "pending"
+notes         = "OpenAPI-spec output + tRPC-style ergonomics."
+sha256_corpus = ""
+
+[datasets.code.domain-bias.zod-docs]
+url           = "https://zod.dev/"
+license       = "MIT"
+weight        = 1.0
+tier          = "F1"
+tokens_est    = "10K"
+tokens_actual = ""
+fetch_status  = "pending"
+notes         = "Default validation lib; Zod 4 stable."
+sha256_corpus = ""
+
+[datasets.code.domain-bias.valibot-docs]
+url           = "https://valibot.dev/"
+license       = "MIT"
+weight        = 1.0
+tier          = "F1"
+tokens_est    = "10K"
+tokens_actual = ""
+fetch_status  = "pending"
+notes         = "Bundle-size champion (1.4 KB tree-shaken)."
+sha256_corpus = ""
+
+[datasets.code.domain-bias.arktype-docs]
+url           = "https://arktype.io/"
+license       = "MIT"
+weight        = 1.0
+tier          = "F1"
+tokens_est    = "10K"
+tokens_actual = ""
+fetch_status  = "pending"
+notes         = "Perf champion; TS-syntax-literal DSL."
+sha256_corpus = ""
+
+[datasets.code.domain-bias.bun-docs]
+url           = "https://bun.sh/docs"
+license       = "MIT"
+weight        = 1.0
+tier          = "F1"
+tokens_est    = "10K"
+tokens_actual = ""
+fetch_status  = "pending"
+notes         = "In-process TS; all-in-one toolchain."
+sha256_corpus = ""
+
+[datasets.code.domain-bias.deno-docs]
+url           = "https://docs.deno.com/"
+license       = "MIT"
+weight        = 1.0
+tier          = "F1"
+tokens_est    = "10K"
+tokens_actual = ""
+fetch_status  = "pending"
+notes         = "Native TS + type-check + format."
+sha256_corpus = ""
+
+[datasets.code.domain-bias.tsdoc-docs]
+url           = "https://tsdoc.org/"
+license       = "MIT"
+weight        = 1.0
+tier          = "F1"
+tokens_est    = "10K"
+tokens_actual = ""
+fetch_status  = "pending"
+notes         = "TS-specific successor to JSDoc syntax."
+sha256_corpus = ""
+
+# =============================================================================
+# Frontend F-2 — native web platform (MDN / web.dev / CSS specs)
+# Source: papers/frontend-f2-findings.md  →  stage = domain-bias
+# =============================================================================
+
+[datasets.code.domain-bias.mdn]
+url           = "https://developer.mozilla.org/"
+license       = "CC-BY-SA-2.0"
+attribution   = "© Mozilla Contributors, CC-BY-SA-2.5, https://developer.mozilla.org/"
+weight        = 1.0
+tier          = "F2"
+tokens_est    = "10M"
+tokens_actual = ""
+fetch_status  = "pending"
+notes         = "MDN content; ShareAlike obligations on redistribution."
+sha256_corpus = ""
+
+[datasets.code.domain-bias.web-dev]
+url           = "https://web.dev/"
+license       = "CC-BY-4.0"
+attribution   = "© Google LLC, CC-BY-4.0, https://web.dev/"
+weight        = 1.0
+tier          = "F2"
+tokens_est    = "1M"
+tokens_actual = ""
+fetch_status  = "pending"
+notes         = "Chrome team performance + a11y guides."
+sha256_corpus = ""
+
+[datasets.code.domain-bias.chrome-developers]
+url           = "https://developer.chrome.com/"
+license       = "CC-BY-4.0"
+attribution   = "© Google LLC, CC-BY-4.0, https://developer.chrome.com/"
+weight        = 1.0
+tier          = "F2"
+tokens_est    = "1M"
+tokens_actual = ""
+fetch_status  = "pending"
+notes         = "Chrome platform updates incl. LoAF, anchor-positioning, prerender."
+sha256_corpus = ""
+
+[datasets.code.domain-bias.w3c-css-specs]
+url           = "https://www.w3.org/TR/?tags=css"
+license       = "CC-BY-4.0"
+attribution   = "© W3C, W3C Document License, https://www.w3.org/Consortium/Legal/copyright-documents"
+weight        = 1.0
+tier          = "F2"
+tokens_est    = "1M"
+tokens_actual = ""
+fetch_status  = "pending"
+notes         = "W3C Document License is permissive w/ attribution."
+sha256_corpus = ""
+
+[datasets.code.domain-bias.csswg-drafts]
+url           = "https://drafts.csswg.org/"
+license       = "CC-BY-4.0"
+attribution   = "© W3C, W3C Document License, https://drafts.csswg.org/"
+weight        = 1.0
+tier          = "F2"
+tokens_est    = "1M"
+tokens_actual = ""
+fetch_status  = "pending"
+notes         = "Editor's drafts: subgrid, anchor, masonry, logical, sizing-3."
+sha256_corpus = ""
+
+[datasets.code.domain-bias.html-spec-whatwg]
+url           = "https://html.spec.whatwg.org/"
+license       = "CC-BY-4.0"
+attribution   = "© WHATWG, CC-BY-4.0, https://html.spec.whatwg.org/"
+weight        = 1.0
+tier          = "F2"
+tokens_est    = "1M"
+tokens_actual = ""
+fetch_status  = "pending"
+notes         = "Living standard; dialog, inert, popover, search element."
+sha256_corpus = ""
+
+[datasets.code.domain-bias.webkit-blog]
+url           = "https://webkit.org/blog/"
+license       = "QUOTE-ONLY"
+weight        = 1.0
+tier          = "F2"
+tokens_est    = "100K"
+tokens_actual = ""
+fetch_status  = "pending"
+notes         = "Apple WebKit team posts; no explicit CC; fair-use."
+sha256_corpus = ""
+
+[datasets.code.domain-bias.vite-docs]
+url           = "https://vitejs.dev/"
+license       = "MIT"
+weight        = 1.0
+tier          = "F2"
+tokens_est    = "100K"
+tokens_actual = ""
+fetch_status  = "pending"
+notes         = "Dominant dev server + builder; Rolldown engine in v8."
+sha256_corpus = ""
+
+[datasets.code.domain-bias.swc-docs]
+url           = "https://swc.rs/"
+license       = "Apache-2.0"
+attribution   = "© SWC contributors, Apache-2.0, https://swc.rs/"
+weight        = 1.0
+tier          = "F2"
+tokens_est    = "10K"
+tokens_actual = ""
+fetch_status  = "pending"
+notes         = "Default transformer in Next.js / Parcel / Rspack / Deno."
+sha256_corpus = ""
+
+[datasets.code.domain-bias.rspack-docs]
+url           = "https://rspack.dev/"
+license       = "MIT"
+weight        = 1.0
+tier          = "F2"
+tokens_est    = "10K"
+tokens_actual = ""
+fetch_status  = "pending"
+notes         = "Rust-based Webpack-compatible bundler."
+sha256_corpus = ""
+
+[datasets.code.domain-bias.turbopack-docs]
+url           = "https://turbo.build/pack"
+license       = "MPL-2.0"
+weight        = 1.0
+tier          = "F2"
+tokens_est    = "10K"
+tokens_actual = ""
+fetch_status  = "pending"
+notes         = "Next.js-only as of 2026; MPL per repo."
+sha256_corpus = ""
+
+[datasets.code.domain-bias.nodejs-typescript]
+url           = "https://nodejs.org/api/typescript.html"
+license       = "MIT"
+weight        = 1.0
+tier          = "F2"
+tokens_est    = "10K"
+tokens_actual = ""
+fetch_status  = "pending"
+notes         = "Native --experimental-strip-types behavior."
+sha256_corpus = ""
+
+[datasets.code.domain-bias.typescript-go]
+url           = "https://github.com/microsoft/typescript-go"
+license       = "Apache-2.0"
+attribution   = "© Microsoft, Apache-2.0, https://github.com/microsoft/typescript-go"
+weight        = 1.0
+tier          = "F2"
+tokens_est    = "10K"
+tokens_actual = ""
+fetch_status  = "pending"
+notes         = "tsgo / TS 7 native Go port; not Rust (correct findings)."
+sha256_corpus = ""
+
+[datasets.code.domain-bias.typescript-handbook-config]
+url           = "https://www.typescriptlang.org/tsconfig/moduleResolution.html"
+license       = "CC-BY-4.0"
+attribution   = "© Microsoft, CC-BY-4.0, https://www.typescriptlang.org/"
+weight        = 1.0
+tier          = "F2"
+tokens_est    = "10K"
+tokens_actual = ""
+fetch_status  = "pending"
+notes         = "moduleResolution: bundler canon; consolidates with Tier-A handbook."
+sha256_corpus = ""
+
+# =============================================================================
+# Frontend F-3 — performance + a11y + AI-native UI + testing
+# Source: papers/frontend-f3-findings.md  →  stage = domain-bias
+# =============================================================================
+
+[datasets.code.domain-bias.wcag-22]
+url           = "https://www.w3.org/TR/WCAG22/"
+license       = "CC-BY-4.0"
+attribution   = "© W3C, W3C Document License, https://www.w3.org/TR/WCAG22/"
+weight        = 1.0
+tier          = "F3"
+tokens_est    = "100K"
+tokens_actual = ""
+fetch_status  = "pending"
+notes         = "Current legal standard for ADA / Section 508 / EU EAA."
+sha256_corpus = ""
+
+[datasets.code.domain-bias.wcag-22-whats-new]
+url           = "https://www.w3.org/WAI/standards-guidelines/wcag/new-in-22/"
+license       = "CC-BY-4.0"
+attribution   = "© W3C, W3C Document License, https://www.w3.org/WAI/standards-guidelines/wcag/new-in-22/"
+weight        = 1.0
+tier          = "F3"
+tokens_est    = "10K"
+tokens_actual = ""
+fetch_status  = "pending"
+notes         = "Summary of new 2.2 SCs (2.4.11–13, 2.5.7–8, 3.2.6, 3.3.7–9)."
+sha256_corpus = ""
+
+[datasets.code.domain-bias.aria-apg]
+url           = "https://www.w3.org/WAI/ARIA/apg/"
+license       = "CC-BY-4.0"
+attribution   = "© W3C, W3C Document License, https://www.w3.org/WAI/ARIA/apg/"
+weight        = 1.0
+tier          = "F3"
+tokens_est    = "100K"
+tokens_actual = ""
+fetch_status  = "pending"
+notes         = "Canonical pattern source; cross-check AT support before shipping."
+sha256_corpus = ""
+
+[datasets.code.domain-bias.using-aria]
+url           = "https://www.w3.org/TR/using-aria/"
+license       = "CC-BY-4.0"
+attribution   = "© W3C, W3C Document License, https://www.w3.org/TR/using-aria/"
+weight        = 1.0
+tier          = "F3"
+tokens_est    = "10K"
+tokens_actual = ""
+fetch_status  = "pending"
+notes         = "5 Rules of ARIA; 'no ARIA is better than bad ARIA'."
+sha256_corpus = ""
+
+[datasets.code.domain-bias.aria-apg-keyboard]
+url           = "https://www.w3.org/WAI/ARIA/apg/practices/keyboard-interface/"
+license       = "CC-BY-4.0"
+attribution   = "© W3C, W3C Document License, https://www.w3.org/WAI/ARIA/apg/practices/keyboard-interface/"
+weight        = 1.0
+tier          = "F3"
+tokens_est    = "10K"
+tokens_actual = ""
+fetch_status  = "pending"
+notes         = "Roving tabindex, aria-activedescendant patterns."
+sha256_corpus = ""
+
+[datasets.code.domain-bias.wcag-3-draft]
+url           = "https://www.w3.org/WAI/standards-guidelines/wcag/wcag3-intro/"
+license       = "CC-BY-4.0"
+attribution   = "© W3C, W3C Document License, https://www.w3.org/WAI/standards-guidelines/wcag/wcag3-intro/"
+weight        = 0.5
+tier          = "F3"
+tokens_est    = "100K"
+tokens_actual = ""
+fetch_status  = "pending"
+notes         = "Working Draft only — DO NOT teach as production target."
+sha256_corpus = ""
+
+[datasets.code.domain-bias.web-vitals]
+url           = "https://web.dev/articles/vitals"
+license       = "CC-BY-4.0"
+attribution   = "© Google LLC, CC-BY-4.0, https://web.dev/articles/vitals"
+weight        = 1.0
+tier          = "F3"
+tokens_est    = "10K"
+tokens_actual = ""
+fetch_status  = "pending"
+notes         = "INP replaced FID Mar 12 2024; thresholds 2.5s/200ms/0.1."
+sha256_corpus = ""
+
+[datasets.code.domain-bias.apca-contrast]
+url           = "https://git.apcacontrast.com/documentation/APCA_in_a_Nutshell.html"
+license       = "QUOTE-ONLY"
+weight        = 1.0
+tier          = "F3"
+tokens_est    = "10K"
+tokens_actual = ""
+fetch_status  = "pending"
+notes         = "WCAG-3-draft contrast model; not normative yet."
+sha256_corpus = ""
+
+[datasets.code.domain-bias.webaim-survey]
+url           = "https://webaim.org/projects/screenreadersurvey10/"
+license       = "QUOTE-ONLY"
+weight        = 1.0
+tier          = "F3"
+tokens_est    = "10K"
+tokens_actual = ""
+fetch_status  = "pending"
+notes         = "Screen-reader market share; fair-use citation OK."
+sha256_corpus = ""
+
+[datasets.code.domain-bias.testing-library]
+url           = "https://testing-library.com/"
+license       = "MIT"
+weight        = 1.0
+tier          = "F3"
+tokens_est    = "10K"
+tokens_actual = ""
+fetch_status  = "pending"
+notes         = "byRole query priority canon."
+sha256_corpus = ""
+
+[datasets.code.domain-bias.playwright-docs]
+url           = "https://playwright.dev/"
+license       = "Apache-2.0"
+attribution   = "© Microsoft, Apache-2.0, https://playwright.dev/"
+weight        = 1.0
+tier          = "F3"
+tokens_est    = "100K"
+tokens_actual = ""
+fetch_status  = "pending"
+notes         = "Default E2E; ~20-30M weekly npm."
+sha256_corpus = ""
+
+[datasets.code.domain-bias.vitest-docs]
+url           = "https://vitest.dev/"
+license       = "MIT"
+weight        = 1.0
+tier          = "F3"
+tokens_est    = "10K"
+tokens_actual = ""
+fetch_status  = "pending"
+notes         = "Default unit/component for new Vite projects."
+sha256_corpus = ""
+
+[datasets.code.domain-bias.storybook-docs]
+url           = "https://storybook.js.org/docs"
+license       = "MIT"
+weight        = 1.0
+tier          = "F3"
+tokens_est    = "100K"
+tokens_actual = ""
+fetch_status  = "pending"
+notes         = "Storybook 9 with Vitest + a11y + visual diff in-product."
+sha256_corpus = ""
+
+[datasets.code.domain-bias.axe-core]
+url           = "https://github.com/dequelabs/axe-core"
+license       = "MPL-2.0"
+weight        = 1.0
+tier          = "F3"
+tokens_est    = "10K"
+tokens_actual = ""
+fetch_status  = "pending"
+notes         = "Engine MPL-2.0; rule docs proprietary — paraphrase only."
+sha256_corpus = ""
+
+[datasets.code.domain-bias.vercel-ai-sdk]
+url           = "https://ai-sdk.dev/docs"
+license       = "Apache-2.0"
+attribution   = "© Vercel Inc., Apache-2.0, https://ai-sdk.dev/docs"
+weight        = 1.0
+tier          = "F3"
+tokens_est    = "10K"
+tokens_actual = ""
+fetch_status  = "pending"
+notes         = "useChat / streamObject / streamUI; generative UI canon."
+sha256_corpus = ""
+
+[datasets.code.domain-bias.tanstack-virtual]
+url           = "https://tanstack.com/virtual/latest"
+license       = "MIT"
+weight        = 1.0
+tier          = "F3"
+tokens_est    = "10K"
+tokens_actual = ""
+fetch_status  = "pending"
+notes         = "Measure-after-render for variable-height message lists."
+sha256_corpus = ""
+
+[datasets.code.domain-bias.react-native-docs]
+url           = "https://reactnative.dev/"
+license       = "MIT"
+weight        = 1.0
+tier          = "F3"
+tokens_est    = "100K"
+tokens_actual = ""
+fetch_status  = "pending"
+notes         = "New Architecture (Fabric + TurboModules + JSI + Hermes)."
+sha256_corpus = ""
+
+[datasets.code.domain-bias.expo-docs]
+url           = "https://docs.expo.dev/"
+license       = "MIT"
+weight        = 1.0
+tier          = "F3"
+tokens_est    = "100K"
+tokens_actual = ""
+fetch_status  = "pending"
+notes         = "Default starting point for new RN projects (SDK 55)."
+sha256_corpus = ""
+
+[datasets.code.domain-bias.capacitor-docs]
+url           = "https://capacitorjs.com/docs"
+license       = "MIT"
+weight        = 1.0
+tier          = "F3"
+tokens_est    = "10K"
+tokens_actual = ""
+fetch_status  = "pending"
+notes         = "Ionic; modern Cordova successor."
+sha256_corpus = ""
+
+[datasets.code.domain-bias.tauri-docs]
+url           = "https://v2.tauri.app/"
+license       = "MIT OR Apache-2.0"
+weight        = 1.0
+tier          = "F3"
+tokens_est    = "100K"
+tokens_actual = ""
+fetch_status  = "pending"
+notes         = "Tauri 2 stable Oct 2024; desktop + iOS/Android."
+sha256_corpus = ""

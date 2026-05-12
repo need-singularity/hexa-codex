@@ -1,0 +1,146 @@
+#!/usr/bin/env bash
+# SPDX-License-Identifier: Apache-2.0 OR MIT
+#
+# tool/mac-exec — Mac→Linux HF auth bridge for hexa-forge tooling.
+#
+# Implementation of the `mac-exec` abstraction from
+# `papers/plan-runbook-v0.1.3.md §2`. The runbook described two
+# hypothetical shapes; this shim implements **shape B** (the
+# higher-level `--hf-passthrough` alias) since the explicit env-routing
+# of shape A is not needed for the v0.1.3 G-BASE scope.
+#
+# What it does:
+#   1. Pull HF token from Mac-side `secret` CLI (`secret get HF_TOKEN`).
+#   2. SSH to "${FORGE_HOST:-linux-forge}" with HUGGING_FACE_HUB_TOKEN
+#      injected into the child process env via SSH command-line.
+#   3. Run the user's command remotely; exit with the remote exit code.
+#
+# Token-hygiene invariants (runbook §1):
+#   - Token never written to Mac disk by this shim (no temp file).
+#   - Token never written to Linux disk (env-only; evaporates on
+#     child-process exit). The Linux-side tooling carries
+#     `HF_HUB_DISABLE_IMPLICIT_TOKEN` semantics in hf_publish.py.
+#   - Token-hash (12-char sha256 prefix) IS exported to the remote
+#     side as MAC_EXEC_TOKEN_HASH_12 for audit-log correlation only.
+#
+# Installation on Mac:
+#   mkdir -p ~/bin && ln -sf ~/core/hexa-forge/tool/mac-exec ~/bin/mac-exec
+#   # ensure ~/bin is on PATH
+#   echo 'export PATH="$HOME/bin:$PATH"' >> ~/.zshrc && source ~/.zshrc
+#
+# Usage:
+#   mac-exec --hf-passthrough <command> [args...]
+#
+# Example:
+#   mac-exec --hf-passthrough python3 \
+#     ~/mac_home/core/hexa-forge/tool/hf_publish.py verify \
+#     --target stack-v2-sample
+#
+#   NOTE: the path inside the command is the **Linux-side** path
+#   (~/mac_home/...) because the command runs on the Linux forge host
+#   over SSH. On the Mac side the same file lives at ~/core/hexa-forge/...
+#
+# Environment overrides:
+#   FORGE_HOST  — SSH alias of the Linux forge host (default: linux-forge)
+#   SECRET_KEY  — secret CLI key for HF token (default: HF_TOKEN)
+
+set -euo pipefail
+
+FORGE_HOST="${FORGE_HOST:-linux-forge}"
+SECRET_KEY="${SECRET_KEY:-HF_TOKEN}"
+
+usage() {
+    cat <<'EOF'
+mac-exec — Mac→Linux HF auth bridge (runbook §2 shape B)
+
+USAGE
+  mac-exec --hf-passthrough <command> [args...]
+  mac-exec --help
+
+DESCRIPTION
+  Routes HF_TOKEN from Mac-side `secret` CLI to a remote SSH session on
+  the Linux forge host, injects it as HUGGING_FACE_HUB_TOKEN into the
+  child process env, runs <command> remotely, exits with the remote
+  status code. Token never lands on disk on either side.
+
+ENVIRONMENT OVERRIDES
+  FORGE_HOST   SSH alias of the Linux forge host (default: linux-forge)
+  SECRET_KEY   secret CLI key holding the HF token (default: HF_TOKEN)
+
+REQUIREMENTS (Mac side)
+  - `secret` CLI on PATH (Mac credential store)
+  - `ssh` (standard) + ~/.ssh/config alias for the forge host
+  - `shasum` (BSD/macOS default)
+
+REFERENCES
+  papers/plan-runbook-v0.1.3.md §1-§3  — auth routing invariants
+  docs/mac_exec_cheatsheet.md           — operator one-pager
+EOF
+}
+
+# ---- arg parsing -----------------------------------------------------
+
+if [[ $# -eq 0 ]]; then
+    usage; exit 2
+fi
+
+case "${1:-}" in
+    --help|-h)
+        usage; exit 0 ;;
+    --hf-passthrough)
+        shift ;;
+    *)
+        echo "mac-exec: unknown mode '$1' (only --hf-passthrough is supported)" >&2
+        echo "         try: mac-exec --help" >&2
+        exit 2 ;;
+esac
+
+if [[ $# -eq 0 ]]; then
+    echo "mac-exec: --hf-passthrough requires a command" >&2
+    echo "         try: mac-exec --help" >&2
+    exit 2
+fi
+
+# ---- token retrieval --------------------------------------------------
+
+if ! command -v secret >/dev/null 2>&1; then
+    echo "mac-exec: 'secret' CLI not found on PATH" >&2
+    echo "         install/configure your Mac-side credential CLI first" >&2
+    exit 3
+fi
+
+TOKEN="$(secret get "$SECRET_KEY" 2>/dev/null || true)"
+if [[ -z "$TOKEN" ]]; then
+    echo "mac-exec: \`secret get $SECRET_KEY\` returned empty" >&2
+    echo "         check: secret list | grep $SECRET_KEY" >&2
+    exit 4
+fi
+
+# Token sanity (HF tokens are usually `hf_<28+ alnum>`; we don't
+# enforce this strictly — just refuse obvious garbage).
+if [[ ${#TOKEN} -lt 16 ]]; then
+    echo "mac-exec: token from secret CLI is suspiciously short (<16 chars)" >&2
+    exit 4
+fi
+
+# ---- audit-correlation hash (12-char sha256 prefix) -------------------
+
+if command -v shasum >/dev/null 2>&1; then
+    TOKEN_HASH="$(printf '%s' "$TOKEN" | shasum -a 256 | cut -c1-12)"
+elif command -v sha256sum >/dev/null 2>&1; then
+    TOKEN_HASH="$(printf '%s' "$TOKEN" | sha256sum | cut -c1-12)"
+else
+    TOKEN_HASH="nohash"
+fi
+
+# ---- ssh exec ---------------------------------------------------------
+
+# Build the remote command. We use $* (collapse argv into a single
+# space-separated string) because the user's command is already
+# whitespace-tokenised; SSH will pass it to the remote shell, which
+# re-parses it. The env-var prefix (KEY=VAL KEY=VAL cmd...) is a
+# standard sh pattern that scopes the vars to the single command.
+REMOTE_CMD="HUGGING_FACE_HUB_TOKEN='$TOKEN' MAC_EXEC_TOKEN_HASH_12='$TOKEN_HASH' $*"
+
+# `exec` so our PID becomes ssh; remote exit code propagates.
+exec ssh "$FORGE_HOST" "$REMOTE_CMD"

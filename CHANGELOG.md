@@ -4,6 +4,39 @@ All notable changes to this standalone repo are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
 versions follow [SemVer](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased] — `lm_foundry/` absorbed from `hexa-forge` (2026-05-13)
+
+The standalone `hexa-forge` repo (domain-LLM foundry — research + recipe +
+training substrate) is **merged into this repo as the `lm_foundry/`
+top-level component** and the `hexa-forge` repo is retired. `hexa-codex`
+already served as forge's sister (serving/inference); the two are now one.
+
+- `lm_foundry/` — entire forge working tree minus dancinlab-wide dupes
+  (`AGENTS.md` / `LATTICE_POLICY.md` / `LIMIT_BREAKTHROUGH.md` / `LICENSE`
+  / `CITATION.cff` — codex root holds those) and minus log/state dirs.
+  Contents: `LEARNING_PROGRAMMING.md` (the code-LLM knowledge SSOT, 14
+  sections), `LEARNING_BIO.md`, `ROADMAP.md` (r1–r37 narrative), `papers/`
+  (design docs incl. `spec-lever4-compile-rl.md`), `tool/` (SFT/RL dataset
+  builders + trainers + scorers), `eval/` (665-task Mk.I + 25-task 5-NL),
+  `cli/`, `docs/`, `bench-cold/` (gitignored), `datasets.toml`, `IDEA.md`
+  (gitignored).
+- **Code-LLM state at absorption**: v0.4.0 GA candidate at **87.67% Mk.I
+  strict** (583/665). Path: Qwen2.5-Coder-7B + LoRA r=64 SFT (r1–r34) →
+  Phase-A manifest fix → **compile-feedback RL via GRPO (Lever 4)** which
+  lifted T4 enum-decl 55→77% (+22pp) — the first decisive RL win in the
+  ladder. Gates ③ ④ closed strictly.
+- **HF artifacts**: 36 repos under `dancinlab/hexa-forge-*` keep that
+  prefix as artifact identity (renaming breaks `from_pretrained` refs in
+  published recipes). GA adapter: `dancinlab/hexa-forge-code-7b-qwen2.5-lora-r64-v0.4.0-rl-t4-v2`.
+- `.gitignore` extended with `lm_foundry/{runs,logs,bench-cold}/`,
+  `lm_foundry/IDEA.md`, `lm_foundry/eval/**/*.bak`, and model-weight
+  patterns (`*.safetensors` / `*.gguf` / etc).
+- `lm_foundry/eval/hexa-eval/manifest-mk1.jsonl` carries the r37
+  T4-struct-variant normalization (12 prompts: `Foo { x: T }` → `Foo(T)`,
+  matching hexa-canon which has no struct variants); a v0.4.0-v2 re-score
+  against the corrected manifest was running on Vast.ai A100 at absorption
+  time — result lands in `lm_foundry/ROADMAP.md` r37 when complete.
+
 ## [Unreleased] — RSC port from Python → .hexa (recipe §7.4)
 
 > Following `~/core/bedrock/docs/runnable_surface_recipe.md` (closure-depth

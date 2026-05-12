@@ -1,0 +1,90 @@
+#!/usr/bin/env bash
+# SPDX-License-Identifier: Apache-2.0 OR MIT
+#
+# tool/forge — short wrapper around `mac-exec --hf-passthrough python3 <tool>`.
+#
+# Removes the paste-length cliff that breaks long single-line invocations.
+# Subcommands dispatch to the right forge tool on the Linux side; all args
+# after the subcommand pass through verbatim.
+#
+# Usage:
+#   forge hf      <subcmd> [args]    → tool/hf_publish.py
+#   forge sample  [args]              → tool/stack_v2_sample.py
+#   forge tok     [args]              → tool/tokenize.py
+#   forge etok    [args]              → tool/extend_tokenizer.py
+#   forge ppl     [args]              → tool/corpus_quality_filter.py
+#   forge eval    [args]              → tool/run_eval.py
+#   forge license [args]              → tool/license_clean_scan.py
+#   forge --help
+#
+# Quickstart:
+#   forge hf list-targets
+#   forge hf verify --target stack-v2-sample
+#   forge hf dry-run --target stack-v2-sample
+#   forge hf upload --target stack-v2-sample
+#
+# Install on Mac (one-time):
+#   ln -sf ~/core/hexa-forge/tool/forge ~/bin/forge
+#
+# References:
+#   docs/mac_exec_cheatsheet.md — operator one-pager
+#   papers/plan-runbook-v0.1.3.md — v0.1.3 G-BASE sequence
+#   tool/mac-exec — underlying auth bridge
+
+set -euo pipefail
+
+LINUX_TOOL_DIR="${LINUX_TOOL_DIR:-/home/summer/mac_home/core/hexa-forge/tool}"
+
+usage() {
+    cat <<'EOF'
+forge — short wrapper around `mac-exec --hf-passthrough python3 <tool>`
+
+USAGE
+  forge <subcmd> [args...]
+  forge --help
+
+SUBCOMMANDS
+  hf      <subcmd>     → tool/hf_publish.py            (list-targets / dry-run / verify / upload)
+  sample  [args]       → tool/stack_v2_sample.py       (Stack v2 fetcher)
+  tok     [args]       → tool/tokenize.py              (Qwen tokenizer real-tokens populator)
+  etok    [args]       → tool/extend_tokenizer.py      (BPE manifest consumer)
+  ppl     [args]       → tool/corpus_quality_filter.py (perplexity gate)
+  eval    [args]       → tool/run_eval.py              (6-spec dispatcher)
+  license [args]       → tool/license_clean_scan.py    (SPDX scanner)
+
+ENVIRONMENT
+  LINUX_TOOL_DIR  Linux-side path to the forge `tool/` dir
+                  (default: /home/summer/mac_home/core/hexa-forge/tool)
+  Inherits FORGE_HOST, SECRET_KEY from `mac-exec` shim.
+
+EXAMPLES
+  forge hf list-targets
+  forge hf verify --target stack-v2-sample
+  forge sample --dry-run
+  forge eval --spec hexa-eval --dry-run
+EOF
+}
+
+if [[ $# -eq 0 ]]; then
+    usage; exit 2
+fi
+
+case "${1:-}" in
+    --help|-h)         usage; exit 0 ;;
+    hf)                shift; SCRIPT="$LINUX_TOOL_DIR/hf_publish.py" ;;
+    sample)            shift; SCRIPT="$LINUX_TOOL_DIR/stack_v2_sample.py" ;;
+    tok|tokenize)      shift; SCRIPT="$LINUX_TOOL_DIR/tokenize.py" ;;
+    etok|extend-tokenizer) shift; SCRIPT="$LINUX_TOOL_DIR/extend_tokenizer.py" ;;
+    ppl|quality-filter) shift; SCRIPT="$LINUX_TOOL_DIR/corpus_quality_filter.py" ;;
+    eval|run-eval)     shift; SCRIPT="$LINUX_TOOL_DIR/run_eval.py" ;;
+    license|license-scan) shift; SCRIPT="$LINUX_TOOL_DIR/license_clean_scan.py" ;;
+    *)
+        echo "forge: unknown subcommand '$1'" >&2
+        echo "       try: forge --help" >&2
+        exit 2 ;;
+esac
+
+# Collapse the rest of argv into a single string, hand it to mac-exec.
+# mac-exec's `$*` further collapses to whatever ssh receives. The remote
+# shell on Linux re-parses the string as a command line.
+exec mac-exec --hf-passthrough "python3 $SCRIPT $*"

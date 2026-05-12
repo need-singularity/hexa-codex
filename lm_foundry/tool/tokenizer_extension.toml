@@ -1,0 +1,287 @@
+# tokenizer_extension.toml — hexa-lang BPE additions to the base tokenizer
+#
+# CONTEXT
+#   D-008 default: extend base BPE for hexa-lang keywords + atlas refs +
+#   error codes + annotations. The base tokenizer is decided in v0.1.3
+#   G-BASE (D-007 — proposed default Qwen2.5-Coder-7B per CJK +
+#   multilingual + M4 Mini 16GB fit).
+#
+#   This manifest enumerates the tokens to ADD to the base vocab so
+#   that hexa-lang artefacts encode as 1 token per atom (not fragmented
+#   across 3-5 BPE pieces).
+#
+# USAGE (planned, v0.1.3+)
+#   python tool/extend_tokenizer.py \
+#       --base Qwen/Qwen2.5-Coder-7B \
+#       --extension tool/tokenizer_extension.toml \
+#       --output runs/tokenizer_qwen_hexa_v1/
+#
+# SCHEMA
+#   [meta]                  manifest version + base + checksum
+#   [extensions.<group>]    grouped token sets, each with `tokens = [...]`
+#                           lists. The extender script flattens these into
+#                           a single ordered insertion (preserves the
+#                           order; Qwen's tokenizer.json gets new entries
+#                           appended past the existing vocab boundary).
+#
+# DESIGN PRINCIPLES
+#   1. Single-token atoms — every annotation form, target triple, and
+#      error-code prefix is one token (not 3-5 BPE pieces).
+#   2. Stable IDs across versions — the extender script DOES NOT
+#      renumber existing base tokens. Hexa tokens append at the tail.
+#   3. License-clean — none of these tokens encode copyrighted text;
+#      they encode hexa-lang's own grammar + canon vocabulary.
+#   4. Round-trip stable — every extension token round-trips via
+#      `encode→decode` byte-equal. Verifier in `tool/extend_tokenizer.py`.
+#
+# CROSS-LINK
+#   - Source of truth for hexa-lang surface: ~/core/hexa-lang/SPEC.md
+#   - Recipe contract:        ../docs/code-llm.md §STRUCT pretrain-bias
+#                              + §VERIFY hexa fidelity contract
+#   - Decision ledger:        ../papers/plan-decisions-pending.md D-008
+
+[meta]
+schema_version       = 1
+extension_version    = "v0.1.0-draft"
+hexa_lang_spec_hash  = "~/core/hexa-lang/SPEC.md@2026-05-10"
+proposed_base        = "Qwen/Qwen2.5-Coder-7B"
+target_added_count   = 160     # rough — extender script reports actual
+
+# Notes on ordering
+#   Groups land in the order declared. Within a group, tokens land in
+#   array order. This is the canonical insertion sequence — do not
+#   reorder once the tokenizer is shipped (would invalidate IDs).
+
+# ---------------------------------------------------------------------
+# Group 1: keywords + reserved words
+# Sources: ~/core/hexa-lang/SPEC.md §0 + §2 + §6 + grep on self/
+
+[extensions.keywords]
+tokens = [
+  # primitives
+  "let", "mut", "const", "fn", "type", "alias",
+  # control flow
+  "if", "else", "for", "while", "loop", "match", "return", "break", "continue",
+  # type system
+  "enum", "struct", "impl", "trait", "use", "mod", "pub", "priv",
+  # async / effects (RFC-022)
+  "async", "await", "cancel", "spawn",
+  # error
+  "throw", "catch", "try",
+  # literals
+  "true", "false", "nil",
+]
+
+# ---------------------------------------------------------------------
+# Group 2: built-in types
+# Sources: stdlib/core in hexa-lang
+
+[extensions.types]
+tokens = [
+  "str", "bytes",
+  "Int", "Int8", "Int16", "Int32", "Int64", "Int128",
+  "UInt", "UInt8", "UInt16", "UInt32", "UInt64", "UInt128",
+  "Float", "Float32", "Float64",
+  "Bool",
+  "Vec", "Map", "Set", "Tuple",
+  "Option", "Result",
+  "None", "Some", "Ok", "Err",
+  "Ptr", "Slice", "Range",
+]
+
+# ---------------------------------------------------------------------
+# Group 3: annotations (single-token forms)
+# Sources: SPEC.md §6.3, §8, §9, §10
+# Note: these include the leading `@`; the extender encodes
+# "@grace" as ONE token, not "@" + "grace".
+
+[extensions.annotations]
+tokens = [
+  "@grace", "@verify", "@prove",
+  "@implements", "@discover",
+  "@law", "@units",
+  "@own", "@allow-devpath",
+  "@deprecated", "@stable", "@experimental",
+  "@inline", "@noinline", "@cold", "@hot",
+  "@target", "@cfg",
+]
+
+# ---------------------------------------------------------------------
+# Group 4: error code family prefixes
+# Sources: SPEC.md §14 — HX[CCCC] code groups
+# We add the 10 family prefixes; the 4-digit tail remains plain BPE
+# (so "HX0001" = "HX0xxx" + "001" or similar; the family is stable).
+
+[extensions.error_codes]
+tokens = [
+  "HX0xxx",  # parse / lex (S0)
+  "HX1xxx",  # atlas resolve (S1)
+  "HX2xxx",  # bind / scope (S2)
+  "HX3xxx",  # type (S3)
+  "HX4xxx",  # domain (S4)
+  "HX5xxx",  # units (S5)
+  "HX6xxx",  # equational (S6)
+  "HX7xxx",  # proof (S7)
+  "HX8xxx",  # citation (S8)
+  "HX9xxx",  # codegen / link / runtime
+]
+
+# Specific high-traffic codes (saves 3-4 tokens each occurrence)
+[extensions.error_codes_specific]
+tokens = [
+  "HX8003", "HX8004", "HX9000", "HX9001", "HX1099", "HX1100",
+  "HX1042",
+]
+
+# ---------------------------------------------------------------------
+# Group 5: atlas node references
+# Sources: SPEC.md §2.3 + §9 + §10
+# P/C/L/E nodes are addressed as P[id], C[id], L[id], E[id].
+# We tokenise the bracketed-prefix shape so e.g. "L[" is one token.
+
+[extensions.atlas_refs]
+tokens = [
+  "L[", "P[", "C[", "E[",
+]
+
+# ---------------------------------------------------------------------
+# Group 6: lint stages
+# Sources: SPEC.md §2.3
+
+[extensions.lint_stages]
+tokens = [
+  "S0", "S1", "S2", "S3", "S4", "S5", "S6", "S7", "S8",
+  # stage names (for diagnostic messages)
+  "parse-stage", "resolve-stage", "bind-stage", "type-stage",
+  "domain-stage", "units-stage", "equational-stage", "proof-stage",
+  "citation-stage",
+]
+
+# ---------------------------------------------------------------------
+# Group 7: compiler pipeline phase names
+# Sources: SPEC.md §2.4
+
+[extensions.pipeline_phases]
+tokens = [
+  "lex", "parse", "resolve", "check", "lower",
+  "mono", "ssa", "optimize", "regalloc", "emit", "link",
+]
+
+# ---------------------------------------------------------------------
+# Group 8: target triples
+# Sources: SPEC.md §3
+
+[extensions.targets]
+tokens = [
+  # tier 0
+  "arm64-apple-darwin",
+  "x86_64-linux-gnu",
+  # tier 1 firmware
+  "arm64-linux-gnu",
+  "thumbv7em-none-eabihf",
+  "riscv32imac-unknown-none-elf",
+  # tier 2
+  "wasm32-unknown-unknown",
+  "riscv64-linux-gnu",
+  "thumbv6m-none-eabi",
+  "thumbv7m-none-eabi",
+  "xtensa-esp32-none-elf",
+]
+
+# ---------------------------------------------------------------------
+# Group 9: tool names + sentinels
+# Sources: SPEC.md §5 + §7 + §16 + §17
+
+[extensions.tools]
+tokens = [
+  "hexa_interp", "hexa_cc", "hexa_ld",
+  "ATLAS_HASH",
+  "atlas.n6", "atlas.append", "atlas.proposed", "atlas.tombstones",
+  "RESOURCE_LOCAL_HEXA", "HEXA_FORGE_ROOT", "HEXA_LINT_MACHO_DISABLE",
+  "HEXA_TARGET_MACHO",
+]
+
+# ---------------------------------------------------------------------
+# Group 10: stdlib paths
+# Sources: SPEC.md §18 — Option C 5-tier split
+
+[extensions.stdlib_paths]
+tokens = [
+  "stdlib/core",
+  "stdlib/alloc",
+  "stdlib/hal",
+  "stdlib/embedded",
+  "stdlib/mcu",
+  # host (negative — appear in firmware-import-rejection diagnostics)
+  "stdlib/net", "stdlib/http", "stdlib/fs", "stdlib/process", "stdlib/json",
+]
+
+# ---------------------------------------------------------------------
+# Group 11: firmware tree paths
+# Sources: SPEC.md §18
+
+[extensions.firmware_paths]
+tokens = [
+  "firmware/boards/",
+  "firmware/boards/rtsc",
+  "firmware/boards/chip",
+  "firmware/boards/cern",
+  "firmware/boards/antimatter",
+  "firmware/boards/space",
+  "firmware/bsp/",
+  "firmware/linker_scripts/",
+]
+
+# ---------------------------------------------------------------------
+# Group 12: meta sentinels (for forge → codex feedback channel + hexa
+#   verifier output line discipline)
+# Sources: outbox/hexa-codex/README.md + hexa-codex verifier convention
+
+[extensions.sentinels]
+tokens = [
+  "__HEXA_FORGE_",       # prefix; pair w/ verb-uppercase + "__"
+  "__FORGE_T4_EMITTED__",
+  "__EMIT_T4_SELFTEST__",
+  "__HEXA_CODEX_",
+  "__HEXA_CODEX_SATURATION_CHECK__",
+  "__HEXA_CODEX_RSC_SATURATED__",
+  "STOP", "PASS", "FAIL", "WARN",  # standalone verdicts
+  "Acked-grace:",
+  "Co-Authored-By:",
+]
+
+# ---------------------------------------------------------------------
+# Group 13: hexa-canon doc skeleton headers
+# Sources: every hexa-* repo's README and doc/*-llm.md
+
+[extensions.canon_headers]
+# NOTE: original draft included `§WHY`/`§COMPARE`/... but the `§`
+# character (U+00A7, 2-byte UTF-8) does NOT round-trip through Qwen
+# 2.5-Coder's byte-level BPE — the multibyte prefix gets mangled to
+# `�` on decode. Replaced with bare section names (which appear
+# unprefixed in canon docs as well) + S-prefix discipline + status
+# verdicts + F-CODEX IDs.
+tokens = [
+  # canonical 7-step skeleton (bare names — used both with and without §)
+  "WHY", "COMPARE", "REQUIRES", "STRUCT", "FLOW", "EVOLVE", "VERIFY",
+  # hexa-codex eval verb S-prefix discipline
+  "S1 WHY", "S2 COMPARE", "S3 REQUIRES", "S4 STRUCT",
+  "S5 FLOW", "S6 EVOLVE", "S7 VERIFY",
+  # status verdicts
+  "RESEARCH_FIRST", "ASPIRATIONAL", "PLANNED", "TARGET", "RELEASED",
+  # F-CODEX falsifier IDs
+  "F-CODEX-1", "F-CODEX-2", "F-CODEX-3", "F-CODEX-4",
+]
+
+# ---------------------------------------------------------------------
+# Verification
+#   The extender script MUST verify, after extension:
+#     1. Total vocab size = base_size + sum(len(group.tokens))
+#     2. Every extension token round-trips encode→decode byte-equal
+#     3. No collisions with the base vocab (existing tokens NOT remapped)
+#     4. SHA-256 of new tokenizer.json recorded in
+#        `runs/tokenizer_qwen_hexa_v1/checksum.txt`
+#
+#   Acceptance: the new tokenizer encodes a 100-line hexa file at
+#   ≤ 0.5× the token count of the base tokenizer alone (target —
+#   measure with a representative sample from self/ + compiler/).

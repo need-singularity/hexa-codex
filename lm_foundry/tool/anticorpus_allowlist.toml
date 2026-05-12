@@ -1,0 +1,107 @@
+# tool/anticorpus_allowlist.toml -- named-author + named-domain
+# overrides for the anti-corpus pollution filter.
+#
+# Consumed by: tool/anticorpus_filter.py
+# Spec source:  papers/tier-e-findings.md Part 3 "Allowlist for blog content"
+# Roadmap slot: ROADMAP.md §2 v0.2.0 cross-cutting infra item 8
+#
+# SEMANTICS
+# ---------
+# An allowlist entry is matched as a URL prefix (after normalisation:
+# strip scheme + leading 'www.'). If the candidate URL starts with the
+# entry, the filter's reject rules are OVERRIDDEN and the URL is
+# accepted regardless of date / blacklist hit.
+#
+# Prefix granularity:
+#   - host-only:        "danluu.com"            -> any path on danluu.com
+#   - host + path:      "julialang.org/blog/"   -> only that path subtree
+#
+# Curators: keep entries STABLE. The threshold for adding an author is
+# "pre-LLM voice provable via either (a) named-byline blog with ≥ 2020
+# active history, OR (b) institutional engineering blog with editorial
+# review". DO NOT add general aggregators or Medium publications --
+# even a single high-quality Medium author cannot redeem the platform
+# without a per-author prefix here (e.g. medium.com/@named-author).
+#
+# SPDX-License-Identifier: Apache-2.0 OR MIT
+
+[meta]
+schema_version = 1
+last_updated   = "2026-05-11"
+authority      = "hexa-forge curator"
+spec_ref       = "papers/tier-e-findings.md Part 3"
+
+# ---------------------------------------------------------------------------
+# Named-author blogs (CC-BY / hand-written / pre-LLM voice)
+# ---------------------------------------------------------------------------
+# Each entry is a URL prefix (host or host+path).
+[allowlist.named_authors]
+prefixes = [
+  # Dan Luu -- CC-BY, hand-written, 2013+ active, system-perf canon.
+  "danluu.com",
+  # Amos Wenger (fasterthanli.me) -- named Rust author, pre-LLM voice.
+  "fasterthanli.me",
+  # Niko Matsakis (smallcultfollowing.com) -- Rust lang team blog.
+  "smallcultfollowing.com",
+  # Drew DeVault -- sourcehut author, pre-LLM voice, anti-AI stance.
+  "drewdevault.com",
+  # Julia Evans -- jvns.ca, hand-drawn zines, 2013+ active.
+  "jvns.ca",
+  # Charity Majors -- charity.wtf, observability canon.
+  "charity.wtf",
+  # Kyle Kingsbury (Aphyr) -- jepsen.io author blog, distributed systems.
+  "aphyr.com",
+  # Bryan Cantrill -- bcantrill.dtrace.org legacy + oxide.computer/blog.
+  "bcantrill.dtrace.org",
+  # Eric Lippert -- ericlippert.com, C# semantics canon.
+  "ericlippert.com",
+  # Fabien Sanglard -- fabiensanglard.net, deep-dive reverse engineering.
+  "fabiensanglard.net",
+  # Raymond Chen -- devblogs.microsoft.com/oldnewthing (Microsoft).
+  "devblogs.microsoft.com/oldnewthing",
+  # Joel Spolsky -- joelonsoftware.com, pre-LLM era canon.
+  "joelonsoftware.com",
+]
+
+# ---------------------------------------------------------------------------
+# Institutional engineering blogs (editorial review, dated history)
+# ---------------------------------------------------------------------------
+[allowlist.institutional_blogs]
+prefixes = [
+  # LWN.net -- editorial process, kernel + systems canon.
+  "lwn.net",
+  # Julia language blog.
+  "julialang.org/blog/",
+  # Cloudflare engineering blog.
+  "blog.cloudflare.com",
+  # Rust language project blog.
+  "blog.rust-lang.org",
+  # Go language project blog.
+  "blog.golang.org",
+  "go.dev/blog/",
+  # MDN -- web platform reference, Mozilla editorial.
+  "developer.mozilla.org",
+  # web.dev -- Google Chrome team, web platform.
+  "web.dev",
+  # LLVM blog.
+  "blog.llvm.org",
+  # Python core dev blog.
+  "blog.python.org",
+  # Postgres official.
+  "www.postgresql.org/docs/",
+  # SQLite official.
+  "www.sqlite.org",
+  # Oxide Computer engineering blog.
+  "oxide.computer/blog",
+]
+
+# ---------------------------------------------------------------------------
+# Per-author overrides on otherwise-blacklisted platforms
+# ---------------------------------------------------------------------------
+# These are EXPLICIT exceptions for individual authors on platforms that
+# are otherwise rejected by the time-cutoff rule (medium / substack /
+# hashnode / dev.to). Add sparingly and only with a named curator note.
+[allowlist.platform_exceptions]
+prefixes = [
+  # (intentionally empty in the v0.2.0 seed -- curator adds as needed)
+]

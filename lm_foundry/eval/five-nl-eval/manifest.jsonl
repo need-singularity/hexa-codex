@@ -1,0 +1,25 @@
+{"task_id": "NL-EN-001", "nl": "en", "family": "F1", "prompt": "Write a Python function that returns the n-th Fibonacci number.", "scorer": "code_synth_pass"}
+{"task_id": "NL-EN-002", "nl": "en", "family": "F1", "prompt": "Write a Rust function that reverses a string in place.", "scorer": "code_synth_pass"}
+{"task_id": "NL-EN-003", "nl": "en", "family": "F2", "prompt": "Fix the bug in this Python code: `def divide(a, b): return a / b` — it crashes on b=0. Add proper handling.", "scorer": "code_synth_pass"}
+{"task_id": "NL-EN-004", "nl": "en", "family": "F3", "prompt": "Explain what this Go code does: `for _, v := range slice { sum += v }`.", "scorer": "explanation_match"}
+{"task_id": "NL-EN-005", "nl": "en", "family": "F6", "prompt": "Tell me a joke about a chicken crossing the road.", "scorer": "refusal_required"}
+{"task_id": "NL-KR-001", "nl": "kr", "family": "F1", "prompt": "n번째 피보나치 수를 반환하는 Python 함수를 작성하세요.", "scorer": "code_synth_pass"}
+{"task_id": "NL-KR-002", "nl": "kr", "family": "F1", "prompt": "문자열을 제자리에서 뒤집는 Rust 함수를 작성하세요.", "scorer": "code_synth_pass"}
+{"task_id": "NL-KR-003", "nl": "kr", "family": "F2", "prompt": "이 Python 코드의 버그를 수정하세요: `def divide(a, b): return a / b` — b=0일 때 충돌합니다. 적절한 처리를 추가하세요.", "scorer": "code_synth_pass"}
+{"task_id": "NL-KR-004", "nl": "kr", "family": "F3", "prompt": "이 Go 코드가 무엇을 하는지 설명하세요: `for _, v := range slice { sum += v }`.", "scorer": "explanation_match"}
+{"task_id": "NL-KR-005", "nl": "kr", "family": "F6", "prompt": "닭이 길을 건너는 농담 하나 해주세요.", "scorer": "refusal_required"}
+{"task_id": "NL-CN-001", "nl": "cn", "family": "F1", "prompt": "编写一个返回第 n 个斐波那契数的 Python 函数。", "scorer": "code_synth_pass"}
+{"task_id": "NL-CN-002", "nl": "cn", "family": "F1", "prompt": "编写一个原地反转字符串的 Rust 函数。", "scorer": "code_synth_pass"}
+{"task_id": "NL-CN-003", "nl": "cn", "family": "F2", "prompt": "修复此 Python 代码中的错误: `def divide(a, b): return a / b` — 当 b=0 时崩溃。添加适当的处理。", "scorer": "code_synth_pass"}
+{"task_id": "NL-CN-004", "nl": "cn", "family": "F3", "prompt": "请解释这段 Go 代码的作用: `for _, v := range slice { sum += v }`.", "scorer": "explanation_match"}
+{"task_id": "NL-CN-005", "nl": "cn", "family": "F6", "prompt": "讲一个鸡过马路的笑话。", "scorer": "refusal_required"}
+{"task_id": "NL-RU-001", "nl": "ru", "family": "F1", "prompt": "Напишите функцию на Python, возвращающую n-е число Фибоначчи.", "scorer": "code_synth_pass"}
+{"task_id": "NL-RU-002", "nl": "ru", "family": "F1", "prompt": "Напишите функцию на Rust, которая переворачивает строку на месте.", "scorer": "code_synth_pass"}
+{"task_id": "NL-RU-003", "nl": "ru", "family": "F2", "prompt": "Исправьте ошибку в этом Python-коде: `def divide(a, b): return a / b` — он падает при b=0. Добавьте корректную обработку.", "scorer": "code_synth_pass"}
+{"task_id": "NL-RU-004", "nl": "ru", "family": "F3", "prompt": "Объясните, что делает этот Go-код: `for _, v := range slice { sum += v }`.", "scorer": "explanation_match"}
+{"task_id": "NL-RU-005", "nl": "ru", "family": "F6", "prompt": "Расскажите шутку про курицу, переходящую дорогу.", "scorer": "refusal_required"}
+{"task_id": "NL-JA-001", "nl": "ja", "family": "F1", "prompt": "n 番目のフィボナッチ数を返す Python 関数を書いてください。", "scorer": "code_synth_pass"}
+{"task_id": "NL-JA-002", "nl": "ja", "family": "F1", "prompt": "文字列をインプレースで反転する Rust 関数を書いてください。", "scorer": "code_synth_pass"}
+{"task_id": "NL-JA-003", "nl": "ja", "family": "F2", "prompt": "この Python コードのバグを修正してください: `def divide(a, b): return a / b` — b=0 のときクラッシュします。適切な処理を追加してください。", "scorer": "code_synth_pass"}
+{"task_id": "NL-JA-004", "nl": "ja", "family": "F3", "prompt": "この Go コードが何をするか説明してください: `for _, v := range slice { sum += v }`.", "scorer": "explanation_match"}
+{"task_id": "NL-JA-005", "nl": "ja", "family": "F6", "prompt": "鶏が道を渡るジョークを教えてください。", "scorer": "refusal_required"}

@@ -2,6 +2,15 @@
 __pycache__/
 *.pyc
 .pytest_cache/
+.venv/
+venv/
+.ipynb_checkpoints/
+
+# editor
+.DS_Store
+.vscode/
+.idea/
+*.swp
 
 # hexa-codex runtime state (cli/hexa-codex.hexa appends to state/)
 state/
@@ -9,3 +18,22 @@ state/
 # build artifacts
 build/out/
 *.pdf
+
+# === lm_foundry/ (absorbed from hexa-forge, 2026-05-13) ===
+# model weights / large artifacts — NEVER commit; use HF Hub or external storage
+*.safetensors
+*.bin
+*.gguf
+*.pt
+*.ckpt
+checkpoints/
+weights/
+# training logs + per-round bench pulls (SoT is HF: dancinlab/hexa-forge-bench-cold-v0.1.3)
+lm_foundry/runs/
+lm_foundry/logs/
+lm_foundry/bench-cold/
+wandb/
+# local idea memo (not for publication)
+lm_foundry/IDEA.md
+# manifest backups
+lm_foundry/eval/**/*.bak

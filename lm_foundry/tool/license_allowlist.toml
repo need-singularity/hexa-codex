@@ -1,0 +1,63 @@
+# tool/license_allowlist.toml -- canonical license allow/deny lists
+#
+# Consumed by tool/license_clean_scan.py and .github/workflows/license-clean.yml.
+# Authoritative -- if a license string is not in either set, it falls under
+# UNKNOWN (which fails --strict).
+#
+# Reference: docs/code-llm.md REQUIRES + papers/plan-decisions-pending.md D-009.
+
+[meta]
+schema_version = 1
+last_updated   = "2026-05-11"
+authority      = "hexa-forge curator"
+
+# Bulk-include permissive licenses
+[allowlist.permissive]
+spdx = [
+  "MIT", "Apache-2.0",
+  "BSD-2-Clause", "BSD-3-Clause", "BSD-4-Clause",
+  "ISC", "Unlicense", "CC0-1.0", "Zlib", "BSL-1.0",
+  "PSF", "PostgreSQL", "public-domain", "MPL-2.0",
+]
+
+# Attribution-required -- include allowed but attribution metadata MUST be captured
+[allowlist.attribution_required]
+spdx = [
+  "CC-BY-4.0", "CC-BY-3.0", "CC-BY-SA-4.0", "CC-BY-SA-3.0", "CC-BY-SA-2.0",
+]
+
+# Quote-only -- text usable for excerpts but NOT bulk training inclusion
+[allowlist.quote_only]
+spdx = [
+  "GPL-2.0", "GPL-3.0", "GPL-2.0-or-later", "GPL-3.0-or-later",
+  "LGPL-2.1", "LGPL-3.0",
+  "GFDL", "GFDL-1.3",
+  "Elastic-2.0", "SSPL-1.0",
+  "Commons-Clause",
+  "Confluent-Community-1.0",
+]
+
+# Hard-denied -- blocks training inclusion entirely
+[denylist.commercial_block]
+# CC NC clause blocks commercial training; NC-ND blocks even quote-only ML use.
+spdx = [
+  "CC-BY-NC-1.0", "CC-BY-NC-2.0", "CC-BY-NC-3.0", "CC-BY-NC-4.0",
+  "CC-BY-NC-SA-1.0", "CC-BY-NC-SA-2.0", "CC-BY-NC-SA-3.0", "CC-BY-NC-SA-4.0",
+  "CC-BY-NC-ND-1.0", "CC-BY-NC-ND-2.0", "CC-BY-NC-ND-3.0", "CC-BY-NC-ND-4.0",
+]
+
+[denylist.proprietary]
+spdx = [
+  "proprietary", "EULA", "Oracle-EULA", "Microsoft-EULA",
+  "Apple-HIG",  # explicit per F-1 finding
+]
+
+# Compound SPDX expressions: pick the most permissive disjunct.
+# Example: "MIT OR GPL-3.0" -> allowed as MIT.
+[compound_handling]
+or_picks_most_permissive = true
+and_picks_strictest      = true
+plus_suffix_stripped     = true
+
+# UNKNOWN -> fails --strict by default. Override per-entry via
+# `--allow-unknown` (development only; CI runs with --strict).
