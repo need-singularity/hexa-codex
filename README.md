@@ -417,50 +417,28 @@ What is **out of scope** at 100% closure (sat-1):
 
 ## Install
 
-### Via `hx` (works today)
-
 ```bash
-# `hx` does not auto-detect hexa.toml's `entry` field yet — pass --entry
-# explicitly. Tracked as upstream improvement.
-hx install hexa-codex --entry cli/hexa-codex.hexa
-hexa-codex --version           # → 1.0.0
-hexa-codex verify saturation-check   # → __HEXA_CODEX_SATURATION_CHECK__ PASS  (sat-1 marker)
-hexa-codex verify falsifier-check    # → per-pillar layer presence + sat-1 verdict
-hexa-codex selftest                  # → 17/17 verb specs PASS
+# 1. Install hexa-lang (ships `hexa` + `hx` package manager)
+/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/dancinlab/hexa-lang/main/install.sh)"
+
+# 2. Install hexa-codex
+hx install hexa-codex          # global, pulls latest from registry
 ```
 
-For local development install (avoids GitHub round-trip):
+## Run
 
 ```bash
-hx install /path/to/hexa-codex --entry cli/hexa-codex.hexa --as hexa-codex
-```
-
-### Via git clone
-
-```bash
-git clone https://github.com/dancinlab/hexa-codex.git ~/.hexa-codex
-export HEXA_CODEX_ROOT=~/.hexa-codex
-cd $HEXA_CODEX_ROOT
-
-# List the 17 verbs:
-hexa run cli/hexa-codex.hexa list
-
-# Run the .hexa-native sat-1 closure verdict:
-make -C build sat1
-# (or directly):
-RESOURCE_LOCAL_HEXA=1 ~/.hx/packages/hexa/hexa.real run verify/saturation_check.hexa
-
-# Run the 24-wrapper regression suite:
-make -C build test-hexa-all
-
-# Run the legacy Python verifiers (parallel CI path):
-make -C build verify          # Python stdlib only
-
-# Run the pytest auto suite (no pip install required):
-make -C build test            # 83 cases
-
-# Run F-CODEX-1 closed-form training-cost calc:
-hexa-codex calc train_cost --N 7e9 --D 1.4e12
+hexa-codex list                    # 17-verb table grouped by 4 groups
+hexa-codex selftest                # 17-verb spec presence sweep
+hexa-codex verify [check]          # unified verifier dispatcher (lattice/cross-doc/train_cost/infer_cost/n6/inventory/group/release/falsifiers/reference/all)
+hexa-codex inventory               # 17-verb spec inventory + canonical-header audit
+hexa-codex lattice [n]             # n=k lattice explorer (σ·φ vs n·τ identity)
+hexa-codex calc <metric>           # F-CODEX-1..4 calculators (train_cost/infer_cost/alignment/interpret/quality_scale)
+hexa-codex test [mark]             # pytest tests/ (auto|hexa)
+hexa-codex status                  # one-shot verifier health summary
+hexa-codex <verb>                  # read a verb spec (alignment/safety/welfare/.../causal — see `list`)
+hexa-codex version                 # print version
+hexa-codex help                    # full --help (subcommands + flags + env)
 ```
 
 ---
