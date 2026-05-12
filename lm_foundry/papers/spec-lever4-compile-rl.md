@@ -461,6 +461,40 @@ peak 18.3 GB GPU mem). Train: 98.85 min, 12 000 rollouts (600 prompts × 5 ep
 - **r39: T3 quote-fragility patch** (~$1.5–2, ~1h on a small adapter or 0$ if
   a scorer-only fix suffices). The cheapest path: small SFT block (≤30
   quoted-date T3 pairs) on top of v3 — preserves all v3 gains, recovers T3.
+  → **DONE in r39 (2026-05-13).** 30-pair SFT continuation from v3 (LR 5e-5,
+  2 ep, batch 1 grad_accum 8). Train 13.25 s. Cost ~$0.7. T3 58.8 → **100%**
+  (+41.2pp), overall Mk.I 90.98 → **94.29%** (+3.31pp), T8 +2.5pp bonus.
+  Adapter LIVE: `dancinlab/hexa-forge-code-7b-qwen2.5-lora-r64-v0.4.0-rl-t4-v3-t3patch`.
+  Per-task analysis flagged T2/T6/T5 "regressions" as scorer artifacts —
+  v3's rambling answers had incidentally matched byte_exact_subset gold
+  substrings; r39's cleaner answers expose the model's actual (same) wrong
+  picks. r39 is the honest capability number. See ROADMAP r39 entry.
 - **v0.4.x: §12 self-aware delegation architecture** (line opener). Lever 4
   prerequisite met — every hexa-canon family ≥ 87.5% strict, T4 at 100%.
+  → **Spec drafted in r39: `papers/spec-delegation-v0.4.0.md`** (token grammar,
+  runtime contract, failure modes, privacy/redaction, streaming UX, calibration
+  v0.4.0 → v0.5.0 deferred, routing-eval protocol, SFT block shape, training
+  recipe). v0.4.0 round = forge_runtime.py + build_sft_dataset_v18.py +
+  eval/delegation-mk0/ + score_delegation_mk0.py + 1 SFT round on top of
+  r39 v3-t3patch.
 - **Lever 5 (more epochs) and Lever 3 (full-FT)** are off the active path.
+
+### Lessons (additional to §13 + §14, from r39)
+
+11. **`byte_exact_subset` scorer rewards rambling cover.** A model that gives a
+    confident-but-wrong answer surrounded by long elaboration text incidentally
+    matches the gold substring in its postscript; the same model giving a
+    crisp wrong answer fails. r39's 30-pair T3 patch transferred a "crisp
+    answer" bias from T3 to T2/T6/T5/F3, exposing ~10 previously-hidden
+    wrong picks. The HONEST scorer would have caught these all along.
+    For future eval design: prefer first-line-or-prefix matching, or
+    structured-output scorers (JSON schema match), over substring matching
+    on free-form text. Document trade-off in scorer choice. ([[t3-quote-fragility]]
+    memory updated with this rambling-cover diagnosis.)
+12. **Continue-SFT from a trained LoRA is cheap and surgical.** r39 added
+    `--adapter-in` to `train_sft_lora.py` (`PeftModel.from_pretrained(..., is_trainable=True)`),
+    allowing a 30-pair patch in 13.25 seconds of training. For targeted
+    bias-flip rounds (a specific answer-form regressed), this beats both
+    full retrain and RL-only-patches. Cost: ~$0.7 / 40 min wall on 40GB
+    A100 vs ~$2.1 / 3h20m for r38 RL. Same pattern is reusable for any
+    future "the model emits form A but we want form B on family X" round.

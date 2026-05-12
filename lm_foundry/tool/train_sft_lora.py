@@ -47,6 +47,9 @@ DEFAULT_OUTPUT = Path.home() / "runs" / "sft-lora-r16-v1"
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(prog="train_sft_lora", description=__doc__.strip().splitlines()[0])
     parser.add_argument("--model", default=DEFAULT_MODEL)
+    parser.add_argument("--adapter-in", default=None,
+                        help="optional: continue SFT from an existing LoRA adapter "
+                             "(HF id or local path); LoRA cfg flags are ignored when set")
     parser.add_argument("--dataset", type=Path, default=DEFAULT_DATASET)
     parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
     parser.add_argument("--lora-r", type=int, default=16)
@@ -70,6 +73,8 @@ def main(argv=None) -> int:
     print(f"  batch x acc:  {args.batch_size} x {args.grad_accum} (effective {args.batch_size*args.grad_accum})")
     print(f"  lr:           {args.lr}")
     print(f"  max seq:      {args.max_seq_length}")
+    if args.adapter_in:
+        print(f"  adapter-in:   {args.adapter_in}  (continue mode — ignores LoRA cfg flags)")
 
     if args.dry_run:
         print("--dry-run: stopping")
@@ -78,7 +83,7 @@ def main(argv=None) -> int:
     # Lazy imports (heavy)
     import torch
     from datasets import load_dataset
-    from peft import LoraConfig, get_peft_model
+    from peft import LoraConfig, get_peft_model, PeftModel
     from transformers import AutoModelForCausalLM, AutoTokenizer, TrainingArguments
     from trl import SFTTrainer, SFTConfig
 
@@ -94,16 +99,20 @@ def main(argv=None) -> int:
     model.gradient_checkpointing_enable()
     model.config.use_cache = False
 
-    print("attaching LoRA adapter...", flush=True)
-    lora_cfg = LoraConfig(
-        r=args.lora_r,
-        lora_alpha=args.lora_alpha,
-        target_modules=["q_proj", "k_proj", "v_proj", "o_proj"],
-        lora_dropout=0.05,
-        bias="none",
-        task_type="CAUSAL_LM",
-    )
-    model = get_peft_model(model, lora_cfg)
+    if args.adapter_in:
+        print(f"continuing SFT from adapter {args.adapter_in}...", flush=True)
+        model = PeftModel.from_pretrained(model, args.adapter_in, is_trainable=True)
+    else:
+        print("attaching new LoRA adapter...", flush=True)
+        lora_cfg = LoraConfig(
+            r=args.lora_r,
+            lora_alpha=args.lora_alpha,
+            target_modules=["q_proj", "k_proj", "v_proj", "o_proj"],
+            lora_dropout=0.05,
+            bias="none",
+            task_type="CAUSAL_LM",
+        )
+        model = get_peft_model(model, lora_cfg)
     model.print_trainable_parameters()
 
     print(f"loading dataset {args.dataset}...", flush=True)
