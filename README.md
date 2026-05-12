@@ -75,50 +75,6 @@ and operating notes (Vast.ai is the primary GPU platform after RunPod's
 
 ---
 
-## Verbs
-
-17 verb specs / 4 groups. All sources are unchanged `.md` files from
-`canon@c0f1f570`.
-
-### SAFETY (6)
-
-| Verb            | Spec                                     | Concern                                |
-|-----------------|------------------------------------------|----------------------------------------|
-| `alignment`     | [alignment/ai-alignment.md](alignment/ai-alignment.md)             | values / objective alignment          |
-| `safety`        | [safety/ai-safety.md](safety/ai-safety.md)                         | safety-critical guardrails             |
-| `welfare`       | [welfare/ai-welfare.md](welfare/ai-welfare.md)                     | model-welfare considerations           |
-| `adversarial`   | [adversarial/ai-adversarial.md](adversarial/ai-adversarial.md)     | adversarial robustness / red-team      |
-| `consciousness` | [consciousness/ai-consciousness.md](consciousness/ai-consciousness.md) | consciousness / phenomenal grounding |
-| `interpret`     | [interpret/ai-interpretability.md](interpret/ai-interpretability.md) | interpretability / mech-interp        |
-
-### ECONOMICS (3)
-
-| Verb            | Spec                                                       | Concern                          |
-|-----------------|------------------------------------------------------------|----------------------------------|
-| `train_cost`    | [train_cost/ai-training-cost.md](train_cost/ai-training-cost.md)       | training-cost curves / scaling   |
-| `infer_cost`    | [infer_cost/ai-inference-cost.md](infer_cost/ai-inference-cost.md)     | inference-cost / serving economics |
-| `quality_scale` | [quality_scale/ai-quality-scale.md](quality_scale/ai-quality-scale.md) | quality-scaling laws             |
-
-### OPS (4)
-
-| Verb            | Spec                                                            | Concern                              |
-|-----------------|-----------------------------------------------------------------|--------------------------------------|
-| `deploy`        | [deploy/ai-deployment.md](deploy/ai-deployment.md)              | deployment patterns                  |
-| `enterprise`    | [enterprise/ai-enterprise-custom.md](enterprise/ai-enterprise-custom.md) | enterprise-custom integration   |
-| `agent_serving` | [agent_serving/ai-agent-serving.md](agent_serving/ai-agent-serving.md)   | agent-serving infrastructure    |
-| `eval`          | [eval/ai-eval-pipeline.md](eval/ai-eval-pipeline.md)            | eval pipeline / capability gates     |
-
-### SUBSTRATE (4)
-
-| Verb         | Spec                                                       | Concern                                     |
-|--------------|------------------------------------------------------------|---------------------------------------------|
-| `multimodal` | [multimodal/ai-multimodal.md](multimodal/ai-multimodal.md) | multimodal substrate (vision/audio/etc)     |
-| `rlhf`       | [rlhf/youth-ai-labeling-rlhf-hub.md](rlhf/youth-ai-labeling-rlhf-hub.md) | RLHF / preference-data substrate    |
-| `cog_arch`   | [cog_arch/cognitive-architecture.md](cog_arch/cognitive-architecture.md) | cognitive-architecture substrate     |
-| `causal`     | [causal/causal-chain.md](causal/causal-chain.md)           | causal-chain reasoning substrate            |
-
----
-
 ## n=6 master identity
 
 The four verb-counts (6 + 3 + 4 + 4 = 17) and the four group taxonomy
