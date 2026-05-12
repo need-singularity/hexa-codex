@@ -1,6 +1,14 @@
 # Self-aware delegation protocol — v0.4.0 architecture line
 
 **Status:** SPEC · draft 1 · 2026-05-13 · prerequisite Lever 4 (CLOSED, r38).
+**v0.4.0 implementation EXECUTED in round 40** — **labeled experiment, NOT GA**.
+See ROADMAP r40 entry for results: Mk.I 82.71% / 5-NL 60% / DLG-mk0 0.7652 —
+all gates missed. The bottleneck is the **training recipe** (840-pair v18 SFT
+over-trains delegation on a working specialist), NOT the spec design. v0.4.1
+will rebalance (dilute base × 2 + larger OOD block + gentler LR + 2 epochs).
+The token grammar, runtime contract, redaction, streaming UX, and routing-eval
+protocol below are all correct and reusable.
+
 **Owner:** code-LLM line. Implementer: `tool/forge_runtime.py`, `tool/build_sft_dataset_v18.py`.
 
 **One-line thesis.** Teach the 7B to **recognise its competence boundary** and emit

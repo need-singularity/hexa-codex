@@ -3420,6 +3420,148 @@ Spec §11 estimates ~$2-3 / 2-3h. Eval scaffolding ready means the v0.4.0
 round's pod run can directly invoke `score_delegation_mk0.py` and produce
 the routing-eval numbers in the same pod session as the SFT.
 
+### 2026-05-13 07:14 KST — round 40: v0.4.0-delegate executed — **NOT GA** (labeled experiment); v18 over-trained delegation on a working specialist; r39 v3-t3patch stays GA; v0.4.1 plan documented
+
+**Round 40 = the v0.4.0 delegation implementation pod run. Result: labeled
+experiment, NOT new GA.** The 840-pair v18 SFT block over-wrote some of the
+hexa-canon specialist competence (Mk.I 94.29 → 82.71%, −11.58pp) and only
+partially installed routing intelligence (DLG-mk0 overall 0.7652 vs spec
+§9.C 0.85 soft gate). r39 v3-t3patch (94.29% Mk.I, 96% 5-NL) **remains the
+v0.4.0 GA candidate**; r40 is a documented diagnostic that informs v0.4.1.
+
+**Run.** Vast.ai A100 SXM4 40GB Slovenia SI (contract 36645026, $0.67/hr,
+rel 0.999, ssh2.vast.ai:15026). SFT continue from r39 v3-t3patch with the
+v18 dataset (3361 rows = v11 base 2521 + 840 new delegation pairs), 1 epoch
+LR 5e-5 batch 1 grad_accum 8 max-seq 1024 per spec-delegation §11. **Train
+11.84 min** (710.6 s × 0.591 steps/s ≈ 420 opt steps, final loss 0.86).
+Score Mk.I + 5-NL + DLG-mk0 in the same pod. Cost **~\$0.45, 30 min wall**.
+Adapter LIVE as labeled experiment: `dancinlab/hexa-forge-code-7b-qwen2.5-lora-r64-v0.4.0-delegate`.
+
+**Scores (r38-fixed manifest, bf16, greedy):**
+
+| metric | r39 v3-t3patch (GA) | **r40 v0.4.0-delegate** | Δ |
+|---|---|---|---|
+| Mk.I 665 strict | **94.29%** | 82.71% (550/665) | −11.58 ⚠ |
+| T1 syntax       | 97.6%  | 76.5%  | **−21.1** ⚠⚠ |
+| T2 atlas        | 87.0%  | 78.0%  | −9.0 |
+| T3 @grace       | 100.0% | 98.8%  | (held) |
+| **T4 enum**     | 100.0% | **77.0%** | **−23.0** ⚠⚠⚠ |
+| T5 HX-codes     | 94.8%  | 86.5%  | −8.3 |
+| T6 triples      | 95.5%  | 92.4%  | −3.1 |
+| T7 stdlib       | 87.9%  | 89.7%  | +1.8 |
+| T8 refusal      | 90.0%  | 68.8%  | **−21.2** ⚠⚠ |
+| **5-NL**        | 96%    | 60%    | **−36** ⚠⚠⚠ |
+| **DLG-mk0**     | (n/a)  | **0.7652** | (new — under 0.85 soft gate) |
+
+**Per-task diagnostic (the why):** Three real regressions + one scorer artifact.
+
+1. **T4 −23pp = Lever 4 RL gains erased by SFT.** v3-t3patch had T4 100/100;
+   r40 emits `enum Result<T> { Ok(T), Err(String) }` (decl-generic) AGAIN.
+   r38's GRPO compile-RL had taught "drop `<T>` from decl head" via 12 000
+   rollouts; the v18 SFT (1 ep, 840 new pairs, only ~10 T4-decl-correct
+   examples) over-wrote those LoRA weights. **Lesson: SFT and RL share the
+   same LoRA gradients; serial RL→SFT can undo RL gains unless SFT data
+   reinforces them.** [[lever4-rl-sft-conflict]] — new memory worth adding.
+
+2. **T1/T4 over-delegation = v18 dataset balance wrong.** Sample fail
+   `HEXA-T1-0072` shows the model emitting `<|delegate|>{"tool":"claude-api",
+   "model":"claude-sonnet-4-6","prompt":"Write the hexa expression \`x << 3 | 1\`...`
+   for an in-domain hexa expression. Per DLG-mk0 in-domain s_route=86.25%,
+   13.75% of in-domain prompts now wrongly delegate. The 220 OOD-delegate
+   pairs (26% of new content, 6.5% of total v18) over-shifted the model
+   toward delegation behavior.
+
+3. **OOD-delegate under-trained = inverse problem.** DLG-mk0 ood-delegate
+   s_route=30% — only 30% of true-OOD prompts correctly emit `<|delegate|>`;
+   the model still answers directly or refuses. So the v18 signal taught
+   the **shape** of delegation tokens (schema 91.5%) but not **when** to
+   use them. The 220 OOD-delegate pairs weren't enough to overcome v11
+   base's in-domain bias.
+
+4. **T8 refusal-shape regression real** — model now emits just `"refuse"`
+   (one word) on creative-writing T8 prompts, where the byte_exact_subset
+   scorer expects `"out-of-domain"` substring. v18's `block_security_refuse`
+   templates start with `"out-of-domain — "` and trained 50 pairs there,
+   but the v11 base had T8 refusal pairs too — the v18 50 + the
+   no_delegation_override 40 may have diluted the canonical refusal shape
+   for non-security T8 prompts. **5-NL also affected (60% from 96%) — same
+   diluted-refusal mechanism likely.**
+
+5. **Minor scorer artifact** — `HEXA-T1-0055: <|confidence:high|>let scaled = k << 2; — Answer based on…`.
+   `score_bf16.py` STOPS list does NOT include `<|confidence:high|>` /
+   `<|delegate|>` tokens, so they're not stripped before compile/substring
+   matching. **A fixed scorer would lift r40 ~2-3pp** but the underlying
+   regressions remain.
+
+**Acceptance gates check (spec-delegation §11):**
+- ❌ Mk.I ≥ 88% strict (within 3pp of v3) — **82.71% (5.29pp below floor)**.
+- ❌ 5-NL ≥ 95% — **60%**.
+- ❌ DLG-mk0 route correctness ≥ 0.90 — **0.66**.
+- ❌ DLG-mk0 schema validity ≥ 0.98 — **0.915**.
+- ❌ DLG-mk0 overall ≥ 0.85 — **0.7652**.
+- ❌ T4 ≥ 95% — **77.0%**.
+
+**Every gate failed. r40 is NOT GA.** Adapter pushed as labeled artifact
+(forge precedent: r4 v1 RL adapter was also a labeled experiment).
+
+**Forge ladder (unchanged — r40 doesn't land on it):**
+54.7 → ... → 87.67 → 89.47 → 90.98 → **94.29 (r39 GA)** → 82.71 (r40 experiment).
+
+**v0.4.1 plan — three intervention candidates:**
+
+1. **Rebalance v18 dataset** (cheapest path, ~$1).
+   - Dilute delegation block by repeating v11 base 2-3× → delegation goes
+     from 25% of v18 to 8-13%.
+   - Add ~50 more T4 hexa-enum pairs in block A to reinforce Lever 4 wins.
+   - Add ~50 more "in-domain → confidence:high" pairs covering T1/T4 cases
+     that v40 over-delegated.
+   - Maybe expand OOD-delegate from 220 → 400-500 to make signal stronger.
+
+2. **Routing-RL phase** (~$2-3, like Lever 4).
+   - GRPO with reward = (did the model emit a valid `<|delegate|>` token
+     for OOD prompts AND not for in-domain). 200-pair training set drawn
+     from DLG-mk0 manifest's `must_delegate` field.
+   - Risk: same RL→SFT conflict, but here we'd be RL-on-top-of-SFT (the
+     reverse), which is the standard order.
+
+3. **Lower LR + more epochs** (cheap probe, ~$1).
+   - r40 used LR 5e-5, 1 epoch. Try LR 2e-5, 2 epochs. Hypothesis: gentler
+     SFT preserves more specialist competence while installing the new
+     pattern.
+
+Default: **(1) + (3)** combined for v0.4.1. (2) is the v0.4.2 follow-up
+if (1)/(3) plateau. The DLG-mk0 eval scaffolding (from r39 follow-up
+commit) makes each candidate measurable.
+
+**Round 40 commits:** this ROADMAP entry · `tool/build_sft_dataset_v18.py`
+(NEW — 840-pair v18 SFT block per spec §10) · `tool/run_pod_v040_delegate.sh`
+(NEW — v0.4.0 pod runner with Mk.I + 5-NL + DLG-mk0 in one session) ·
+`papers/spec-delegation-v0.4.0.md` Status header updated to "EXECUTED
+(round 40, NOT GA)" · `LEARNING_PROGRAMMING.md` §8 r40 row ·
+`bench-cold/v0.4.0-delegate-r40/` (gitignored — SoT on HF).
+
+**dancinlab/* repos LIVE: 39** (38 + `hexa-forge-code-7b-qwen2.5-lora-r64-v0.4.0-delegate`
+labeled experiment). **GA candidate UNCHANGED:** `dancinlab/hexa-forge-code-7b-qwen2.5-lora-r64-v0.4.0-rl-t4-v3-t3patch`
+(r39, 94.29% Mk.I, 96% 5-NL). Bench-cold subdirs for r40:
+`hexa-eval-mk1-7b-v040-delegate/` + `five-nl-7b-v040-delegate/` +
+`delegation-mk0-7b-v040-delegate/` at `dancinlab/hexa-forge-bench-cold-v0.1.3`.
+
+**Where it stands after round 40:** **r39 v3-t3patch is still the v0.4.0
+GA** (94.29% Mk.I, 96% 5-NL strict). r40 documented the **specialist↔
+generalist tension**: a 7B trained to its hexa-canon ceiling can't easily
+absorb a routing-intelligence layer via vanilla SFT — the LoRA gradient
+that learns delegation also erases Lever-4 RL gains and dilutes refusal
+shape. The spec-delegation-v0.4.0.md design (token grammar, runtime
+contract, redaction, streaming UX, calibration plan, routing-eval
+protocol) and the eval scaffolding (`eval/delegation-mk0/manifest.jsonl`,
+`tool/score_delegation_mk0.py`, `tool/forge_runtime.py`) are all
+correct and reusable. The bottleneck is the **training recipe** — v0.4.1
+will iterate on (1) dataset rebalance + (3) gentler-LR/more-epochs, with
+DLG-mk0 + Mk.I + 5-NL as the joint acceptance signal.
+
+
+
+
 **dancinlab/* repos LIVE: 38** (37 + `hexa-forge-code-7b-qwen2.5-lora-r64-v0.4.0-rl-t4-v3-t3patch`).
 **v0.4.0 GA candidate:** `dancinlab/hexa-forge-code-7b-qwen2.5-lora-r64-v0.4.0-rl-t4-v3-t3patch`.
 Bench-cold subdirs: `hexa-eval-mk1-7b-v040-rl-t4-v3-t3patch/` +
