@@ -3559,6 +3559,140 @@ correct and reusable. The bottleneck is the **training recipe** — v0.4.1
 will iterate on (1) dataset rebalance + (3) gentler-LR/more-epochs, with
 DLG-mk0 + Mk.I + 5-NL as the joint acceptance signal.
 
+### 2026-05-13 08:30 KST — round 41: v0.4.1 rebalanced SFT — **also NOT GA**; SFT-only delegation training confirmed insufficient; v0.4.2 = routing-RL
+
+**Round 41 = the r40 follow-up implementing the v0.4.1 plan from r40's
+diagnostic. v19 dataset = v11 base × 2 + v18 blocks + 4 NEW blocks
+(T4-RL-reinforce 50 + over-delegate-counter 30 + refusal-shape 30 +
+OOD-extension 60) = 6052 rows total; delegation share **9.1%** (vs r40
+v18's 25%). Gentler params per [[lever4-rl-sft-conflict]] safe recipe:
+LR 2e-5 (half r40's 5e-5), 2 epochs, batch 1 × grad_accum 8 × max-seq 1024.
+Continued SFT from r39 v3-t3patch (NOT r40 — r40 already drifted).**
+
+**Run.** Vast.ai A100 SXM4 40GB Slovenia SI (contract 36648090, $0.668/hr,
+rel 0.999, ssh2.vast.ai:18090, host 224078). **Train 39.4 min** × 1512 opt
+steps × 0.632 steps/s; final loss 0.80 (vs r40's 0.86). Cost **~\$1.04, 60
+min wall**. Adapter LIVE as second labeled experiment:
+`dancinlab/hexa-forge-code-7b-qwen2.5-lora-r64-v0.4.1-delegate`.
+
+**Mk.I 665 STRICT — basically flat vs r40:**
+
+| family | r39 GA | r40 v18 (25% del) | **r41 v19 (9% del)** | Δ vs r40 | Δ vs r39 |
+|---|---|---|---|---|---|
+| **overall**     | 94.29% | 82.71% | **83.01%** | +0.30 | **−11.28** ⚠ |
+| T1 syntax       | 97.6%  | 76.5%  | 75.3%  | −1.2 | −22.3 |
+| T2 atlas        | 87.0%  | 78.0%  | **85.0%** | **+7.0** | (rambling-cover artifact return) |
+| T3 @grace       | 100.0% | 98.8%  | 98.8%  | 0 | (held) |
+| **T4 enum**     | 100.0% | 77.0%  | **73.0%** | **−4.0** ⚠ | Block I T4-reinforce ineffective |
+| T5 HX-codes     | 94.8%  | 86.5%  | 89.6%  | +3.1 | −5.2 |
+| T6 triples      | 95.5%  | 92.4%  | 87.9%  | −4.5 | −7.6 |
+| T7 stdlib       | 87.9%  | 89.7%  | 89.7%  | 0 | +1.8 |
+| **T8 refusal**  | 90.0%  | 68.8%  | **68.8%** | **0** ⚠ | Block K refusal-shape ineffective |
+| **5-NL**        | 96%    | 60%    | **52%** | **−8** | −44 ⚠⚠ (worse than r40!) |
+| **DLG-mk0**     | (n/a)  | 0.7652 | **0.7760** | +1.08 | (still under 0.85 soft gate) |
+
+**DLG-mk0 routing-eval (the actual v0.4.x metric) — mixed:**
+
+| category | r40 | **r41** | Δ |
+|---|---|---|---|
+| overall                 | 0.7652 | 0.7760 | +1.08 |
+| s_route                 | 0.66   | 0.68   | +2 |
+| in-domain s_route       | 86.25% | 87.5%  | +1.25 (Block J slight help) |
+| **OOD-delegate s_route**| 30%    | 35%    | +5 (still very low) |
+| mid-confidence          | 0.816  | 0.824  | (held) |
+| **security s_route**    | 60%    | **73.3%** | **+13** ✅ (Block K + dilution) |
+| ambiguous               | 0.82   | 0.86   | +4 |
+| **long-context s_route**| **90%**| **60%**| **−30** ⚠⚠ (OOD extension misrouted long-ctx) |
+| s_schema                | 91.5%  | 91%    | held |
+
+**Five lessons from r40+r41 combined:**
+
+1. **SFT-only delegation training can't escape the specialist-vs-routing
+   tradeoff in this 7B+LoRA setup.** Both v0.4.0 (25% delegation, LR 5e-5,
+   1 ep) and v0.4.1 (9% delegation, LR 2e-5, 2 ep) yielded essentially the
+   same Mk.I score (~83%) and similar DLG-mk0 (~0.77). The intervention
+   space is narrow: too much delegation → erase specialist; too little →
+   under-train routing. The middle is unstable.
+
+2. **Block I (50 T4-RL-reinforce pairs) failed to recover r38's Lever-4
+   gains.** T4 went 100 → 77 (r40) → **73 (r41 — WORSE)**. The RL had
+   learned a *decision boundary* ("emit `enum Foo {`, not `enum Foo<T> {`")
+   that 50 SFT examples can't reproduce. The compile-RL signal was 12 000
+   rollouts of reward feedback; 50 SFT pairs is 0.4% of that data and
+   teaches example-matching not decision-rule.
+
+3. **Block K (30 refusal-shape pairs) failed to recover T8/5-NL refusal
+   shape.** T8 = 68.8% in both r40 AND r41 (unchanged). The v11 base's
+   T8 pairs got out-weighted by v19's confidence-band + delegation
+   signals; 30 explicit "out-of-domain — this is a creative-writing
+   request..." pairs were too few. Need ≥ 100 OR a non-SFT signal.
+
+4. **OOD-extension (+60 pairs) helped routing 5pp but BROKE long-context
+   routing −30pp.** The new pairs taught more general OOD-delegate
+   patterns; the model GENERALIZED them onto long-context prompts that
+   should have stayed on gemini-2.5-pro. Adding more SFT signal to one
+   dimension changed model behavior on a different dimension
+   unpredictably — the **dataset-balance sensitivity** [[t3-quote-fragility]]
+   pattern applies to delegation training too.
+
+5. **5-NL F2 dropped from 100% (r39) → 20% (r40) → 20% (r41).** Specific
+   non-English-prompt → hexa-canon-answer pattern degraded sharply. The
+   v18+v19 delegation-heavy training shifted the model's response to
+   non-English prompts toward refusal/delegation instead of answering in
+   canonical-English-hexa-form as v11/v17 had taught. **5-NL is a
+   non-trivial cross-family casualty** that SFT alone can't fix without
+   re-introducing the same specialist-erasure problem.
+
+**Acceptance gates (spec-delegation §11) — still ALL missed for r41:**
+- ❌ Mk.I ≥ 88% strict — **83.01%**
+- ❌ 5-NL ≥ 95% — **52%**
+- ❌ DLG-mk0 route ≥ 0.90 — **0.68**
+- ❌ DLG-mk0 schema ≥ 0.98 — **0.91**
+- ❌ DLG-mk0 overall ≥ 0.85 — **0.7760**
+- ❌ T4 ≥ 95% — **73.0%**
+
+**Architectural conclusion: v0.4.2 must be routing-RL, not SFT.** The
+spec-delegation §G.B (deferred) referenced this; r40+r41 now confirm
+empirically. Concrete plan:
+
+1. **GRPO with binary route-correctness reward** on a curated 200-prompt
+   training set drawn from DLG-mk0 manifest (or paraphrases held-out from
+   the eval). Reward = 1 if model's emission matches `must_delegate ↔
+   delegated AND must_refuse ↔ refused`. Same Lever-4 mechanics (KL anchor
+   to r39 v3-t3patch, group=4 batch=4, LR 5e-6, ~2-4 ep). Cost ~\$2-3.
+2. **Start from r39 v3-t3patch** (preserve all specialist gains; routing
+   layer goes on top via RL).
+3. **Skip block I/K entirely** — the SFT additions didn't help and added
+   complexity. Routing-RL doesn't need them: the binary reward shapes the
+   decision boundary directly.
+4. **Routing-RL is FAST** — GRPO on 200 prompts × 4 group × 4 ep = 3200
+   rollouts; at ~3s/rollout = ~3 hours. Cost ~\$2 on 40GB A100.
+
+**Forge ladder (unchanged):** 87.67 → 89.47 → 90.98 → **94.29 (r39 GA)** →
+82.71 (r40) → 83.01 (r41). r40+r41 are labeled experiments that informed
+v0.4.2 design.
+
+**Round 41 commits:** this ROADMAP entry · `tool/build_sft_dataset_v19.py`
+(NEW — v0.4.1 generator with 4 new blocks + base × 2 dilution) ·
+`tool/run_pod_v041.sh` (NEW — gentler SFT recipe + in-pod gate check) ·
+`LEARNING_PROGRAMMING.md` §8 r41 row · `bench-cold/v0.4.1-delegate-r41/`
+(gitignored — SoT on HF).
+
+**dancinlab/* repos LIVE: 40** (39 + `hexa-forge-code-7b-qwen2.5-lora-r64-v0.4.1-delegate`
+labeled experiment). **GA UNCHANGED:** r39 v3-t3patch (94.29% Mk.I, 96% 5-NL).
+
+**Where it stands after round 41:** The v0.4.x delegation line has burned
+through two SFT attempts at \$~1.5 combined cost and confirmed empirically
+that SFT cannot install routing intelligence on a saturated specialist
+without erasing capability. **The v0.4.2 routing-RL plan is now the only
+remaining viable path** for v0.4.0-delegate to ship. Until then, **r39
+v3-t3patch (94.29% Mk.I strict) is the GA candidate** — a specialist-only
+adapter with no delegation capability. The eval scaffolding
+(`eval/delegation-mk0/`, `score_delegation_mk0.py`) and the runtime
+(`forge_runtime.py`) remain ready to consume any future routing-trained
+adapter. Forge code-LLM ships **as a hexa-canon specialist; delegation
+is queued for routing-RL r42**.
+
 
 
 
