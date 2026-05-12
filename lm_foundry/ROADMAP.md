@@ -3380,6 +3380,46 @@ the scorer-artifact diagnosis · `LEARNING_PROGRAMMING.md` §8 r39 row ·
 [[t3-quote-fragility]] memory updated with the rambling-cover scorer
 diagnosis · `bench-cold/v0.4.0-rl-t4-v3-t3patch/` (gitignored — SoT on HF).
 
+**r39 follow-up — v0.4.0 delegation scaffolding landed (same session).**
+Per spec §12 deliverables checklist, three of the eight items landed before
+the next pod round so the v0.4.0 SFT round has its measurement scaffolding
+in place:
+- `tool/build_delegation_mk0.py` (NEW, 200-task generator with category
+  templates matching spec §9.A distribution: 80 in-domain / 60 OOD-delegate
+  varied tool+tier / 25 mid-confidence / 15 security-refuse / 10 ambiguous /
+  10 long-context). Generated `eval/delegation-mk0/manifest.jsonl` (665 →
+  200 tasks; distribution verified). Each row carries `task_id`, `prompt`,
+  `ideal_route{must_delegate, must_refuse, min_band, preferred_tool,
+  preferred_model_tier, rationale}`, `tags`.
+- `tool/score_delegation_mk0.py` (NEW, 5-subscore scorer per spec §9.B:
+  route correctness w=0.40, band correctness w=0.20, tool match w=0.15,
+  model-tier match w=0.15, schema validity w=0.10 hard gate). Cross-vendor
+  tier equivalence table (haiku↔nano, sonnet↔mini, opus↔flagship) so a
+  delegate that picks the wrong vendor at the right cost tier gets partial
+  credit. Unit-tested on 9 cases locally (in-domain-high, OOD-correct,
+  OOD-wrong-tool, OOD-malformed-schema hard-gate, security-refuse-correct,
+  security-mistake-delegated, long-context-cross-vendor-tier-equiv, …).
+- `tool/forge_runtime.py` (NEW, ~580 lines — full §3 11-step contract
+  implementation; vendor SDK calls stubbed for v0.4.0). Detects
+  `<|delegate|>` regex, parses+validates JSON against the §2.A schema,
+  redacts 8 secret classes (`api-key` / `jwt` / `private-key` /
+  `email` / `ipv4` / `local-path` etc.) with soft/hard 2-band, authorises
+  via `secret get` CLI lookup, per-conversation + per-day budget caps,
+  emits filler tokens chosen by `reason` (general/math/longctx/reason),
+  injects `<|delegate-result|>` back into the model context, telemetry
+  to `state/delegation_log.jsonl` (gitignored). 5 smoke tests pass
+  (direct-answer, well-formed delegate, schema-violation never-event,
+  redaction hard-block, tool-not-in-allowlist). The Anthropic/OpenAI/
+  google-genai SDK calls are STUBs; wire-up is the v0.4.0 round's job.
+
+**What's still deferred to the v0.4.0 round:** `tool/build_sft_dataset_v18.py`
+(840-pair SFT block per spec §10), vendor SDK wire-up in `forge_runtime.py`,
+one SFT round on top of r39 v3-t3patch with the v18 dataset, score against
+Mk.I + 5-NL + DLG-mk0, HF push as `dancinlab/hexa-forge-code-7b-qwen2.5-lora-r64-v0.4.0-delegate`.
+Spec §11 estimates ~$2-3 / 2-3h. Eval scaffolding ready means the v0.4.0
+round's pod run can directly invoke `score_delegation_mk0.py` and produce
+the routing-eval numbers in the same pod session as the SFT.
+
 **dancinlab/* repos LIVE: 38** (37 + `hexa-forge-code-7b-qwen2.5-lora-r64-v0.4.0-rl-t4-v3-t3patch`).
 **v0.4.0 GA candidate:** `dancinlab/hexa-forge-code-7b-qwen2.5-lora-r64-v0.4.0-rl-t4-v3-t3patch`.
 Bench-cold subdirs: `hexa-eval-mk1-7b-v040-rl-t4-v3-t3patch/` +
