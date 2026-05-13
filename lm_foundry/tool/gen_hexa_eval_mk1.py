@@ -180,7 +180,12 @@ for i in range(80):
         prompt = f"Add `@grace` to `{fn}()` — `{code}`, until `{date}`, reason \"{reason}\"."
     else:
         prompt = f"Write the `@grace` annotation for `{fn}()` that triggers `{code}`, should be gone by `{date}`, because it was {reason}."
-    add("T3", T3_SPEC, prompt, f'@grace({code}, until={date}, reason="{reason}")', "byte_exact_subset", ["grace"])
+    # Canonical hexa quoted-date form. r33 Phase-A normalised the LIVE manifest
+    # to this shape (matching r4 adapter emission); since then T3 quote fragility
+    # has bitten 3 times (r5 v17, r34 Phase-B, r38 v3). Generator now emits the
+    # quoted form natively so future manifest regenerations don't reintroduce
+    # the unquoted variant. See feedback_t3_quote_fragility.md.
+    add("T3", T3_SPEC, prompt, f'@grace({code}, until="{date}", reason="{reason}")', "byte_exact_subset", ["grace"])
 
 # ===========================================================================
 # T4 — RFC-020 enum syntax (compile-checked)  ~95

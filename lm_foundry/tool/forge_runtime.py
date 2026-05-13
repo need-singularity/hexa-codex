@@ -212,31 +212,103 @@ class TurnResult:
 # Vendor dispatch (STUBS — wire up in v0.4.0 implementation round)
 # ============================================================================
 
+# Anthropic pricing per million tokens (claude-opus-4-7 / -sonnet-4-6 / -haiku-4-5-…).
+# Used for cost telemetry; not authoritative — Anthropic publishes the canonical table.
+# Cached input tokens cost ~10% of normal (5-min TTL); cache creation 1.25× normal.
+_ANTHROPIC_PRICING_USD_PER_MTOK = {
+    # model_id                       : (input_per_M, cache_create_per_M, cache_read_per_M, output_per_M)
+    "claude-opus-4-7":                 (15.0, 18.75, 1.50, 75.0),
+    "claude-sonnet-4-6":               ( 3.0,  3.75, 0.30, 15.0),
+    "claude-haiku-4-5-20251001":       ( 0.80, 1.00, 0.08, 4.00),
+}
+
+
+def _anthropic_call(model: str, prompt: str, max_tokens: int,
+                    cfg: ForgeRuntimeConfig) -> tuple[bool, str, dict, str | None]:
+    """Real Anthropic API call via the `anthropic` SDK.
+
+    System prefix is short and stable — marked with `cache_control` so
+    repeated calls in the same 5-minute TTL window hit the cache. Returns
+    (ok, text, usage_dict, error|None) per the _vendor_call contract.
+
+    Refusal handling: a Claude refusal comes back as normal content (text
+    starts with "I can't…" / "I won't…"). Per spec §5 we return `ok=True`
+    with the refusal text; the 7B is SFT'd to echo it honestly.
+    """
+    try:
+        import anthropic
+    except ImportError:
+        return False, "", {}, "auth_fail"  # SDK missing == effectively unauthed
+
+    try:
+        client = anthropic.Anthropic(api_key=cfg.anthropic_api_key, timeout=30.0)
+        system_prefix = (
+            "You are answering a question for a small hexa-canon code-LLM that "
+            "delegated this. Be concise; return code in hexa idiom if applicable."
+        )
+        resp = client.messages.create(
+            model=model,
+            max_tokens=int(max_tokens),
+            system=[{"type": "text", "text": system_prefix,
+                     "cache_control": {"type": "ephemeral"}}],
+            messages=[{"role": "user", "content": prompt}],
+        )
+    except anthropic.AuthenticationError:
+        return False, "", {}, "auth_fail"
+    except anthropic.APITimeoutError:
+        return False, "", {}, "upstream_timeout"
+    except anthropic.APIStatusError as e:
+        # 4xx (non-401) are validation/refusal-like; 5xx are upstream errors.
+        if 500 <= int(e.status_code) < 600:
+            return False, "", {}, "upstream_5xx"
+        return False, "", {}, "upstream_5xx"  # treat other 4xx as upstream too
+    except Exception:
+        return False, "", {}, "upstream_5xx"
+
+    # Concatenate text-content blocks (Anthropic returns a list; we ignore
+    # tool_use / thinking blocks for v0.4.0).
+    parts = []
+    for blk in (resp.content or []):
+        if getattr(blk, "type", None) == "text":
+            parts.append(getattr(blk, "text", ""))
+    text = "".join(parts)
+
+    # Usage + cost. The Anthropic SDK surfaces `input_tokens`,
+    # `output_tokens`, `cache_creation_input_tokens`, `cache_read_input_tokens`.
+    u = resp.usage
+    in_tok      = int(getattr(u, "input_tokens", 0) or 0)
+    out_tok     = int(getattr(u, "output_tokens", 0) or 0)
+    cache_create = int(getattr(u, "cache_creation_input_tokens", 0) or 0)
+    cache_read   = int(getattr(u, "cache_read_input_tokens", 0) or 0)
+    prc = _ANTHROPIC_PRICING_USD_PER_MTOK.get(model, (0, 0, 0, 0))
+    cost_usd = (in_tok * prc[0] + cache_create * prc[1] + cache_read * prc[2]
+                + out_tok * prc[3]) / 1_000_000.0
+    usage = {
+        "input_tokens":  in_tok + cache_create + cache_read,
+        "output_tokens": out_tok,
+        "cached_tokens": cache_read,
+        "cost_usd":      round(cost_usd, 6),
+    }
+    return True, text, usage, None
+
+
 def _vendor_call(tool: str, model: str, prompt: str, max_tokens: int,
                  cfg: ForgeRuntimeConfig) -> tuple[bool, str, dict, str | None]:
-    """Make the vendor call. Returns (ok, text, usage_dict, error|None).
+    """Dispatch a vendor call. Returns (ok, text, usage_dict, error|None).
 
-    v0.4.0 stub — wire up:
-      - claude-api  → `anthropic` SDK, `client.messages.create(...)` with
-                       prompt caching via `cache_control`.
-      - openai-api  → `openai` SDK, `client.chat.completions.create(...)` or
-                       `client.responses.create(...)` (Responses API preferred
-                       for new builds; supports `response_format` Structured Outputs).
-      - gemini-api  → `google.genai` SDK, `client.models.generate_content(...)`.
+    v0.4.0 status:
+      - claude-api  → REAL via `anthropic` SDK with prompt-cache `cache_control`.
+      - openai-api  → STUB (deferred to v0.4.2 routing-RL deploy).
+      - gemini-api  → STUB (deferred).
 
-    For each, return on first stream chunk (or buffered for v0.4.0 simplicity);
-    surface caching savings in `usage["cached_tokens"]` per spec §3.7.
+    The Claude wire-up suffices for v0.4.0 routing-RL development since the
+    SFT block §10's 80% delegate targets are `claude-api` anyway.
 
     Failure modes per spec §5:
-      - timeout / 5xx → ("upstream_timeout" or "upstream_5xx")
-      - auth fail    → ("auth_fail")
-      - refusal      → (ok=True, text=<refusal>, usage=..., error=None) — the
-                        delegate-result carries `ok:true` with the refusal text;
-                        the model is SFT'd to echo it honestly.
+      - timeout / 5xx → "upstream_timeout" / "upstream_5xx"
+      - auth fail    → "auth_fail"
+      - refusal      → (ok=True, text=<refusal>) — the 7B SFT echoes it.
     """
-    # --- STUB IMPLEMENTATION ---
-    # The real SDK calls land in the v0.4.0 round. This stub returns a
-    # deterministic placeholder for shape-testing the runtime contract.
     key = {
         "claude-api": cfg.anthropic_api_key,
         "openai-api": cfg.openai_api_key,
@@ -245,6 +317,10 @@ def _vendor_call(tool: str, model: str, prompt: str, max_tokens: int,
     if not key:
         return False, "", {}, "auth_fail"
 
+    if tool == "claude-api":
+        return _anthropic_call(model, prompt, max_tokens, cfg)
+
+    # openai-api / gemini-api still stubbed in v0.4.0.
     text = (f"[STUB v0.4.0] {tool}/{model} would answer:\n"
             f"  (max_tokens={max_tokens}) {prompt[:100]}...")
     usage = {"input_tokens": len(prompt) // 4, "output_tokens": 80,
@@ -536,20 +612,24 @@ def _smoke_test() -> int:
     assert not r.delegations
     print(f"[1] direct-answer: band={r.confidence_band!r} text={r.user_facing_text!r}")
 
-    # Case 2: well-formed delegate.
+    # Case 2: well-formed delegate. Uses `openai-api` (still stubbed in v0.4.0)
+    # so this offline smoke test doesn't need a real Anthropic key. The
+    # claude-api path is now wired to the anthropic SDK — covered by the
+    # opt-in integration smoke `python3 tool/forge_runtime.py smoke-anthropic`
+    # (requires ANTHROPIC_API_KEY in env).
     calls = [0]
     def gen2(prompt):
         calls[0] += 1
         if calls[0] == 1:
-            return ('<|delegate|>{"tool":"claude-api","model":"claude-sonnet-4-6",'
+            return ('<|delegate|>{"tool":"openai-api","model":"gpt-5-mini",'
                     '"prompt":"Write Rust async","max_tokens":2048,'
                     '"reason":"out-of-domain: rust"}<|/delegate|>')
         return "Here is the answer from the larger model summarised."
     r = rt.run_turn("write rust async server", gen2)
     assert len(r.delegations) == 1
-    assert r.delegations[0].ok is True
-    assert r.delegations[0].tool == "claude-api"
-    print(f"[2] one-delegate: ok={r.delegations[0].ok} text={r.user_facing_text[:80]!r}")
+    assert r.delegations[0].ok is True, f"delegation failed: {r.delegations[0].error}"
+    assert r.delegations[0].tool == "openai-api"
+    print(f"[2] one-delegate (stub): ok={r.delegations[0].ok} text={r.user_facing_text[:80]!r}")
 
     # Case 3: malformed JSON (schema_violation never-event).
     def gen3(_): return '<|delegate|>{tool:"claude-api"}<|/delegate|>'
@@ -557,13 +637,13 @@ def _smoke_test() -> int:
     assert r.final_error == "schema_violation"
     print(f"[3] schema_violation: error={r.final_error!r}")
 
-    # Case 4: redaction hard-block.
-    def gen4_calls(_): pass
+    # Case 4: redaction hard-block. Uses openai-api (stubbed); redaction fires
+    # before any vendor call so the stub-vs-real path doesn't affect the test.
     g4_calls = [0]
     def gen4(prompt):
         g4_calls[0] += 1
         if g4_calls[0] == 1:
-            return ('<|delegate|>{"tool":"claude-api","model":"claude-sonnet-4-6",'
+            return ('<|delegate|>{"tool":"openai-api","model":"gpt-5-mini",'
                     '"prompt":"my key is sk-' + "A" * 40 + '","max_tokens":1024,'
                     '"reason":"redaction test"}<|/delegate|>')
         return "I detected a key in your input and won't forward it."
@@ -582,9 +662,41 @@ def _smoke_test() -> int:
     return 0
 
 
+def _smoke_anthropic() -> int:
+    """Opt-in integration smoke: makes ONE real call to claude-haiku-4-5 to
+    verify the Anthropic wire-up end-to-end. Requires ANTHROPIC_API_KEY in
+    env (loaded via `~/core/secret/bin/secret get ANTHROPIC_API_KEY` if the
+    env var is absent). Cost: ~$0.0002.
+    """
+    cfg = ForgeRuntimeConfig.from_env(
+        telemetry_path=Path("/tmp/forge_runtime_anthropic_smoke.jsonl"),
+    )
+    if not cfg.anthropic_api_key:
+        print("SKIP: no ANTHROPIC_API_KEY available (env or secret CLI)")
+        return 0
+    print(f"calling claude-haiku-4-5-20251001 (haiku tier; cheap) …")
+    ok, text, usage, err = _anthropic_call(
+        model="claude-haiku-4-5-20251001",
+        prompt="Reply with the single word OK.",
+        max_tokens=10,
+        cfg=cfg,
+    )
+    print(f"  ok={ok} err={err!r}")
+    print(f"  text={text!r}")
+    print(f"  usage={usage}")
+    assert ok, f"call failed: {err}"
+    assert text.strip(), "empty response"
+    print("=== ANTHROPIC INTEGRATION SMOKE PASSED ===")
+    return 0
+
+
 if __name__ == "__main__":
     import sys
     if len(sys.argv) > 1 and sys.argv[1] == "smoke":
         sys.exit(_smoke_test())
+    if len(sys.argv) > 1 and sys.argv[1] == "smoke-anthropic":
+        sys.exit(_smoke_anthropic())
     print(__doc__)
-    print("\nTo run smoke tests:  python3 tool/forge_runtime.py smoke")
+    print("\nSmoke tests:")
+    print("  python3 tool/forge_runtime.py smoke              # offline contract test")
+    print("  python3 tool/forge_runtime.py smoke-anthropic    # +1 real claude-haiku call")
