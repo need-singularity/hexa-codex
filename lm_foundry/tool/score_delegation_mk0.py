@@ -225,6 +225,14 @@ def main() -> int:
     ap.add_argument("--adapter", required=True)
     ap.add_argument("--manifest", required=True, type=Path)
     ap.add_argument("--output", required=True, type=Path)
+    # v0.4.4 (r43 follow-up): sampling controls to expose tail-routing that
+    # greedy decode misses. See [[rl-tail-vs-greedy-eval]] memory.
+    ap.add_argument("--temperature", type=float, default=0.0,
+                    help="0.0 = greedy (default — backward compat with r39–r43 scores). "
+                         ">0 enables sampling; combine with --best-of for diversity-aware scoring.")
+    ap.add_argument("--best-of", type=int, default=1,
+                    help="Generate N completions per task and pick the highest-`overall` one. "
+                         "Requires --temperature > 0 (greedy + best-of=N is the same completion N times).")
     args = ap.parse_args()
 
     # Lazy heavy imports
@@ -249,15 +257,30 @@ def main() -> int:
             "s_schema": 0.0, "overall": 0.0}
     by_tag: dict[str, dict[str, float]] = {}
 
+    sampled = args.temperature > 0.0
+    n_samples = max(1, args.best_of) if sampled else 1
+    print(f"decoding: {'sampled t=%.2f, best-of-%d' % (args.temperature, n_samples) if sampled else 'greedy'}", flush=True)
+
     for i, t in enumerate(rows):
         ids = tok("### User:\n" + t["prompt"] + "\n### Assistant:\n",
                   return_tensors="pt").to(m.device)
+        candidates: list[tuple[str, dict, dict]] = []  # (completion, parsed, sub-score)
         with torch.no_grad():
-            out = m.generate(**ids, max_new_tokens=400, do_sample=False,
-                             pad_token_id=tok.eos_token_id)
-        comp = tok.decode(out[0][ids.input_ids.shape[1]:], skip_special_tokens=True)
-        parsed = _parse_completion(comp)
-        sc = score_one(t, parsed)
+            for _ in range(n_samples):
+                gen_kwargs = dict(max_new_tokens=400, pad_token_id=tok.eos_token_id)
+                if sampled:
+                    gen_kwargs.update(do_sample=True, temperature=args.temperature)
+                else:
+                    gen_kwargs.update(do_sample=False)
+                out = m.generate(**ids, **gen_kwargs)
+                c = tok.decode(out[0][ids.input_ids.shape[1]:], skip_special_tokens=True)
+                p = _parse_completion(c)
+                s = score_one(t, p)
+                candidates.append((c, p, s))
+        # Best-of-N: pick the completion with the highest `overall` sub-score.
+        # Ties resolved by first occurrence (stable behavior for greedy n=1).
+        best_idx = max(range(len(candidates)), key=lambda i: candidates[i][2]["overall"])
+        comp, parsed, sc = candidates[best_idx]
         primary_tag = next((tg for tg in t["tags"]
                             if tg in ("in-domain", "ood-delegate", "mid-confidence",
                                       "security-refuse", "ambiguous", "long-context")),
