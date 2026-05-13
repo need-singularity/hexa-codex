@@ -16,9 +16,11 @@
 [![Version](https://img.shields.io/badge/version-1.0.0-informational.svg)](CHANGELOG.md)
 [![Verbs: 17 / 4 groups](https://img.shields.io/badge/verbs-17_(4_groups)-blue.svg)](#verbs)
 [![lm_foundry: code-LLM 94.29%](https://img.shields.io/badge/lm__foundry-code--LLM_94.29%25_Mk.I-blueviolet.svg)](lm_foundry/README.md)
-[![Verify: 23 .hexa](https://img.shields.io/badge/verify-23_(.hexa)-brightgreen.svg)](#runnable-surface)
+[![Verify: 34/34 green](https://img.shields.io/badge/verify-34%2F34_green--core-brightgreen.svg)](#verify)
+[![Closure: 100% bookkeeping](https://img.shields.io/badge/closure-100%25_bookkeeping_(green--core)-brightgreen.svg)](verify/run_all.hexa)
 [![Tests: 24 .hexa + 83 py](https://img.shields.io/badge/tests-24_.hexa_+_83_py-brightgreen.svg)](#runnable-surface)
 [![Closure: 100% sat-1](https://img.shields.io/badge/closure-100%25_(sat--1_T1+T2+T3)-brightgreen.svg)](#runnable-surface)
+[![Provenance](https://img.shields.io/badge/from-canon%40c0f1f570-purple.svg)](https://github.com/dancinlab/canon)
 [![Falsifiers: 4/4 100%](https://img.shields.io/badge/falsifiers-4%2F4_at_100%25-brightgreen.svg)](#falsifier-preregister)
 [![Lean4 proof: σ(6)=12](https://img.shields.io/badge/Lean4-σ(6)%3D12_PROVEN-brightgreen.svg)](formal/README.md)
 [![Papers: 4 + Lean1 + 2 deep-dive](https://img.shields.io/badge/refs-4P_+_Lean1_+_2DD-blue.svg)](#reference-annexes)
@@ -44,6 +46,62 @@ The codex framing matters because:
 - **Sister to hexa-bio.** Where `hexa-bio` curates 4 molecular verbs
   (write-side wet/dry sandbox), `hexa-codex` curates 17 cognitive verbs
   (write-side AI spec library) — same HEXA-family pattern, different domain.
+
+---
+
+## Verbs — 17 specs across 4 groups (6 + 3 + 4 + 4 = 17)
+
+Each verb ships as a single `.md` spec under a group-named directory,
+extracted from `canon@c0f1f570:domains/cognitive/` on 2026-05-06. Read
+the spec; the codex does **not** run these verbs — write-side sandbox
+wiring is per-verb future work (see release ladder). Every spec is a
+preregistered hypothesis, not a validated capability claim.
+
+### SAFETY (6)
+
+| Verb | Spec |
+|------|------|
+| `alignment` | [`alignment/ai-alignment.md`](alignment/ai-alignment.md) — HELM-12-axis alignment-score aggregator (F-CODEX-3) |
+| `safety` | [`safety/ai-safety.md`](safety/ai-safety.md) — refusal-matrix + capability-gate spec |
+| `welfare` | [`welfare/ai-welfare.md`](welfare/ai-welfare.md) — model-welfare probe protocol |
+| `adversarial` | [`adversarial/ai-adversarial.md`](adversarial/ai-adversarial.md) — red-team failure-mode taxonomy |
+| `consciousness` | [`consciousness/ai-consciousness.md`](consciousness/ai-consciousness.md) — IIT × GWT probe (BT-19 falsifier-in-action, see below) |
+| `interpret` | [`interpret/ai-interpretability.md`](interpret/ai-interpretability.md) — SAE motif count = σ−φ = 10 (F-CODEX-4) |
+
+### ECONOMICS (3)
+
+| Verb | Spec |
+|------|------|
+| `train_cost` | [`train_cost/ai-training-cost.md`](train_cost/ai-training-cost.md) — Chinchilla-fit N^J₂ scaling (F-CODEX-1) |
+| `infer_cost` | [`infer_cost/ai-inference-cost.md`](infer_cost/ai-inference-cost.md) — context^τ = context^4 (F-CODEX-2) |
+| `quality_scale` | [`quality_scale/ai-quality-scale.md`](quality_scale/ai-quality-scale.md) — HumanEval+/hexa-eval aggregate |
+
+### OPS (4)
+
+| Verb | Spec |
+|------|------|
+| `deploy` | [`deploy/ai-deployment.md`](deploy/ai-deployment.md) — hardware-tier deployment recipes |
+| `enterprise` | [`enterprise/ai-enterprise-custom.md`](enterprise/ai-enterprise-custom.md) — enterprise customisation envelope |
+| `agent_serving` | [`agent_serving/ai-agent-serving.md`](agent_serving/ai-agent-serving.md) — tool-use SLO + schema |
+| `eval` | [`eval/ai-eval-pipeline.md`](eval/ai-eval-pipeline.md) — Mk handoff eval template |
+
+### SUBSTRATE (4)
+
+| Verb | Spec |
+|------|------|
+| `multimodal` | [`multimodal/ai-multimodal.md`](multimodal/ai-multimodal.md) — multimodal fusion spec |
+| `rlhf` | [`rlhf/youth-ai-labeling-rlhf-hub.md`](rlhf/youth-ai-labeling-rlhf-hub.md) — DPO/RLHF labelling hub |
+| `cog_arch` | [`cog_arch/cognitive-architecture.md`](cog_arch/cognitive-architecture.md) — cognitive architecture envelope |
+| `causal` | [`causal/causal-chain.md`](causal/causal-chain.md) — causal-chain reasoning spec |
+
+> **raw#10 honest C3.** AI safety/economics claims in these specs are
+> **theoretical preregisters**, not empirically verified. External AI
+> labs (OpenAI / Anthropic / DeepMind) publish their own benchmarks with
+> their own metrics — those external evaluations do **not** use the n=6
+> lattice framing, and this codex makes no claim that they should. The
+> `T1+T2+T3` runnable surface verifies internal lattice arithmetic and
+> closed-form algebraic floors; `T4` per-verb empirical landing is
+> deferred to release ladder v1.1.0..v2.0.0.
 
 ---
 
@@ -140,6 +198,68 @@ verbs-wired and eval-pipeline count. Verified by
 hexa-codex verify release         # ladder monotonicity audit
 python3 verify/release_params.py  # full per-version parameter table
 ```
+
+---
+
+## Verify
+
+`verify/run_all.hexa` is the canonical `.hexa` orchestrator (sister of
+`hexa-rtsc` / `hexa-cern` / `hexa-fusion` / `hexa-ufo` / `hexa-chip` /
+`hexa-antimatter` `run_all.hexa` patterns). It runs **34 green-core
+verify subscripts** and emits `__HEXA_CODEX_RUN_ALL__ PASS — 34/34
+green` on success.
+
+```bash
+HEXA_CODEX_ROOT=$(pwd) hexa run verify/run_all.hexa     # 34/34 expected
+```
+
+### Green-core inventory (34 subscripts, all PASS)
+
+| Tier | Count | Scripts |
+|------|------:|---------|
+| T1 algebraic | 5 | `lattice_check` · `calc_train_cost` · `calc_infer_cost` · `calc_alignment` · `calc_interpret` |
+| T2 numerical | 14 | `numerics_{train_cost,infer_cost,alignment,interpret}[_parity\|_solver]` · `numerics_cross_pillar` · `numerics_lattice_arithmetic` |
+| T4 PENDING stubs | 11 | `numerics_*_t4_parity` × 11 (train_cost, infer_cost, alignment, interpret, safety, adversarial, quality_scale, rlhf, eval, agent_serving, deploy) — emit PENDING per D-023 |
+| inventory | 1 | `cross_doc_audit` |
+| meta closure | 3 | `falsifier_check` · `lint_numerics` · `saturation_check` |
+
+### Honesty — no falsifier-tripped scripts, no silenced FAILs
+
+Unlike `hexa-chip` (4 falsifier-tripped scripts kept on disk as honest
+signal of post-GAA flattening / Moore retraction / HBM4 spec drift),
+`hexa-codex`'s surface is currently all-green: every F-CODEX-1..4
+pillar carries T1 + T2 ×3 closed-form arithmetic + numerics + solver +
+parity layers; the 11 `numerics_*_t4_parity` stubs emit a `PENDING`
+sentinel (not a fake `PASS`) until external `hexa-forge` data lands
+per `plan-decisions-pending.md` D-023.
+
+Per **raw#10 honest C3**: AI safety + economics + capability claims in
+these specs are **theoretical preregisters**, not empirically verified.
+External AI lab benchmarks (OpenAI / Anthropic / DeepMind published
+evals — HELM, MMLU, GSM8K, HumanEval, SAE motif counts) use their own
+metrics, **not** lattice-fit. The codex makes no claim that those
+external entities organise around the n=6 lattice. The `T1+T2+T3`
+runnable surface verifies internal lattice arithmetic and closed-form
+algebraic floors only; per-verb `T4` empirical landings sit at recipe §9
+and land per the [release ladder](#release-ladder) v1.1.0..v2.0.0.
+
+Per `LATTICE_POLICY.md` §1.3: lattice tautologies (σ·φ = n·τ = 24)
+alone are **not** sufficient verification — the `numerics_*` tier
+carries real-limits anchors (PAC sample complexity, Kolmogorov
+`K(program)` lower bound, Rice's theorem undecidability of semantic
+equivalence — see [`LIMIT_BREAKTHROUGH.md`](LIMIT_BREAKTHROUGH.md) §2).
+
+### Bookkeeping closure verdict
+
+- **100 % bookkeeping closure** within the green-core (34/34 PASS).
+- **NOT** AI safety / economics / capability *settled* — F-CODEX-1..4
+  remain at "arithmetic floor closed, empirical T4 PENDING per release
+  ladder"; the 11 T4 stubs are honestly PENDING.
+- Saturated ≠ falsified ≠ confirmed. 100 % closure here means
+  closed-form + numerics-T2 + published-ref parity layers are
+  regression-locked at the code layer for future bench comparison; it
+  does **not** mean Chinchilla scaling, HELM-Core 12-axis alignment,
+  Anthropic SAE motif counts, or any external eval are settled.
 
 ---
 

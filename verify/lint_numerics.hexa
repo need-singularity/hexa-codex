@@ -42,7 +42,23 @@ let ROOT = _root()
 let VERIFY_DIR = ROOT + "/verify"
 
 // Curated inventory — must match `verify/numerics_*.hexa` glob.
+//
+// Two strata kept together so the on-disk count check holds:
+//   - green core (14) : T2 numerics/parity/solver per F-CODEX-1..4 +
+//                       cross-pillar + lattice-arithmetic.  These all
+//                       call the _check() harness with strict bands.
+//   - T4 stubs (11)   : `numerics_*_t4_parity.hexa` — Stage 0 stubs
+//                       that emit a PENDING sentinel until external
+//                       hexa-forge T4 PRs land per D-023.  They do not
+//                       claim empirical verification today (raw#10 C3:
+//                       OpenAI / Anthropic / DeepMind benchmarks use
+//                       their own metrics, not lattice-fit).  They are
+//                       counted here so the inventory floor is honest
+//                       about everything on disk; the recipe §4 strict
+//                       invariants (1-5 + harness-call check 9) only
+//                       apply to the green-core 14 (see SKIP_LINT below).
 let NUMERICS_SCRIPTS = [
+    // ── green core (14) ─────────────────────────────────────────────
     "numerics_train_cost.hexa",
     "numerics_infer_cost.hexa",
     "numerics_alignment.hexa",
@@ -57,7 +73,47 @@ let NUMERICS_SCRIPTS = [
     "numerics_interpret_solver.hexa",
     "numerics_cross_pillar.hexa",
     "numerics_lattice_arithmetic.hexa",
+    // ── T4 stubs (11) — PENDING until forge data lands (D-023) ──────
+    "numerics_train_cost_t4_parity.hexa",
+    "numerics_infer_cost_t4_parity.hexa",
+    "numerics_alignment_t4_parity.hexa",
+    "numerics_interpret_t4_parity.hexa",
+    "numerics_safety_t4_parity.hexa",
+    "numerics_adversarial_t4_parity.hexa",
+    "numerics_quality_scale_t4_parity.hexa",
+    "numerics_rlhf_t4_parity.hexa",
+    "numerics_eval_t4_parity.hexa",
+    "numerics_agent_serving_t4_parity.hexa",
+    "numerics_deploy_t4_parity.hexa",
 ]
+
+// Scripts excluded from recipe §4 strict invariants because they are
+// PENDING-sentinel T4 stubs (no _check harness; no FALSIFIERS body in
+// the same shape; sentinel name is __HEXA_CODEX_T4_<VERB>_PARITY__).
+//
+// Per AI-substrate honesty contract: a T4 stub MUST emit PENDING (not
+// pretend to PASS empirically) until external lab data lands.  Lint
+// still verifies their on-disk presence and uniform namespace prefix,
+// but does not require math_pure import / strict PASS sentinel /
+// _check() harness call — those gate the green core only.
+let SKIP_LINT = [
+    "numerics_train_cost_t4_parity.hexa",
+    "numerics_infer_cost_t4_parity.hexa",
+    "numerics_alignment_t4_parity.hexa",
+    "numerics_interpret_t4_parity.hexa",
+    "numerics_safety_t4_parity.hexa",
+    "numerics_adversarial_t4_parity.hexa",
+    "numerics_quality_scale_t4_parity.hexa",
+    "numerics_rlhf_t4_parity.hexa",
+    "numerics_eval_t4_parity.hexa",
+    "numerics_agent_serving_t4_parity.hexa",
+    "numerics_deploy_t4_parity.hexa",
+]
+
+fn _skip_lint(name: str) -> bool {
+    for s in SKIP_LINT { if s == name { return true } }
+    return false
+}
 
 // Project-namespace prefix (recipe §6 invariant 4).
 let PROJECT_PREFIX = "__HEXA_CODEX_"
@@ -128,18 +184,21 @@ fn _glob_count() -> int {
 
 // ── checks ───────────────────────────────────────────────────────────────
 
-// Check 1: invariant #1 — every numerics_*.hexa imports math_pure.
+// Check 1: invariant #1 — every green-core numerics_*.hexa imports math_pure.
+//   T4 stubs (SKIP_LINT) are excluded: they emit PENDING and do no math.
 fn check_invariant_math_pure() {
     let mut bad = []
     let mut i = 0
     while i < len(NUMERICS_SCRIPTS) {
-        if _body(i).find("use \"self/runtime/math_pure\"") < 0 {
-            bad.push(NUMERICS_SCRIPTS[i])
+        if _skip_lint(NUMERICS_SCRIPTS[i]) == false {
+            if _body(i).find("use \"self/runtime/math_pure\"") < 0 {
+                bad.push(NUMERICS_SCRIPTS[i])
+            }
         }
         i = i + 1
     }
     _check(len(bad) == 0,
-           "invariant 1: every numerics_*.hexa imports self/runtime/math_pure",
+           "invariant 1: every green-core numerics_*.hexa imports self/runtime/math_pure",
            "missing=" + str(len(bad)) +
            (if len(bad) > 0 { " (" + bad[0] + (if len(bad) > 1 { " ..." } else { "" }) + ")" } else { "" }))
 }
@@ -187,19 +246,22 @@ fn check_invariant_exit_zero() {
            "missing=" + str(len(bad)))
 }
 
-// Check 5: invariant #5 — `let mut RUN = 0` + `let mut FAIL = 0` counters.
+// Check 5: invariant #5 — green-core has `let mut RUN = 0` + `let mut FAIL = 0` counters.
+//   T4 stubs (SKIP_LINT) are excluded.
 fn check_invariant_counters() {
     let mut bad = []
     let mut i = 0
     while i < len(NUMERICS_SCRIPTS) {
-        let body = _body(i)
-        let has_run  = body.find("let mut RUN = 0") >= 0
-        let has_fail = body.find("let mut FAIL = 0") >= 0
-        if (has_run && has_fail) == false { bad.push(NUMERICS_SCRIPTS[i]) }
+        if _skip_lint(NUMERICS_SCRIPTS[i]) == false {
+            let body = _body(i)
+            let has_run  = body.find("let mut RUN = 0") >= 0
+            let has_fail = body.find("let mut FAIL = 0") >= 0
+            if (has_run && has_fail) == false { bad.push(NUMERICS_SCRIPTS[i]) }
+        }
         i = i + 1
     }
     _check(len(bad) == 0,
-           "invariant 5: let mut RUN = 0 + let mut FAIL = 0 counters",
+           "invariant 5: let mut RUN = 0 + let mut FAIL = 0 counters (green-core)",
            "missing=" + str(len(bad)))
 }
 
@@ -251,34 +313,40 @@ fn check_namespace_uniformity() {
            " foreign_leaks=" + str(len(bad_foreign)))
 }
 
-// Check 9: companion regression test exists for every numerics_*.hexa.
+// Check 9: companion regression test exists for every green-core numerics_*.hexa.
+//   T4 stubs (SKIP_LINT) are PENDING-only: they emit a PENDING sentinel
+//   and have no closed-form to regression-lock yet.  Tests land when
+//   forge data arrives (D-023).
 fn check_companion_tests_exist() {
     let mut missing = []
     let mut i = 0
     while i < len(NUMERICS_SCRIPTS) {
-        let stem = NUMERICS_SCRIPTS[i].replace(".hexa", "")
-        let test_path = ROOT + "/tests/test_" + stem + ".hexa"
-        let r = exec_with_status("test -f '" + test_path + "' && echo OK")
-        if to_string(r[0]).find("OK") < 0 { missing.push(stem) }
+        if _skip_lint(NUMERICS_SCRIPTS[i]) == false {
+            let stem = NUMERICS_SCRIPTS[i].replace(".hexa", "")
+            let test_path = ROOT + "/tests/test_" + stem + ".hexa"
+            let r = exec_with_status("test -f '" + test_path + "' && echo OK")
+            if to_string(r[0]).find("OK") < 0 { missing.push(stem) }
+        }
         i = i + 1
     }
     _check(len(missing) == 0,
-           "every numerics_*.hexa has a companion tests/test_*.hexa",
+           "every green-core numerics_*.hexa has a companion tests/test_*.hexa",
            "missing=" + str(len(missing)))
 }
 
-// Check 10: every numerics_*.hexa contains a `_check(` call site (the
-//   harness used by recipe-conformant verifiers). Ensures the check
-//   plumbing is wired and not just declared.
+// Check 10: every green-core numerics_*.hexa calls the `_check()` harness.
+//   T4 stubs (SKIP_LINT) emit PENDING without _check() — by design.
 fn check_check_harness_used() {
     let mut bad = []
     let mut i = 0
     while i < len(NUMERICS_SCRIPTS) {
-        if _body(i).find("_check(") < 0 { bad.push(NUMERICS_SCRIPTS[i]) }
+        if _skip_lint(NUMERICS_SCRIPTS[i]) == false {
+            if _body(i).find("_check(") < 0 { bad.push(NUMERICS_SCRIPTS[i]) }
+        }
         i = i + 1
     }
     _check(len(bad) == 0,
-           "every numerics_*.hexa actually calls the _check() harness",
+           "every green-core numerics_*.hexa actually calls the _check() harness",
            "missing=" + str(len(bad)))
 }
 

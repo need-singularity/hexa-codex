@@ -1,4 +1,8 @@
+<!-- @canonical: canon@a86ca143:papers/n6-ai-techniques-68-integrated-paper.md -->
 <!-- @canonical-origin: canon@a86ca143:papers/n6-ai-techniques-68-integrated-paper.md (moved 2026-05-10) -->
+<!-- @extracted: 2026-05-10 -->
+<!-- @md5_at_extraction: d1eef10f7fbdc9b438fab84de5cfbeec -->
+<!-- @absorbed_into: hexa-codex (P2 reference paper — wider 68-technique σ·φ=24 atlas; extension of P1 17-verb map) -->
 <!-- gold-standard: shared/harness/sample.md -->
 ---
 domain: ai-techniques-68-integrated

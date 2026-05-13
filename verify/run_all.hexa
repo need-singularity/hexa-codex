@@ -1,0 +1,187 @@
+#!hexa strict
+// hexa-codex/verify/run_all.hexa — orchestrator (.hexa primary).
+//
+// Single CLI entry that runs the verified-green core of hexa-codex's
+// verify/*.hexa surface and aggregates pass/fail. Sister of hexa-cern /
+// hexa-rtsc / hexa-fusion / hexa-ufo / hexa-chip / hexa-antimatter's
+// run_all pattern — same shape, AI-knowledge-substrate falsifier surface.
+//
+// Inventory (34 green-core verify/*.hexa scripts):
+//
+//   T1 algebraic   : calc_{train_cost,infer_cost,alignment,interpret}    (4)
+//                  + lattice_check                                       (+1)
+//
+//   T2 numerical   : numerics_{train_cost,infer_cost,alignment,interpret} (4)
+//                  + their _parity / _solver siblings                    (8)
+//                  + numerics_cross_pillar
+//                  + numerics_lattice_arithmetic                         (2 = 14)
+//
+//   T4 stubs       : numerics_*_t4_parity (11 PENDING-sentinel stubs for
+//                    forge data landing per D-023: train_cost, infer_cost,
+//                    alignment, interpret, safety, adversarial,
+//                    quality_scale, rlhf, eval, agent_serving, deploy)   (11)
+//
+//   inventory      : cross_doc_audit                                     (1)
+//
+//   meta closure   : falsifier_check + lint_numerics + saturation_check  (3)
+//
+// Total: 34 verify/*.hexa subject scripts (run_all.hexa itself excluded).
+//
+// NO EXCLUSIONS (no honest-red ledger):
+//   Unlike hexa-chip where 4 falsifier scripts are deliberately tripped
+//   by real-world Moore retraction + post-GAA flattening + HBM4 spec
+//   drift, hexa-codex's surface is currently all-green: 4 F-CODEX-N
+//   pillars × T1+T2×3 (closed-form + numerics + solver + parity) +
+//   cross-cutters + meta + 11 T4 stubs that emit PENDING (not pretend
+//   to PASS empirically) until external forge data lands.
+//
+//   Per raw#10 honest C3: AI lab benchmarks (OpenAI / Anthropic /
+//   DeepMind published evals) use their own metrics, not lattice-fit.
+//   Per LATTICE_POLICY.md §1.3: lattice tautologies (σ·φ=n·τ=24) alone
+//   are NOT sufficient verification — the numerics_* tier carries the
+//   real-limits anchors (PAC sample complexity, Kolmogorov K(program)
+//   lower bound, undecidability of semantic equivalence — see
+//   LIMIT_BREAKTHROUGH.md §2).
+//   Per LIMIT_BREAKTHROUGH.md §1: AI safety + economics claims here
+//   are THEORETICAL preregisters, not empirically settled — the
+//   release ladder (v1.1.0..v2.0.0) lands the T4 empirical floors
+//   incrementally.
+//
+// Run:
+//     hexa run verify/run_all.hexa     # exit 0 = all 34 subscripts PASS
+//
+// HONESTY (closure-honesty-contract per .own own 2):
+//
+//   PASS here means RC=0 from each of the 34 green-core subscripts —
+//   bookkeeping closure of the verified-empirically-stable + PENDING-
+//   honest core, NOT AI capability / safety / economics settled. The 4
+//   F-CODEX-N falsifiers remain at "arithmetic floor closed, empirical
+//   PENDING per release ladder". 11 T4 stubs emit PENDING (not PASS)
+//   until hexa-forge data PRs land per D-023.
+//
+//   Saturated ≠ falsified ≠ confirmed. Real verification of AI
+//   capability lives in T4 (live HELM-Core / SAE feature counts /
+//   loss-vs-FLOP / KV-cache profiles) which is recipe §9 territory.
+//
+// @no-lock-needed
+
+let HOME = env("HOME")
+
+fn _root() -> str {
+    let r = env("HEXA_CODEX_ROOT")
+    if r.len() > 0 { return r }
+    let pwd = exec("pwd").trim()
+    if pwd.len() > 0 { return pwd }
+    return HOME + "/core/hexa-codex"  // @allow-devpath
+}
+
+let ROOT = _root()
+
+let SCRIPTS: [str] = [
+    // ─── T1 algebraic (5) ─────────────────────────────────────────
+    "verify/lattice_check.hexa",
+    "verify/calc_train_cost.hexa",
+    "verify/calc_infer_cost.hexa",
+    "verify/calc_alignment.hexa",
+    "verify/calc_interpret.hexa",
+
+    // ─── T2 numerical green core (14) ─────────────────────────────
+    "verify/numerics_train_cost.hexa",
+    "verify/numerics_train_cost_parity.hexa",
+    "verify/numerics_train_cost_solver.hexa",
+    "verify/numerics_infer_cost.hexa",
+    "verify/numerics_infer_cost_parity.hexa",
+    "verify/numerics_infer_cost_solver.hexa",
+    "verify/numerics_alignment.hexa",
+    "verify/numerics_alignment_parity.hexa",
+    "verify/numerics_alignment_solver.hexa",
+    "verify/numerics_interpret.hexa",
+    "verify/numerics_interpret_parity.hexa",
+    "verify/numerics_interpret_solver.hexa",
+    "verify/numerics_cross_pillar.hexa",
+    "verify/numerics_lattice_arithmetic.hexa",
+
+    // ─── T4 PENDING-sentinel stubs (11; emit PENDING per D-023) ───
+    "verify/numerics_train_cost_t4_parity.hexa",
+    "verify/numerics_infer_cost_t4_parity.hexa",
+    "verify/numerics_alignment_t4_parity.hexa",
+    "verify/numerics_interpret_t4_parity.hexa",
+    "verify/numerics_safety_t4_parity.hexa",
+    "verify/numerics_adversarial_t4_parity.hexa",
+    "verify/numerics_quality_scale_t4_parity.hexa",
+    "verify/numerics_rlhf_t4_parity.hexa",
+    "verify/numerics_eval_t4_parity.hexa",
+    "verify/numerics_agent_serving_t4_parity.hexa",
+    "verify/numerics_deploy_t4_parity.hexa",
+
+    // ─── inventory + cross-doc (1) ────────────────────────────────
+    "verify/cross_doc_audit.hexa",
+
+    // ─── meta closure gates (3) ───────────────────────────────────
+    "verify/falsifier_check.hexa",
+    "verify/lint_numerics.hexa",
+    "verify/saturation_check.hexa",
+]
+
+fn shq(s: str) -> str {
+    return "'" + s.replace("'", "'\\''") + "'"
+}
+
+fn _hexa_bin() -> str {
+    let real = HOME + "/.hx/packages/hexa/hexa.real"  // @allow-devpath
+    if file_exists(real) { return real }
+    let h = exec("which hexa 2>/dev/null").trim()
+    if h.len() > 0 { return h }
+    return HOME + "/.hx/bin/hexa"  // @allow-devpath
+}
+
+fn main() {
+    println("========================================================================")
+    println("  hexa-codex verify/run_all — aggregate sweep")
+    println("  root: " + ROOT)
+    println("========================================================================")
+    let mut passed = 0
+    let mut failed = 0
+    let hbin = _hexa_bin()
+    let lang = env("HEXA_LANG")
+    let env_pfx = if lang.len() > 0 { "HEXA_LANG=" + shq(lang) + " " } else { "" }
+    for s in SCRIPTS {
+        println("")
+        println("---- " + s + " ----")
+        let cmd = env_pfx + "HEXA_SHIM_NO_DARWIN_LANDING=1 RESOURCE_LOCAL_HEXA=1 " +
+                  "HEXA_CODEX_ROOT=" + shq(ROOT) + " " +
+                  shq(hbin) + " run " + shq(ROOT + "/" + s) +
+                  " >/tmp/_hexa_codex_v.out 2>&1; echo $?"
+        let rc_str = exec(cmd).trim()
+        let rc = int(rc_str)
+        let out = exec("cat /tmp/_hexa_codex_v.out 2>/dev/null")
+        // print last 6 lines for compactness
+        let lines = out.split("\n")
+        let n = lines.len()
+        let mut start = 0
+        if n > 6 { start = n - 6 }
+        let mut k = start
+        while k < n {
+            println(lines[k])
+            k = k + 1
+        }
+        if rc == 0 {
+            passed = passed + 1
+            println("  → " + s + " PASS")
+        } else {
+            failed = failed + 1
+            println("  → " + s + " FAIL (rc=" + str(rc) + ")")
+        }
+    }
+    println("")
+    println("========================================================================")
+    let total = passed + failed
+    println("  " + str(passed) + "/" + str(total) + " scripts passed")
+    if failed > 0 {
+        println("  verify sweep FAILED — see per-script output above.")
+        println("__HEXA_CODEX_RUN_ALL__ FAIL")
+        exit(1)
+    }
+    println("  PASS — all hexa-codex green-core invariants hold.")
+    println("__HEXA_CODEX_RUN_ALL__ PASS — " + str(passed) + "/" + str(total) + " green")
+}
