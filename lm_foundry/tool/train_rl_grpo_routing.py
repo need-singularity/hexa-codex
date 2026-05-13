@@ -54,16 +54,28 @@ sys.path.insert(0, _THIS_DIR)
 from score_delegation_mk0 import _parse_completion, score_one  # type: ignore
 
 
-def reward_fn_factory(prompt_to_task: dict[str, dict]):
+def reward_fn_factory(prompt_to_task: dict[str, dict], *, reward_kind: str = "full"):
     """Build a GRPO-compatible reward fn.
 
     Args:
         prompt_to_task: maps each prompt string → the task row (including
                          `ideal_route` and `tags`).
+        reward_kind: "full" (v0.4.3 default — weighted DLG-mk0 overall) or
+                     "binary" (v0.4.2 legacy — s_route × s_schema). r42's
+                     binary reward had two failure modes: (a) flat-reward
+                     groups on never-emitted target class → zero advantage
+                     → exploration collapse; (b) s_band omitted from reward
+                     → confidence-prefix emission decayed to 0%. The "full"
+                     formulation puts every DLG-mk0 sub-score in the reward
+                     at the eval's published weights (0.40/0.20/0.15/0.15/0.10),
+                     so train/eval align by construction.
 
     Returns:
         Callable `fn(prompts, completions, **kwargs) -> list[float]` per
-        TRL's `reward_funcs` contract. Reward = s_route × s_schema ∈ {0, 1}.
+        TRL's `reward_funcs` contract.
+        - "full":   reward = 0.40·s_route + 0.20·s_band + 0.15·s_tool +
+                              0.15·s_tier + 0.10·s_schema  ∈ [0.0, 1.0]
+        - "binary": reward = s_route × s_schema  ∈ {0, 1} (r42 legacy).
     """
     def reward_fn(prompts: list[str], completions: list[str], **kwargs) -> list[float]:
         rewards: list[float] = []
@@ -75,10 +87,58 @@ def reward_fn_factory(prompt_to_task: dict[str, dict]):
                 continue
             parsed = _parse_completion(comp)
             sub = score_one(task, parsed)
-            r = float(sub["s_route"]) * float(sub["s_schema"])
+            if reward_kind == "binary":
+                r = float(sub["s_route"]) * float(sub["s_schema"])
+            else:  # "full" — DLG-mk0 weighted overall (spec §9.B weights)
+                r = (0.40 * float(sub["s_route"])
+                     + 0.20 * float(sub["s_band"])
+                     + 0.15 * float(sub["s_tool"])
+                     + 0.15 * float(sub["s_tier"])
+                     + 0.10 * float(sub["s_schema"]))
             rewards.append(r)
         return rewards
     return reward_fn
+
+
+def _pre_flight_check(model, tok, prompt_to_task: dict[str, dict],
+                       num_prompts: int = 2, rollouts_per_prompt: int = 5,
+                       temperature: float = 0.9, max_new_tokens: int = 200) -> tuple[int, int]:
+    """Before main GRPO loop, dump `rollouts_per_prompt` rollouts on
+    `num_prompts` OOD prompts and count how many contain `<|delegate|>`.
+
+    If the count is 0/total, the model is in the "never delegate" attractor
+    and GRPO will exploration-collapse (per [[pure-rl-exploration-collapse]]
+    memory). The caller should abort and increase bootstrap SFT or temperature.
+
+    Returns (delegate_emit_count, total_rollouts).
+    """
+    import re
+    import torch
+    DELE = re.compile(r"<\|delegate\|>")
+    # Pick 2 OOD prompts deterministically from the prompt_to_task dict.
+    ood_prompts = []
+    for p, task in prompt_to_task.items():
+        if task["ideal_route"]["must_delegate"]:
+            ood_prompts.append(p)
+            if len(ood_prompts) >= num_prompts:
+                break
+    if not ood_prompts:
+        print("  pre-flight: no OOD prompts in dataset; skipping check")
+        return -1, 0
+
+    total = num_prompts * rollouts_per_prompt
+    n_delegate = 0
+    for p in ood_prompts:
+        ids = tok(p, return_tensors="pt").to(model.device)
+        with torch.no_grad():
+            for _ in range(rollouts_per_prompt):
+                out = model.generate(**ids, max_new_tokens=max_new_tokens,
+                                     do_sample=True, temperature=temperature,
+                                     pad_token_id=tok.eos_token_id)
+                comp = tok.decode(out[0][ids.input_ids.shape[1]:], skip_special_tokens=True)
+                if DELE.search(comp):
+                    n_delegate += 1
+    return n_delegate, total
 
 
 def main() -> int:
@@ -94,7 +154,12 @@ def main() -> int:
     ap.add_argument("--group-size", type=int, default=4)
     ap.add_argument("--batch-size", type=int, default=4)
     ap.add_argument("--max-new-tokens", type=int, default=200)
-    ap.add_argument("--temperature", type=float, default=0.7)
+    ap.add_argument("--temperature", type=float, default=0.9,
+                    help="v0.4.3 default 0.9 for sampling diversity (r42 used 0.7)")
+    ap.add_argument("--reward-kind", choices=["full", "binary"], default="full",
+                    help="full=weighted DLG-mk0 overall (v0.4.3); binary=s_route×s_schema (r42 legacy)")
+    ap.add_argument("--pre-flight-check", action="store_true",
+                    help="dump rollouts on 2 OOD prompts pre-train; abort if 0/10 emit <|delegate|>")
     ap.add_argument("--logging-steps", type=int, default=25)
     args = ap.parse_args()
 
@@ -133,7 +198,9 @@ def main() -> int:
          f"<|confidence:high|>{'enum Color { Red, Green, Blue }'}",
          1.0, "in-domain-high (if first row is in-domain)"),
     ]
-    rfn = reward_fn_factory(prompt_to_task)
+    rfn = reward_fn_factory(prompt_to_task, reward_kind=args.reward_kind)
+    print(f"  reward_kind: {args.reward_kind}")
+
     # Real smoke: a few synthetic cases
     test_prompts = [_wrap(r["prompt"]) for r in rows[:4]]
     test_completions = [
@@ -173,6 +240,27 @@ def main() -> int:
     )
     model = PeftModel.from_pretrained(model, args.adapter, is_trainable=True)
     model.print_trainable_parameters()
+
+    # Pre-flight rollout check — guard against [[pure-rl-exploration-collapse]]
+    # mode. Pass `--pre-flight-check` to enable; aborts if the model never
+    # emits <|delegate|> on OOD prompts (zero positive-class advantage → no
+    # learning). Runs AFTER model + adapter are loaded.
+    if args.pre_flight_check:
+        print(f"=== pre-flight: 5 rollouts × 2 OOD prompts (temp={args.temperature:.2f}) ===", flush=True)
+        n_emit, total = _pre_flight_check(model, tok, prompt_to_task,
+                                          temperature=args.temperature,
+                                          max_new_tokens=args.max_new_tokens)
+        print(f"  → {n_emit}/{total} rollouts emitted <|delegate|>")
+        if total > 0 and n_emit == 0:
+            print("FATAL: starting policy never emits <|delegate|> on OOD prompts.",
+                  file=sys.stderr)
+            print("  GRPO will exploration-collapse (advantage=0 everywhere).",
+                  file=sys.stderr)
+            print("  Fix: add SFT bootstrap (build_sft_delegate_bootstrap.py)",
+                  file=sys.stderr)
+            print("  OR raise temperature, OR continue from a different adapter.",
+                  file=sys.stderr)
+            return 3
 
     ds = Dataset.from_list(ds_rows)
 

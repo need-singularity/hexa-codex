@@ -3847,6 +3847,152 @@ remaining gap is a **training-recipe-search problem**, not a design problem.
 r39 v3-t3patch holds as **the production-ready pure-specialist GA**
 (94.29% Mk.I, 96% 5-NL); delegation queued for v0.4.3 hybrid.
 
+### 2026-05-14 ~05:00 KST — round 43: v0.4.3 SFT-bootstrap + routing-RL hybrid executed — specialist preserved (Mk.I 93.98%, 5-NL 100%) BUT routing emission absent at greedy-decode (DLG-mk0 0.449, IDENTICAL to r42); fourth labeled experiment; **decoding-time routing artifact** identified
+
+**Round 43 = the v0.4.3 hybrid plan per [[pure-rl-exploration-collapse]] memory: 40 explicit
+delegate-pair SFT bootstrap THEN GRPO routing-RL with full DLG-mk0 weighted reward
++ temp 0.9 + KL=0.02 (slightly looser than r42 0.01) + `--pre-flight-check` flag
+to guard the exploration-collapse mode. All four interventions landed cleanly:**
+
+- **SFT bootstrap stage [3a]**: 40-pair `build_sft_delegate_bootstrap.py` dataset
+  (30 claude-sonnet OOD + 5 claude-opus hard-math + 5 openai-mini structured +
+  5 gemini-pro long-ctx + 5 ambiguous-clarify); train 10.2 s × 5 steps × LR 2e-5
+  on r39 v3-t3patch base. Loss 1.96 (high — only 5 steps means partial fit, by
+  design — small surface, just enough to seed schema).
+- **Pre-flight check stage [3b]**: dumped 5 rollouts × 2 OOD prompts at temp 0.9
+  on the bootstrapped policy. **3/10 rollouts emitted `<|delegate|>`** → above
+  the >0 threshold for GRPO non-collapse. Verified the bootstrap successfully
+  broke r42's "never emit" attractor at sampling time.
+- **GRPO routing-RL stage [3c]**: 200 routing prompts × 4 epochs × group=4 × batch=4
+  = 3200 rollouts. KL=0.02 (looser than r42), LR=5e-6, temp 0.9, full DLG-mk0
+  weighted reward (0.40·s_route + 0.20·s_band + 0.15·s_tool + 0.15·s_tier +
+  0.10·s_schema). Train 800 steps × ~11.5 s/step = **2h 33m**.
+
+Cost ~**\$2.0 / 3h** total on Vast A100 SXM4 40GB Czechia (contract 36681333,
+$0.80/hr, rel 0.999). Adapter LIVE as fourth labeled experiment:
+`dancinlab/hexa-forge-code-7b-qwen2.5-lora-r64-v0.4.3-route-rl-hybrid`.
+
+**Mk.I 665 STRICT (r38-fixed manifest, with score_bf16.py delegation-token-strip fix):**
+
+| family | r39 GA | r42 RL | **r43 hybrid** | Δ vs r42 |
+|---|---|---|---|---|
+| **overall** | 94.29% | 93.83% | **93.98%** | **+0.15** |
+| T1 syntax | 97.6% | 97.6% | 97.6% | 0 |
+| T2 atlas | 87.0% | 85.0% | 85.0% | 0 |
+| T3 @grace | 100.0% | 100.0% | 100.0% | 0 |
+| **T4 enum** | 100.0% | 100.0% | **100.0%** | **0** ✅ Lever 4 still preserved |
+| T5 HX-codes | 94.8% | 95.8% | 95.8% | 0 |
+| T6 triples | 95.5% | 95.5% | 95.5% | 0 |
+| T7 stdlib | 87.9% | 84.5% | 86.2% | +1.7 |
+| T8 refusal | 87.5% | 90.0% | 90.0% | 0 |
+| **5-NL** | 96% | 100% | **100%** | 0 (best in ladder, held) |
+
+**Specialist competence held at the r42 ceiling**: Mk.I 93.98% (within 0.31pp of GA),
+all Lever 4 wins still intact, T8 refusal still +2.5pp above GA, 5-NL still
+perfect 25/25. The KL=0.02 anchor + the 40-pair bootstrap together did not erase
+the specialist — confirming the hybrid recipe's first promise.
+
+**DLG-mk0 routing — BIT-FOR-BIT IDENTICAL TO r42:**
+
+| metric | r42 | **r43** | Δ |
+|---|---|---|---|
+| overall | 0.4490 | **0.4490** | **0** |
+| s_route | 0.485 | 0.485 | 0 |
+| **s_band** | 0.075 | 0.075 | 0 |
+| s_schema | 0.60 | 0.60 | 0 |
+| in-domain s_route | 0.875 | 0.875 | 0 |
+| **OOD-delegate** | 0.000 | **0.000** | **0** ⚠ |
+| security-refuse s_route | 0.133 | 0.133 | 0 |
+| ambiguous | 0.000 | 0.000 | 0 |
+| long-context | 0.000 | 0.000 | 0 |
+
+**At greedy-decode evaluation time, 0/200 rows emit `<|delegate|>` — same as r42**, even
+though the pre-flight check confirmed 3/10 rollouts emitted at temp 0.9
+post-bootstrap. The hybrid did real training (98/200 completions in DLG-mk0
+differ from r42, e.g., DLG-005 `match` arm ordering flipped, DLG-013 `@implements`
+followed by Python def-stub instead of comment) — the model learned **a different
+distribution**, but the new distribution's greedy-mode still doesn't contain
+`<|delegate|>`. The KL=0.02 anchor pulled the high-probability completions back
+to baseline (which never emitted delegate); the bootstrap signal was a low-mass
+tail that only temperature sampling reveals.
+
+**Diagnosis: GRPO learned routing in the tail; greedy eval misses it.** Three
+distinct evidence:
+1. 0/200 delegate emit at score time vs 3/10 emit at preflight time (rollout
+   = temp 0.9 sampling).
+2. 98/200 completions DO differ from r42 — the policy moved.
+3. The DLG-mk0 numbers are **identical to the bit** to r42 → no policy mode-shift,
+   only re-arrangement within the same mode.
+
+**Fifth v0.4.x lesson (added to the prior four):** *training-time exploration
+needs to land in the greedy mode, not just the sampling tail.* RL on a frozen
+score-time policy needs either (a) **greedy-stable mode-shift** (much weaker KL
+anchor — try 0.001 in r44), (b) **best-of-N sampling at eval time** rather than
+greedy, or (c) **score-time temperature > 0** matching training temperature.
+Current `score_delegation_mk0.py` uses `do_sample=False` (greedy) and that
+masks any routing capability that lives in the sampling distribution.
+
+**Acceptance gates (spec-delegation §11) — r43 misses:**
+- ✅ Mk.I ≥ 88% strict — **93.98%**
+- ✅ 5-NL ≥ 95% — **100%**
+- ✅ T4 ≥ 95% — **100%**
+- ❌ DLG-mk0 route ≥ 0.90 — **0.485**
+- ❌ DLG-mk0 schema ≥ 0.98 — **0.60**
+- ❌ DLG-mk0 overall ≥ 0.85 — **0.449**
+
+Same gate pattern as r42 (specialist gates pass, routing gates fail).
+
+**Forge ladder (unchanged):** 87.67 → 89.47 → 90.98 → **94.29 (r39 GA)** → 82.71
+(r40) → 83.01 (r41) → 93.83 (r42) → 93.98 (r43). Four labeled experiments now;
+ladder has not advanced since r39.
+
+**v0.4.4 options (decision pending, not chosen in this round):**
+1. **Loosen KL drastically (0.001 or 0.0001)** — let GRPO push the mode rather
+   than the tail. Risk: specialist degradation (the parameter that saved r42/r43
+   is the same one that prevents routing).
+2. **Modify `score_delegation_mk0.py` to use temp 0.7 + best-of-3** — score-time
+   alignment with training-time temperature. This is the **lowest-effort** test
+   (no retrain needed, ~$0): re-score the r43 adapter with sampled-greedy and
+   see if DLG-mk0 jumps from 0.449 to 0.70+. If yes, the hybrid recipe is
+   actually correct — just under-measured.
+3. **Adapter separation** — train a separate small routing-LoRA on top of r39
+   GA, applied conditionally at inference. Architectural step, not a recipe tweak.
+4. **Ship r39 GA + runtime-orchestrated routing** — declare v0.4.x done as a
+   pure-specialist line, handle routing at the orchestration layer (forge_runtime
+   selects whether to dispatch the prompt to the 7B or directly to Claude
+   based on a pre-classification step). Accept v0.4.x line closes at r39 GA.
+
+**Round 43 commits:** this ROADMAP entry · `tool/build_sft_delegate_bootstrap.py`
+(NEW — 40 explicit delegate pairs across 4 categories) · `tool/train_rl_grpo_routing.py`
+(MODIFIED — `--reward-kind {full|binary}` default full = DLG-mk0 weighted overall;
+`--pre-flight-check` flag; `_pre_flight_check()` rolllout-emit guard;
+`--temperature` default 0.9) · `tool/run_pod_v043.sh` (NEW — Lever-4-style pod
+runner with stage [3a]/[3b]/[3c] separation + in-pod 6-gate check) ·
+`LEARNING_PROGRAMMING.md` §8 r43 row + lessons.
+
+**Note on ubu1 incident during this round**: late in r43, the orchestrator host
+(ubu1) sshd hung — TCP accept but no banner exchange (likely sshd MaxStartups
+exhausted by monitor's 5x-parallel SSH attempts; OS kernel/network fine per ping
+and `nc -z`). Pod ran independently to completion (HF push succeeded). Result
+fetch went via direct HF dataset download, bypassing ubu1. **No data loss.**
+Documented as r43 ops note; future rounds should rate-limit monitor SSH to <1/min.
+
+**dancinlab/\* repos LIVE: 42** (41 + `hexa-forge-code-7b-qwen2.5-lora-r64-v0.4.3-route-rl-hybrid`
+4th labeled experiment). **GA UNCHANGED:** r39 v3-t3patch (94.29% Mk.I, 96% 5-NL).
+
+**Where it stands after round 43:** Four v0.4.x attempts have isolated four
+distinct failure modes:
+- r40/r41 SFT-only: erases specialist (too-strong learning signal in shared LoRA)
+- r42 pure RL: exploration collapse (zero-baseline target class + tight KL)
+- r43 hybrid: trains in the tail, greedy-eval-invisible (sampling distribution ≠ greedy mode)
+
+The diagnostic surface is exhausted on training recipe; v0.4.4 must either
+(a) drop KL drastically and accept specialist risk, (b) re-score r43 with
+sampled decoding to reveal possible already-correct routing in the tail, OR
+(c) move routing out of model weights into orchestration. r39 v3-t3patch is
+the production-ready GA candidate; the v0.4.x delegation line is operationally
+**paused pending an architectural decision**, not blocked on a code/recipe bug.
+
 
 
 
