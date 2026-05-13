@@ -20,11 +20,20 @@ Two seed verbs:
 
 ## Status (2026-05-13)
 
-- **`code` verb — v0.4.0 GA candidate at 87.67% Mk.I strict** (583/665).
+- **`code` verb — v0.4.0 GA candidate at 94.29% Mk.I strict** (627/665, 96% 5-NL).
   Path: Qwen2.5-Coder-7B + LoRA r=64 SFT (r1–r34) → Phase-A manifest
-  fix → **compile-feedback RL (Lever 4, GRPO)** which lifted T4 enum
-  declarations 55→77% (+22pp) — the first decisive RL win. Gates ③ ④
-  closed strictly. Full ladder + per-round results in `ROADMAP.md`.
+  fixes (r33, r37, r38) → **compile-feedback RL (Lever 4, GRPO)** which
+  lifted T4 enum 55→100% (+45pp across r36/r38, first decisive RL win)
+  → **T3 quote-fragility patch (r39) recovered T3 58.8→100%**. Gates ③
+  ④ closed with double-digit headroom. **v0.4.x delegation line opened**:
+  spec `papers/spec-delegation-v0.4.0.md` (r39, 354 lines, token grammar
+  + runtime contract + redaction + streaming UX + routing-eval) + scaffolding
+  (`eval/delegation-mk0/manifest.jsonl` 200-task, `tool/score_delegation_mk0.py`
+  5-subscore, `tool/forge_runtime.py` 580-line stub) all landed. Two SFT
+  delegation attempts (r40 25% mix, r41 9% mix) confirmed **SFT-only can't
+  install routing without erasing specialist** — **v0.4.2 routing-RL**
+  (GRPO with binary route-correctness reward) queued. Full ladder + per-round
+  results in `ROADMAP.md`.
 - **`bio` verb** — recipe spec landed (`LEARNING_BIO.md`); training
   pending. Paired with the `hexa-bio` data repo.
 
@@ -34,7 +43,7 @@ Two seed verbs:
 |------|------|
 | `LEARNING_PROGRAMMING.md` | the SSOT for "what the code-LLM must know" — 14 sections incl. hexa-canon, operator skills (RunPod/Vast/HF/R2/Docker), Claude/OpenAI/Gemini API surfaces, Wilson, the self-aware-delegation v0.4.x architecture line |
 | `LEARNING_BIO.md` | same, for the bio verb |
-| `ROADMAP.md` | per-round narrative — r1 through r37; the complete documented recipe with every failure mode preserved |
+| `ROADMAP.md` | per-round narrative — r1 through **r41**; the complete documented recipe with every failure mode preserved |
 | `papers/` | design docs (`spec-lever4-compile-rl.md`, `plan-v0.3.0-structural.md`, …) |
 | `tool/` | dataset builders (`build_sft_dataset_v*.py`, `build_rl_t4_prompts.py`), trainers (`train_sft_lora.py`, `train_rl_grpo_t4.py`), scorers |
 | `eval/` | `hexa-eval/manifest-mk1.jsonl` (665-task Mk.I) + `five-nl-eval/` (25-task 5-NL i18n) |
@@ -46,10 +55,15 @@ Two seed verbs:
 
 ## Hugging Face artifacts
 
-36 repos under `dancinlab/hexa-forge-*` (adapters, GGUFs, the bench-cold
+**40 repos** under `dancinlab/hexa-forge-*` (adapters, GGUFs, the bench-cold
 dataset). The `hexa-forge` prefix is retained as **artifact identity** —
 renaming would break `from_pretrained` references in published recipes.
-GA candidate adapter: `dancinlab/hexa-forge-code-7b-qwen2.5-lora-r64-v0.4.0-rl-t4-v2`.
+**GA candidate adapter:** `dancinlab/hexa-forge-code-7b-qwen2.5-lora-r64-v0.4.0-rl-t4-v3-t3patch`
+(r39, 94.29% Mk.I, 96% 5-NL — pure hexa-canon specialist; delegation
+queued for v0.4.2 routing-RL).
+Labeled experiments (NOT GA): `…-rl-t4-v3-t3patch` is preceded by the
+Lever-4 line (`…-rl-t4`, `…-rl-t4-v2`, `…-rl-t4-v3`) and followed by the
+v0.4.x SFT line (`…-v0.4.0-delegate` r40, `…-v0.4.1-delegate` r41).
 
 ## Operating notes
 

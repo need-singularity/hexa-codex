@@ -28,6 +28,40 @@ already served as forge's sister (serving/inference); the two are now one.
 - **HF artifacts**: 36 repos under `dancinlab/hexa-forge-*` keep that
   prefix as artifact identity (renaming breaks `from_pretrained` refs in
   published recipes). GA adapter: `dancinlab/hexa-forge-code-7b-qwen2.5-lora-r64-v0.4.0-rl-t4-v2`.
+
+### r38–r41 (2026-05-13) — code-LLM 87.67% → **94.29%** Mk.I, v0.4.x line opened
+
+- **r38 — Lever 4 v3 + T4-body manifest fix (Mk.I 87.67 → 90.98%)**.
+  Augmented `tool/build_rl_t4_prompts.py` (20→30 specs incl. eval-residual
+  Option/Result/Validated/Tree, 67%→80% generic-bait, 5 epochs); manifest
+  Phase-A on 8 T4 body-generic prompts (Vec<String>→StringList,
+  Box<Tree<T>>→Tree). Vast A100 40GB CZ ~$2.1/3h20m. **T4 89→100%** 🎯;
+  Lever 4 CLOSED.
+- **r39 — T3 quote-fragility patch + §12 delegation spec (Mk.I 90.98 → 94.29%)**.
+  `tool/build_sft_t3_patch.py` 30 quoted-date pairs + `train_sft_lora.py`
+  `--adapter-in` flag for continue-SFT. 13.25 s train, ~$0.7. **T3 58.8→100%**
+  🎯🎯, T8 +2.5pp bonus. Parallel: drafted `papers/spec-delegation-v0.4.0.md`
+  (354 lines — token grammar + runtime contract + redaction + streaming UX +
+  routing-eval). r39 follow-up landed the v0.4.0 scaffolding: 200-task
+  `eval/delegation-mk0/manifest.jsonl` + 5-subscore `score_delegation_mk0.py`
+  + 580-line `forge_runtime.py`.
+- **r40 — v0.4.0 SFT (25% delegation) — labeled experiment, NOT GA**.
+  `tool/build_sft_dataset_v18.py` 840-pair delegation block per spec §10.
+  ~$0.45/30m. **Every spec §11 gate missed.** T4 100→77% (Lever 4 erased
+  by shared-LoRA RL↔SFT conflict — see new memory [[lever4-rl-sft-conflict]]).
+  DLG-mk0 overall 0.7652 (vs 0.85 gate).
+- **r41 — v0.4.1 rebalanced SFT (9% delegation) — also NOT GA**.
+  `tool/build_sft_dataset_v19.py` (v11 base × 2 + 4 new blocks: T4-RL-reinforce
+  50, over-delegate-counter 30, refusal-shape 30, OOD-extension 60). Gentler
+  recipe: LR 2e-5, 2 ep. ~$1.04/60m. **Every gate again missed.** Five hard
+  lessons: SFT-only can't escape specialist↔routing tradeoff in 7B+LoRA.
+  **v0.4.2 = routing-RL** queued (GRPO with binary route-correctness reward,
+  KL-anchored to r39).
+- **GA candidate** (post r39, unchanged through r40/r41):
+  `dancinlab/hexa-forge-code-7b-qwen2.5-lora-r64-v0.4.0-rl-t4-v3-t3patch`
+  (94.29% Mk.I, 96% 5-NL — pure hexa-canon specialist, no delegation yet).
+- **HF repos LIVE: 40** (was 36 at absorption; +rl-t4-v3, +rl-t4-v3-t3patch,
+  +v0.4.0-delegate, +v0.4.1-delegate plus 3 bench-cold subdirs per round).
 - `.gitignore` extended with `lm_foundry/{runs,logs,bench-cold}/`,
   `lm_foundry/IDEA.md`, `lm_foundry/eval/**/*.bak`, and model-weight
   patterns (`*.safetensors` / `*.gguf` / etc).

@@ -8,14 +8,14 @@
 > **+ `lm_foundry/`** — the domain-LLM training pipeline, absorbed from the
 > standalone `hexa-forge` repo on **2026-05-13**. Where the 17 verbs are
 > *spec library*, `lm_foundry/` is *the trained models* — a code-LLM for
-> hexa-lang currently at **89.47% Mk.I strict** (v0.4.0 GA candidate) +
+> hexa-lang currently at **94.29% Mk.I strict** (v0.4.0 GA candidate, r39) +
 > a bio-LLM recipe. See [`lm_foundry/README.md`](lm_foundry/README.md).
 
 [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.20102600.svg)](https://doi.org/10.5281/zenodo.20102600)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 [![Version](https://img.shields.io/badge/version-1.0.0-informational.svg)](CHANGELOG.md)
 [![Verbs: 17 / 4 groups](https://img.shields.io/badge/verbs-17_(4_groups)-blue.svg)](#verbs)
-[![lm_foundry: code-LLM 89.47%](https://img.shields.io/badge/lm__foundry-code--LLM_89.47%25_Mk.I-blueviolet.svg)](lm_foundry/README.md)
+[![lm_foundry: code-LLM 94.29%](https://img.shields.io/badge/lm__foundry-code--LLM_94.29%25_Mk.I-blueviolet.svg)](lm_foundry/README.md)
 [![Verify: 23 .hexa](https://img.shields.io/badge/verify-23_(.hexa)-brightgreen.svg)](#runnable-surface)
 [![Tests: 24 .hexa + 83 py](https://img.shields.io/badge/tests-24_.hexa_+_83_py-brightgreen.svg)](#runnable-surface)
 [![Closure: 100% sat-1](https://img.shields.io/badge/closure-100%25_(sat--1_T1+T2+T3)-brightgreen.svg)](#runnable-surface)
@@ -57,15 +57,15 @@ inference side) — the merge consolidates the two.
 
 | verb   | what                                | status (2026-05-13)                                              |
 |--------|-------------------------------------|------------------------------------------------------------------|
-| `code` | programming-only LLM for hexa-lang  | **v0.4.0 GA candidate — 89.47% Mk.I strict (595/665).** Path: Qwen2.5-Coder-7B + LoRA r=64 SFT (r1–r34) → Phase-A manifest fixes → compile-feedback RL via GRPO (Lever 4 — T4 enum-decl 55→89%, the first decisive RL win). Gates ③ ④ closed strictly. |
+| `code` | programming-only LLM for hexa-lang  | **v0.4.0 GA candidate — 94.29% Mk.I strict (627/665), 96% 5-NL.** Path: Qwen2.5-Coder-7B + LoRA r=64 SFT (r1–r34) → Phase-A manifest fixes (r33/r37/r38) → compile-feedback RL via GRPO (Lever 4 — T4 enum 55→100% across r36/r38, first decisive RL win) → T3 quote-fragility patch (r39, T3 58.8→100%). Gates ③ ④ closed with double-digit headroom. **v0.4.x delegation line opened** (spec + scaffolding landed r39); two SFT delegation attempts (r40/r41) confirmed SFT-only can't install routing — **v0.4.2 routing-RL** queued. |
 | `bio`  | HEXA-BIO domain LLM (seq + prose)   | recipe spec landed; training pending. Paired with `dancinlab/hexa-bio`. |
 
 - Knowledge SSOTs: [`lm_foundry/LEARNING_PROGRAMMING.md`](lm_foundry/LEARNING_PROGRAMMING.md)
   (code-LLM, 14 sections) · [`lm_foundry/LEARNING_BIO.md`](lm_foundry/LEARNING_BIO.md).
-- Round-by-round narrative: [`lm_foundry/ROADMAP.md`](lm_foundry/ROADMAP.md) (r1–r37).
-- Design docs: [`lm_foundry/papers/`](lm_foundry/papers/) (incl. `spec-lever4-compile-rl.md`).
-- HF artifacts: 36 repos under `dancinlab/hexa-forge-*` (prefix kept as artifact
-  identity). GA adapter: `dancinlab/hexa-forge-code-7b-qwen2.5-lora-r64-v0.4.0-rl-t4-v2`.
+- Round-by-round narrative: [`lm_foundry/ROADMAP.md`](lm_foundry/ROADMAP.md) (r1–**r41**).
+- Design docs: [`lm_foundry/papers/`](lm_foundry/papers/) (incl. `spec-lever4-compile-rl.md`, `spec-delegation-v0.4.0.md`).
+- HF artifacts: **40 repos** under `dancinlab/hexa-forge-*` (prefix kept as artifact
+  identity). **GA adapter:** `dancinlab/hexa-forge-code-7b-qwen2.5-lora-r64-v0.4.0-rl-t4-v3-t3patch` (r39).
 - `bench-cold/`, `runs/`, `logs/`, `IDEA.md` under `lm_foundry/` are gitignored
   (SoT for benches is HF `dancinlab/hexa-forge-bench-cold-v0.1.3`).
 
@@ -310,12 +310,12 @@ hexa-codex — the formal proof is a reference annex. See
 ## Status
 
 **SPEC_CATALOG + RUNNABLE_SURFACE at 100% closure (recipe §7.2 sat-1).
-+ `lm_foundry/` — code-LLM at 89.47% Mk.I strict (v0.4.0 GA candidate).**
++ `lm_foundry/` — code-LLM at 94.29% Mk.I strict (v0.4.0 GA candidate, r39).**
 
 > 17-verb AI 지식 substrate (4 그룹: safety + economics + ops + substrate)
 > + verify/ + tests/ + build/ + docs/ runnable surface
 > + `lm_foundry/` (hexa-forge 흡수, 2026-05-13 — 도메인 LLM 학습 파이프라인;
-> code-LLM v0.4.0 GA 후보 89.47% Mk.I strict, bio-LLM 레시피).
+> code-LLM v0.4.0 GA 후보 94.29% Mk.I strict, bio-LLM 레시피).
 > Recipe §7.2 sat-1 saturation reached — all 4 F-CODEX-1..4 closed at
 > recipe §3 closure_pct = 100% (T1 + T2 + T3 ✓ each), via 23 .hexa
 > verifiers + 24 regression wrappers + 3 meta verifiers. T4 (live
