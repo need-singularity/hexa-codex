@@ -1,13 +1,19 @@
 # Self-aware delegation protocol — v0.4.0 architecture line
 
 **Status:** SPEC · draft 1 · 2026-05-13 · prerequisite Lever 4 (CLOSED, r38).
-**v0.4.0 implementation EXECUTED in round 40** — **labeled experiment, NOT GA**.
-See ROADMAP r40 entry for results: Mk.I 82.71% / 5-NL 60% / DLG-mk0 0.7652 —
-all gates missed. The bottleneck is the **training recipe** (840-pair v18 SFT
-over-trains delegation on a working specialist), NOT the spec design. v0.4.1
-will rebalance (dilute base × 2 + larger OOD block + gentler LR + 2 epochs).
-The token grammar, runtime contract, redaction, streaming UX, and routing-eval
-protocol below are all correct and reusable.
+**v0.4.0 + v0.4.1 SFT implementations EXECUTED in rounds 40+41 — both
+labeled experiments, NOT GA.** ROADMAP r40 (25% delegation, LR 5e-5, 1 ep):
+Mk.I 82.71% / 5-NL 60% / DLG-mk0 0.7652 — all gates missed; T4 100→77%
+(Lever-4 RL erased by shared-LoRA SFT). ROADMAP r41 (9% delegation, LR 2e-5,
+2 ep, 4 new blocks): Mk.I 83.01% / 5-NL 52% / DLG-mk0 0.7760 — basically
+flat vs r40. **Five hard lessons confirm: SFT-only delegation training
+cannot escape the specialist↔routing tradeoff in 7B+LoRA.** **v0.4.2 plan
+is routing-RL** (GRPO with binary route-correctness reward on a held-out
+200-prompt training set, KL-anchored to r39 v3-t3patch, ~\$2-3/3h). The
+token grammar (§2), runtime contract (§3), redaction (§6), streaming UX
+(§7), confidence-band calibration (§8), routing-eval protocol (§9), and
+SFT block schema (§10) below are all **correct and reusable** — the
+bottleneck was training mechanism (SFT-on-shared-LoRA) not spec design.
 
 **Owner:** code-LLM line. Implementer: `tool/forge_runtime.py`, `tool/build_sft_dataset_v18.py`.
 
