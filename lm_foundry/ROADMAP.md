@@ -3693,6 +3693,160 @@ adapter with no delegation capability. The eval scaffolding
 adapter. Forge code-LLM ships **as a hexa-canon specialist; delegation
 is queued for routing-RL r42**.
 
+### 2026-05-13 19:43 KST — round 42: v0.4.2 routing-RL executed — specialist preserved (Mk.I 93.83%, 5-NL 100%) BUT routing collapsed (DLG-mk0 0.449); **NOT GA**; v0.4.x SFT-bootstrap + RL hybrid plan (v0.4.3)
+
+**Round 42 = pure routing-RL per v0.4.2 plan. Result: a sharp paradox —
+the specialist is preserved better than r40/r41 ever achieved (Mk.I 93.83%
+is within 0.5pp of r39 GA, T4 stays at 100/100), AND 5-NL gets a perfect
+25/25 = 100% (best in the ladder), BUT the DLG-mk0 routing metric COLLAPSED
+to 0.449 — worse than r41's 0.776, worse than r40's 0.765, even worse than
+the r39 baseline's effective ~0.5 reward signal. r42 documents a third
+distinct failure mode: pure-RL exploration collapse when the policy never
+emits the target token class during rollouts.**
+
+**Run.** Vast.ai A100 SXM4 40GB Quebec CA (contract 36670809, \$0.60/hr,
+rel 0.998, ssh7.vast.ai:30808). Continued GRPO from r39 v3-t3patch (NOT
+r40/r41 — those drifted) on a 200-prompt training set (`tool/build_routing_rl_prompts.py`,
+eval-held-out lexical content matching the DLG-mk0 §9.A distribution
+exactly). Reward = `s_route × s_schema` ∈ {0, 1} from `score_delegation_mk0.score_one()`.
+Lever-4 mechanics: KL anchor β=0.01, LR 5e-6, group_size=4, batch=4,
+**4 epochs**, max_completion_length=200, temperature=0.7. **Train 185.4 min**
+(~3h, 3200 rollouts), final loss 0.057, final reward 0.455 (DROPPED from
+~0.5 baseline). Cost **~\$1.85, 3h50m wall**. Adapter LIVE as third
+labeled experiment:
+`dancinlab/hexa-forge-code-7b-qwen2.5-lora-r64-v0.4.2-route-rl`.
+
+**Mk.I 665 STRICT (r38-fixed manifest, bf16, greedy, score_bf16.py with
+delegation-token strip fix from the post-r41 closure commit):**
+
+| family | r39 GA | r40 SFT 25% | r41 SFT 9% | **r42 routing-RL** | Δ vs r39 |
+|---|---|---|---|---|---|
+| **overall**     | 94.29% | 82.71% | 83.01% | **93.83%** | **−0.46** ✅ |
+| T1 syntax       | 97.6%  | 76.5%  | 75.3%  | 97.6%  | 0 ✅ |
+| T2 atlas        | 87.0%  | 78.0%  | 85.0%  | 85.0%  | −2 |
+| T3 @grace       | 100.0% | 98.8%  | 98.8%  | **100.0%** | 0 ✅ |
+| **T4 enum**     | 100.0% | 77.0%  | 73.0%  | **100.0%** | **0** ✅✅ Lever 4 preserved |
+| T5 HX-codes     | 94.8%  | 86.5%  | 89.6%  | 95.8%  | +1 |
+| T6 triples      | 95.5%  | 92.4%  | 87.9%  | 95.5%  | 0 |
+| T7 stdlib       | 87.9%  | 89.7%  | 89.7%  | 84.5%  | −3.4 |
+| T8 refusal      | 87.5%  | 68.8%  | 68.8%  | **90.0%** | **+2.5** ✅ |
+| **5-NL**        | 96%    | 60%    | 52%    | **100%** | **+4** ✅✅ |
+| **DLG-mk0**     | (n/a)  | 0.7652 | 0.7760 | **0.4490** | (regressed) |
+
+**The specialist↔routing tradeoff is now inverted vs r40/r41:**
+
+| dimension          | r40/r41 (SFT) | **r42 (RL)** |
+|---|---|---|
+| Specialist (Mk.I)  | DESTROYED (~-11pp) | **PRESERVED** (~-0.5pp) |
+| 5-NL refusal       | DESTROYED (-36/-44pp) | **+4pp** (100/25) |
+| Lever-4 (T4=100)   | ERASED (77/73)   | **PRESERVED** (100) |
+| Routing (DLG-mk0)  | mediocre (0.76)  | **COLLAPSED** (0.45) |
+| Band emission      | partial (0.73)   | **ZERO** (0.075)  |
+
+**DLG-mk0 per-category — the smoking gun on what went wrong:**
+
+| category | count | s_route | what the model did |
+|---|---:|---:|---|
+| in-domain        | 80 | 0.875 | mostly direct answer (some over-delegate slipped in) |
+| **ood-delegate**  | 60 | **0.000** | NEVER emitted `<\|delegate\|>` |
+| mid-confidence   | 25 | 1.000 | direct answer (right route, but s_band=0 → no `<\|confidence:medium\|>`) |
+| security-refuse  | 15 | 0.133 | 13/15 wrongly delegated or directly answered instead of refusing |
+| **ambiguous**     | 10 | **0.000** | NEVER delegated |
+| **long-context**  | 10 | **0.000** | NEVER delegated |
+| s_band           | 200 | **0.075** | confidence prefix completely dropped |
+
+**Diagnosis — exploration collapse.** The reward function
+`r = s_route × s_schema` rewards r39 baseline behavior (direct-answer on
+in-domain, refuse on security) at ~0.5-0.6 average. But for the 80 OOD/
+ambiguous/long-context prompts (40% of training set), r39 baseline NEVER
+emits a `<|delegate|>` token, so all 4 rollouts in each GRPO group score
+**reward=0** → advantage=0 → **no policy gradient on 40% of the training
+set**. Meanwhile, KL=0.01 anchor pulls the policy back toward baseline on
+those flat-reward prompts, AND the gradient on the +reward prompts
+amplifies "direct-answer everywhere" — driving the model toward NEVER
+delegating. The s_band signal isn't in the reward function at all, so band
+emission decayed to 0%.
+
+**Five lessons from r40+r41+r42 combined:**
+
+1. **SFT-only delegation training erases specialist** (r40/r41 confirmed
+   at two delegation shares).
+2. **Pure routing-RL preserves specialist beautifully but suffers
+   exploration collapse** when baseline rate on the target class is
+   ~0 (r42 confirmed). KL anchor that's tight enough to save the
+   specialist is too tight to allow exploration into the never-emitted
+   token class.
+3. **GRPO needs positive-class rollouts to learn.** When 40% of
+   training prompts have flat-reward (all-0) groups, GRPO has no
+   advantage signal on those — they're effectively wasted training mass.
+4. **Reward function omissions are silent capability deletions.** I
+   excluded s_band from the reward to keep it binary; result: band
+   emission decayed to 0% across all 200 DLG-mk0 prompts. Include all
+   subscores in the routing reward, even if heuristically weighted.
+5. **The v0.4.x specialist↔routing tradeoff has a sweet spot.** r40/r41
+   went too far toward routing (erasing specialist); r42 went too far
+   toward specialist (collapsing routing). The middle requires
+   **SFT-bootstrap (just enough explicit delegate examples to break out
+   of zero-rollout reward) + routing-RL on the bootstrapped policy**.
+
+**Acceptance gates (spec-delegation §11) — r42 misses:**
+- ✅ Mk.I ≥ 88% strict — **93.83%** (within 0.46pp of GA)
+- ✅ 5-NL ≥ 95% — **100%** (best in the ladder)
+- ❌ DLG-mk0 route ≥ 0.90 — **0.485**
+- ❌ DLG-mk0 schema ≥ 0.98 — **0.60**
+- ❌ DLG-mk0 overall ≥ 0.85 — **0.449**
+- ✅ T4 ≥ 95% — **100.0%** (Lever 4 fully preserved)
+
+Mk.I + 5-NL + T4 gates all PASS, but DLG-mk0 gates all FAIL → NOT GA.
+
+**v0.4.3 plan — SFT-bootstrap + RL hybrid:**
+
+1. **Bootstrap SFT (~30-50 explicit delegate pairs)** — *only* OOD/
+   ambiguous/long-context with valid `<|delegate|>{...}<|/delegate|>` JSON.
+   This breaks r42's "never delegate" attractor by giving the model the
+   schema shape with positive gradient. 1 epoch × LR 2e-5 × batch 1 ×
+   grad_accum 8. ~10 minutes train. Continue from r39 v3-t3patch (NOT
+   from r40/r41/r42).
+2. **Routing-RL on the bootstrapped checkpoint** — same 200-prompt
+   training set, but reward function expanded to include s_band:
+   `r = 0.40·s_route + 0.20·s_band + 0.40·s_schema_if_delegated`
+   (or just use the full DLG-mk0 weighted overall as the reward — train/
+   eval alignment by construction). 4 epochs at KL=0.02 (slightly looser
+   than r42's 0.01 to allow more exploration).
+3. **Temperature 0.9 for rollouts** instead of 0.7 — more sampling
+   diversity gives GRPO more chance to find positive-class outputs.
+
+Expected: this combines r41's failure-mode robustness (specialist held
+above 85%) with r42's specialist-preservation discipline (Lever 4 intact)
+AND positive routing gradient that doesn't exist in either branch alone.
+Cost: ~$0.5 SFT + ~$2 RL = ~\$2.5 / 4h.
+
+**Forge ladder (unchanged):** 87.67 → 89.47 → 90.98 → **94.29 (r39 GA)** →
+82.71 (r40) → 83.01 (r41) → 93.83 (r42). r42 nearly clawed back to GA
+on specialist eval while breaking routing.
+
+**Round 42 commits:** this ROADMAP entry · `tool/build_routing_rl_prompts.py`
+(NEW — 200 eval-held-out routing-RL training prompts matching DLG-mk0
+distribution) · `tool/train_rl_grpo_routing.py` (NEW — GRPO trainer
+reusing score_delegation_mk0 reward components) · `tool/run_pod_v042.sh`
+(NEW — Lever-4-style pod runner with in-pod 6-gate check) ·
+`LEARNING_PROGRAMMING.md` §8 r42 row + lessons · `bench-cold/v0.4.2-route-rl-r42/`
+(gitignored — SoT on HF).
+
+**dancinlab/* repos LIVE: 41** (40 + `hexa-forge-code-7b-qwen2.5-lora-r64-v0.4.2-route-rl`
+3rd labeled experiment). **GA UNCHANGED:** r39 v3-t3patch (94.29% Mk.I, 96%
+5-NL — pure specialist).
+
+**Where it stands after round 42:** Three v0.4.x attempts (r40 SFT-25%,
+r41 SFT-9%, r42 RL) all NOT GA, but **each isolates a different failure
+mode** that v0.4.3 SFT-bootstrap+RL hybrid is designed to navigate. The
+spec-delegation §1-§12 (token grammar, runtime contract, redaction,
+streaming UX, calibration, routing-eval) remain correct and reusable;
+the runtime is wired to real Anthropic (post-r41 closure commit). The
+remaining gap is a **training-recipe-search problem**, not a design problem.
+r39 v3-t3patch holds as **the production-ready pure-specialist GA**
+(94.29% Mk.I, 96% 5-NL); delegation queued for v0.4.3 hybrid.
+
 
 
 
