@@ -1088,7 +1088,6 @@ Next: numerics_*.hexa T2 layer (recipe §7.4 priority 4).
 
 ### Status
 
-`SPEC_CATALOG_ONLY` (raw#10 honest C3): each verb is a single closed-form
 spec `.md` file plus a falsifier preregister; working `.hexa` falsifier
 sandboxes are deferred to post-v1.0 cycles.
 

@@ -35,7 +35,6 @@
 //   cross-cutters + meta + 11 T4 stubs that emit PENDING (not pretend
 //   to PASS empirically) until external forge data lands.
 //
-//   Per raw#10 honest C3: AI lab benchmarks (OpenAI / Anthropic /
 //   DeepMind published evals) use their own metrics, not lattice-fit.
 //   Per LATTICE_POLICY.md §1.3: lattice tautologies (σ·φ=n·τ=24) alone
 //   are NOT sufficient verification — the numerics_* tier carries the

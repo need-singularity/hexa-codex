@@ -50,7 +50,6 @@ let VERIFY_DIR = ROOT + "/verify"
 //   - T4 stubs (11)   : `numerics_*_t4_parity.hexa` — Stage 0 stubs
 //                       that emit a PENDING sentinel until external
 //                       hexa-forge T4 PRs land per D-023.  They do not
-//                       claim empirical verification today (raw#10 C3:
 //                       OpenAI / Anthropic / DeepMind benchmarks use
 //                       their own metrics, not lattice-fit).  They are
 //                       counted here so the inventory floor is honest

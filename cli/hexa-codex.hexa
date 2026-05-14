@@ -20,9 +20,6 @@
 // Root resolution: $HEXA_CODEX_ROOT env, else inferred from $0 dirname.
 //
 // Constraints:
-//   raw#9   — hexa-only orchestration; no python deps at v1.0
-//   raw#15  — write-confined (audit log only)
-//   raw#10  — honest C3 caveat embedded (codex == spec catalog)
 //
 // Cost: $0 (Mac local; pure spec catalog read).
 //
@@ -122,11 +119,9 @@ fn _file_exists(p: str) -> bool {
     return r == "yes"
 }
 
-// ─── caveat printer (raw#10 honest C3) ───
 
 fn _print_caveats() {
     println("")
-    println("--- caveats (raw#10 C3) ---")
     println("  1. SPEC_CATALOG_ONLY at v1.0.0. 0/17 verbs ship a working .hexa")
     println("     module; each verb is a single .md spec (closed-form candidate +")
     println("     falsifier preregister) imported from canon@c0f1f570.")

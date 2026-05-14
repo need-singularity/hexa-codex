@@ -16,7 +16,6 @@
 //
 // Root resolution: $HEXA_FORGE_ROOT env, else inferred from $0.
 //
-// raw#9 hexa-only, raw#15 read-only.
 
 let VERSION = "0.1.0"
 

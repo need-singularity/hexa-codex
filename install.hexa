@@ -10,13 +10,10 @@
 //
 // Mirrors hexa-bio/install.hexa pattern.
 //
-// Responsibilities (each idempotent, raw#9 STRICT — pure-hexa only):
 //   1. Pre-install: nothing to do (spec-first; no python deps at v1.0).
 //   2. Post-install: run `hexa-codex selftest` to count 17 verb specs.
 //      Non-PASS = warn-only (not a blocker).
 //
-// raw#9 hexa-only, raw#11 snake_case, raw#15 no-hardcode.
-// raw#10 honest C3: see hexa-codex/README.md "Status" section.
 
 fn run_quick_selftest(root: str) -> bool {
     let cli = root + "/cli/hexa-codex.hexa"

@@ -33,7 +33,8 @@ export HF_HUB_DISABLE_PROGRESS_BARS=1
 export TRANSFORMERS_NO_ADVISORY_WARNINGS=1
 HF_TOKEN="${HUGGING_FACE_HUB_TOKEN:?HUGGING_FACE_HUB_TOKEN must be set}"
 export HUGGING_FACE_HUB_TOKEN="$HF_TOKEN"
-chmod +x /workspace/hexa_cc
+# Note: re-score is inference-only on delegation-mk0 (200 routing tasks).
+# No hexa_cc compile needed — score_delegation_mk0.py never touches hexa_cc.
 
 echo "=== [1] pip — pinned inference stack (no train deps needed for re-score) ==="
 pip install --quiet --upgrade pip 2>&1 | tail -2 || true

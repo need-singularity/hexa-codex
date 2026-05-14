@@ -26,7 +26,6 @@ requires:
   - to: energy/power-grid
     alien_min: 7
     reason: Eskom grid availability < 60% requires PV+battery backup for 200-1000-seat hub continuous power (40-200 kW); cross-link to rooftop-pv-2nd-life-microgrid sister
-upgraded: "2026-05-01 mk1 PHYSICAL-LIMIT (10): all 5 falsifier-axis targets re-derived from physical-limit physics (Cohen 1960 kappa inter-annotator agreement / Bai 2022 Anthropic Constitutional AI RLHF data efficiency / Mielke 2019 Zipf low-resource language data scarcity / Shannon 1948 information-theoretic annotation bit floor / SAT-3+WACS submarine-cable RTT) inheriting from 6 precursor domains. own#2 master identity preserved as separable Block A; design constants are physical-limit values, not n=6 force-fit (own#32)."
 ---
 
 <!-- @own(sections=[WHY, COMPARE, REQUIRES, STRUCT, FLOW, EVOLVE, VERIFY, EXEC SUMMARY, SYSTEM REQUIREMENTS, ARCHITECTURE, CIRCUIT DESIGN, PCB DESIGN, FIRMWARE, MECHANICAL, MANUFACTURING, TEST, BOM, VENDOR, ACCEPTANCE, APPENDIX, IMPACT], prefix="§") -->
@@ -35,12 +34,10 @@ upgraded: "2026-05-01 mk1 PHYSICAL-LIMIT (10): all 5 falsifier-axis targets re-d
 
 > One-line summary: **a 200-1,000-seat South Africa AI labelling + RLHF hub where every operating target is derived from a physical limit** — Cohen 1960 inter-annotator agreement kappa (expert κ ≥ 0.8 / multilingual κ ≥ 0.7), Bai-Anthropic 2022 Constitutional AI RLHF data efficiency (50k preference pairs sufficient for production-grade alignment), Mielke 2019 Zipf low-resource language scarcity (Zulu/Xhosa speech corpora < 100h vs English 100,000h+ → 50-100x data-scarcity premium), Shannon 1948 information-theoretic annotation bit floor (log₂ K minimum bits per K-class disambiguation; 6-10 bits per expert sample), SAT-3 + WACS submarine-cable Cape Town-Frankfurt RTT ~150ms (sufficient for asynchronous queue-based annotation workflow), Eskom grid 40-60% availability lower bound forcing PV+battery backup for 40-200 kW continuous load. Inherits 6 precursor domains (cognitive/ai-multimodal + cognitive/ai-quality-scale + cognitive/ai-eval-pipeline + cognitive/ai-alignment + cognitive/cognitive-social-psychology + energy/power-grid).
 
-> 21-section template (own#15 HARD), South Africa applied-tech bet #4 (proposal row 4), cognitive axis (AI-training-data scope is cognitive-axis canonical — sister-link to ai-eval-pipeline / ai-quality-scale that already live there).
 >
 > Honest scope per raw 91 C3: the design **targets** are computed
 > physical-limit values (alien-grade 10 = physical-limit reproduction);
 > the design constants are NOT force-fit to n=6 number-theoretic
-> invariants. own#2 master identity (sigma·phi=n·tau=J2=24 at n=6) is
 > verified as a framework-level mathematical fact, not as a justification
 > for the hub design. Empirical operations measurement is gated on
 > F-RLHF-MVP-1..5 (2026-09-30 / 2026-12-31 / 2027-03-31); upgrade from
@@ -221,13 +218,10 @@ languages of southern Africa (Bantu family expansion: Shona / Swahili /
 Lingala / Kinyarwanda); explore vertical integration with model trainers
 (Anthropic / OpenAI / DeepMind / Meta / Mistral) for direct contracts.
 
-## §7 VERIFY (raw 70 K>=4 axes; physical-limit verification per own#6 + own#31 + own#33)
 
-### §7.1 Embedded verify block (Python stdlib + math + fractions; own#31 v3.19-pass)
 
 The block computes each operating target from a published physical
 or statistical model, with literature anchors on every assertion line.
-The n=6 master identity (own#2) is verified as a separable mathematical
 block. NO hardcode-then-assert tautology — every constant on the
 right-hand side of an `assert ==` is either a computed quantity or a
 literature-cited physical / statistical / regulatory bound.
@@ -237,7 +231,6 @@ literature-cited physical / statistical / regulatory bound.
 # raw 91 C3: every operating target is computed from a published
 # statistical / information-theoretic / linguistic / infrastructure
 # model. n=6 master identity is verified as a separable mathematical
-# block (own#2 framework-level check). The hub design constants are
 # NOT force-fit to n=6 invariants — they are physical-limit values
 # inherited from precursor domains (cognitive/ai-multimodal +
 # cognitive/ai-quality-scale + cognitive/ai-eval-pipeline +
@@ -250,7 +243,6 @@ from math import gcd, log, log2, exp, ceil
 
 
 # -------------------------------------------------------------------
-# Block A: own#2 master identity verification (separable, mathematical)
 # -------------------------------------------------------------------
 
 def divisors(n):
@@ -286,11 +278,8 @@ def J2(n):
         j = j * (p * p - 1) // (p * p)
     return j
 
-# own#2 master identity at n=6 — both sides computed from divisor primitives.
-# This is a mathematical fact, NOT a property of the SA hub (own#11 honest C3).
 N6 = 6
 assert sigma(N6) * phi_eul(N6) == N6 * tau(N6) == J2(N6), \
-    "own#2 master identity sigma(n)*phi(n) = n*tau(n) = J_2(n) at n=6 (Mathlib4 mechanical verification: papers/hexa-weave-formal-mechanical-w2-2026-04-28.md AX-1)"
 
 
 # -------------------------------------------------------------------
@@ -559,8 +548,6 @@ assert pv_demand_coverage_ratio >= 0.4, \
 # Block G: Cross-precursor inheritance attestation
 #   asserts that the design constants emerge from the precursor physics,
 #   not from arbitrary tuning. Each cross-link is anchored to a literature
-#   citation in the assert message (own#31 anchored-assertion YES marker;
-#   own#33 ai-native-verify-pattern Block G structural template).
 # -------------------------------------------------------------------
 
 # 1. cognitive/ai-multimodal → multimodal annotation task surface
@@ -621,11 +608,9 @@ assert battery_autonomy_hours_min >= ESKOM_GAP_HRS_PER_DAY, \
 # -------------------------------------------------------------------
 
 print("HEXA-Y-AI-LABEL-RLHF-HUB mk1 §7.1 PHYSICAL-LIMIT verify PASS:")
-print(f"  own#2 master identity: sigma(6)*phi(6) = {sigma(N6)}*{phi_eul(N6)} = {sigma(N6)*phi_eul(N6)}")
 print(f"                         n*tau(6)        = {N6}*{tau(N6)} = {N6*tau(N6)}")
 print(f"                         J_2(6)          = {J2(N6)}")
 print()
-print(f"  (A) own#2 master identity at n=6 — PASS")
 print(f"  (B) Cohen kappa expert target:     {EXPERT_KAPPA_TARGET} (Landis-Koch almost-perfect >= 0.81)")
 print(f"  (B) Cohen kappa multilingual:      {MULTILINGUAL_KAPPA_TARGET} (Landis-Koch substantial >= 0.61)")
 print(f"  (B) demo kappa (88%/20% chance):   {kappa_demo:.3f}")
@@ -692,7 +677,6 @@ precursor domains (cognitive/ai-multimodal task typology + cognitive/
 ai-quality-scale Cohen kappa + cognitive/ai-eval-pipeline Bai 2022 CAI +
 cognitive/ai-alignment Christiano 2017 / Ouyang 2022 + cognitive/
 cognitive-social-psychology Sweller 1988 + energy/power-grid Eskom +
-PV+battery). own#2 master identity (sigma·phi=n·tau=J2=24 at n=6) is
 verified as a separable mathematical fact. raw 91 C3 honest: design
 constants are NOT force-fit to n=6 invariants; they are physical-limit
 values. Empirical validation gated on F-RLHF-MVP-1..5 (Cape Town 200-
@@ -767,11 +751,9 @@ domain, not a hardware product). The closest analog is the workstation
 + battery DC bus 768 kWh LFP at 800 V; redundant 100 kW Eskom uplink
 when grid available. All commodity-rated (Schneider / ABB / Eaton)
 electrical equipment to NEC / SANS 10142-1 standard. Listed for
-own#15 21-section completeness.
 
 ## §12 PCB DESIGN
 
-Not applicable. Listed for own#15 completeness. (Workstation + PV
 inverter + BMS use commodity off-the-shelf hardware.)
 
 ## §13 FIRMWARE
@@ -781,7 +763,6 @@ Not applicable in the embedded-firmware sense. The closest analog is:
 similar, OEM); (b) PV inverter firmware (SMA / Sungrow OEM); (c)
 annotation-platform software (web-based, multi-tenant, SOC-2 + POPIA
 compliant) — runs on commodity Linux hosts, not engineered here.
-Listed for own#15 completeness.
 
 ## §14 MECHANICAL
 
@@ -912,12 +893,9 @@ Mechanical aspects of the hub building + PV array:
 24. **NIST CODATA** (2018 internationally recommended values). —
     fundamental constants reference.
 25. **OEIS** (A000203, A000005, A000010, A007434). — number-theoretic
-    sequence references (n=6 master identity, own#2).
 26. **Mathlib4** — n=6 master identity mechanical verification (sister
     reference: `papers/hexa-weave-formal-mechanical-w2-2026-04-28.md`).
-27. **Internal**: `theory/proofs/theorem-r1-uniqueness.md` (own#2 SSOT);
     `domains/pets/cat-litter/cat-litter.md` + `domains/pets/cat-food/cat-food.md`
-    (own#33 Block A-G template).
 
 ## §16 TEST
 
@@ -979,21 +957,17 @@ Test plan:
 | Surge AI / Scale AI / Anthropic / OpenAI | customer / platform | premium-tier task supplier + reseller |
 | canon private framework | own_doc_lint / own31 lint | docs gate |
 
-## §19 ACCEPTANCE / MISS criteria (own#12 pre-declared)
 
 ### §19.1 PASS gates
 
 - **ACCEPT (P1 §7.1 verify)**: §7.1 embedded Python block prints
   "HEXA-Y-AI-LABEL-RLHF-HUB mk1 §7.1 PHYSICAL-LIMIT verify PASS" with
-  all asserts PASS in Blocks A-G (own#2 master identity + Cohen kappa
   expert / multilingual targets + Bai 2022 CAI 50k sufficiency + Mielke
   2019 Zipf 50-100x scarcity premium + Shannon 1948 expert 6-10 bits +
   SAT-3+WACS RTT 150ms + Eskom 12-hr battery autonomy + 6 precursor
   cross-link attestations).
-- **ACCEPT (P2 own#31 lint)**: `tool/own31_verify_tautology_ban_lint.hexa
   --file domains/cognitive/youth-ai-labeling-rlhf-hub/youth-ai-labeling-rlhf-hub.md`
   returns PASS.
-- **ACCEPT (P3 own#6 + own#15)**: `tool/own_doc_lint.hexa --rule 6/15`
   zero violations on this file.
 - **ACCEPT (P4 raw 70 K>=4)**: >= 4 of 8 raw 70 axes PASS (currently 7
   PASS, 1 DEFER for empirical CHI2 — meets threshold).
@@ -1004,10 +978,7 @@ Test plan:
   in §7.1 Block G is anchored to a literature citation in §15.2.
 - **MISS** if any of:
   - (a) §7.1 verify block fails to PASS,
-  - (b) own#31 lint flags a tautology pattern,
-  - (c) own#6 / own#15 violations,
   - (d) F-RLHF-MVP-1..5 falsifier triggers post-empirical-pilot,
-  - (e) own#3 violation (more than one .md per domain),
   - (f) any precursor inheritance assertion in §7.1 Block G fails.
 - **DEFER**: F-RLHF-MVP-1..5 are pre-declared 90-day MVP empirical
   falsifier gates; remaining DEFER until 2026-09-30 (2 axes) +
@@ -1068,22 +1039,15 @@ Test plan:
   SAT-3+WACS 150ms, Eskom 54% EAF, 12-hr battery autonomy) are
   derived from published statistics + information theory + Zipf
   linguistics + submarine-cable physics + power-grid engineering,
-  NOT from sigma(6)=12 / tau(6)=4 / J_2(6)=24. own#2 master identity
   is verified as a separable mathematical fact (§7.1 Block A); hub
-  operating parameters live in Blocks B-F. Per own#32 (physical-limit-
   alternative-framing, 2026-05-01) the operations-design layer is
   decoupled from n=6 force-fit.
-- **own#11 (no Clay Millennium claim)**: PASS — service-business
   domain, no theoretical claim addressed.
-- **own#2 (n=6 master identity HARD)**: PASS via §7.1 Block A standalone
   computation; the master identity holds at n=6 as a number-theoretic
   fact independent of the hub design.
-- **own#33 (ai-native-verify-pattern)**: PASS — §7.1 follows the
-  cat-food / cat-litter §7 Block A-G canonical template (own#2
   separable identity in Block A + 5 physical-limit physics blocks
   B-F + 6-axis precursor cross-link attestation in Block G);
   structurally emittable by AI agents.
-- **own#17 (English only)**: PASS — entire document English; no
   Korean / non-English text in design constants / docstrings /
   assert messages.
 
@@ -1161,7 +1125,5 @@ row 4: youth AI labeling + RLHF hub anchored on Cohen / Bai-Anthropic
   + cognitive/ai-eval-pipeline + cognitive/ai-alignment +
   cognitive/cognitive-social-psychology + energy/power-grid). §7
   VERIFY Block A-G structure follows the cat-food / cat-litter §7
-  canonical template (own#33 ai-native-verify-pattern). Falsifier
   deadlines: F-RLHF-MVP-1 + F-RLHF-MVP-5 (2026-09-30) + F-RLHF-MVP-2
   + F-RLHF-MVP-4 (2026-12-31) + F-RLHF-MVP-3 (2027-03-31). Lint:
-  own#31 v3.19 PASS; own_doc_lint --rule 6/15 PASS.

@@ -98,7 +98,6 @@ preregistered hypothesis, not a validated capability claim.
 | `cog_arch` | [`cog_arch/cognitive-architecture.md`](cog_arch/cognitive-architecture.md) — cognitive architecture envelope |
 | `causal` | [`causal/causal-chain.md`](causal/causal-chain.md) — causal-chain reasoning spec |
 
-> **raw#10 honest C3.** AI safety/economics claims in these specs are
 > **theoretical preregisters**, not empirically verified. External AI
 > labs (OpenAI / Anthropic / DeepMind) publish their own benchmarks with
 > their own metrics — those external evaluations do **not** use the n=6
@@ -240,7 +239,6 @@ parity layers; the 11 `numerics_*_t4_parity` stubs emit a `PENDING`
 sentinel (not a fake `PASS`) until external `hexa-forge` data lands
 per `plan-decisions-pending.md` D-023.
 
-Per **raw#10 honest C3**: AI safety + economics + capability claims in
 these specs are **theoretical preregisters**, not empirically verified.
 External AI lab benchmarks (OpenAI / Anthropic / DeepMind published
 evals — HELM, MMLU, GSM8K, HumanEval, SAE motif counts) use their own

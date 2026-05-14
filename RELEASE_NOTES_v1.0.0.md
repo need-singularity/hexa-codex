@@ -3,7 +3,6 @@
 **Release date**: 2026-05-06
 **Provenance**: extracted from `canon@c0f1f570`
 **License**: MIT
-**Verdict**: `SPEC_CATALOG_ONLY` (raw#10 honest C3)
 
 ---
 
@@ -54,7 +53,6 @@ What does **not** ship:
 - `dancinlab/honesty-monitor` — AI honesty falsifier sister.
 - `dancinlab/hexa-bio` — molecular HEXA-family sister (4 verb).
 
-## Caveats (raw#10 honest C3)
 
 1. `SPEC_CATALOG_ONLY` — 0/17 verbs ship a working `.hexa` module at v1.0.
 2. Falsifier deadlines + thresholds inside each verb spec are
