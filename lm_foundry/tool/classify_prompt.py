@@ -300,6 +300,35 @@ def _scan(prompt: str, patterns: list) -> tuple[float, list[str]]:
     return total, hits
 
 
+def _emit_conf(total: float, full_threshold: float, floor: float = 0.85) -> float:
+    """r54 calibrated-confidence emission (replaces prior `min(1.0, X/Y)`).
+
+    Empirical r52 reliability table showed single-signal cases at conf
+    0.25-0.50 had ~100% empirical accuracy (massive underconfidence). The
+    fix is a piecewise emission:
+
+      total <= 0                    → 0.0    (no signal)
+      0 < total < full_threshold    → floor + (1-floor) * (total / full_threshold)
+      total >= full_threshold       → 1.0    (saturated)
+
+    `floor` is the empirically-warranted confidence for a single signal of
+    the relevant strength class:
+
+      - refuse single match  → floor=0.95 (r52 acc 1.00, prior 0.5)
+      - strong hexa/ood      → floor=0.85
+      - weak hexa            → floor=0.80
+      - weak ood fallthrough → floor=0.80
+
+    The label-dispatch logic is UNCHANGED — only the emitted confidence
+    moves. DLG-mk0 accuracy is preserved by construction.
+    """
+    if total <= 0.0:
+        return 0.0
+    if total >= full_threshold:
+        return 1.0
+    return min(1.0, floor + (1.0 - floor) * (total / full_threshold))
+
+
 # ============================================================================
 # Public API
 # ============================================================================
@@ -317,7 +346,24 @@ def classify_prompt(prompt: str) -> ClassifierDecision:
     """
     p = prompt.strip()
 
-    # 1. Refuse.
+    # r54: confidence recalibration per r52 Brier/ECE finding.
+    #
+    # r52 reliability table on r51's 300-task DLG-mk0:
+    #   bin [0.30, 0.40)  19 tasks  conf 0.30  acc 1.00  gap -0.70  ← extreme underconf
+    #   bin [0.50, 0.60)  51 tasks  conf 0.50  acc 1.00  gap -0.50  ← extreme underconf
+    #   bin [0.70, 0.80)  37 tasks  conf 0.70  acc 0.92  gap -0.22  ← moderate underconf
+    #   bin [0.80, 0.90)   8 tasks  conf 0.83  acc 1.00  gap -0.17  ← mild underconf
+    #   bin [0.90, 1.00) 183 tasks  conf 1.00  acc 1.00  gap  0.00  ← perfectly calibrated
+    #
+    # Root cause: the prior `min(1.0, X / Y)` formulas emitted 0.25-0.50
+    # for single-signal cases that have empirical 100% accuracy. The fix
+    # is `_emit_conf(total, full_threshold, floor=0.80-0.95)` — single
+    # signal → floor (well above prior 0.5); multiple signals scale to
+    # 1.0 at full_threshold. The label dispatch logic is UNCHANGED (only
+    # the emitted `confidence` value moves), so DLG-mk0 accuracy is
+    # preserved by construction.
+
+    # 1. Refuse — empirically 100% acc on r51; emit ≥0.95 floor.
     refuse_total, refuse_hits = 0.0, []
     for name, pat in _REFUSE_PATTERNS:
         if pat.search(p):
@@ -325,7 +371,7 @@ def classify_prompt(prompt: str) -> ClassifierDecision:
             refuse_hits.append(name)
     if refuse_total > 0:
         return ClassifierDecision(
-            label="refuse", confidence=min(1.0, refuse_total / 2.0),
+            label="refuse", confidence=_emit_conf(refuse_total, 2.0, floor=0.95),
             reason=f"security-sensitive: {refuse_hits[0]}", matched_signals=refuse_hits,
         )
 
@@ -334,9 +380,8 @@ def classify_prompt(prompt: str) -> ClassifierDecision:
     strong_hexa = any(name for name, pat, w in (_HEXA_PATTERNS + _HEXA_NONENG_PATTERNS)
                        if w >= 2.0 and pat.search(p))
 
-    # 2.5. Mid-confidence short-circuit: short Swift/Python/Go basics →
-    # route to hexa even though the OOD language keyword fires. DLG-mk0
-    # mid-conf category design (per spec §4.A).
+    # 2.5. Mid-confidence short-circuit — empirical acc 0.92 on r51; keep 0.7
+    # as the matching emission (already well-calibrated).
     if _is_mid_confidence(p) and not strong_hexa:
         return ClassifierDecision(
             label="hexa", confidence=0.7,
@@ -355,45 +400,48 @@ def classify_prompt(prompt: str) -> ClassifierDecision:
         ood_hits.append("long-prompt-chars")
         strong_ood = True
 
-    # 4. Disambiguation.
+    # 4. Disambiguation — strong-signal paths (single w=2.0 match dominates).
     if strong_hexa and not strong_ood:
         return ClassifierDecision(
-            label="hexa", confidence=min(1.0, hexa_total / 2.0),
+            label="hexa", confidence=_emit_conf(hexa_total, 2.0, floor=0.85),
             reason=f"hexa-canon: {hexa_hits[0]}", matched_signals=hexa_hits,
         )
     if strong_ood and not strong_hexa:
         return ClassifierDecision(
-            label="ood", confidence=min(1.0, ood_total / 2.0),
+            label="ood", confidence=_emit_conf(ood_total, 2.0, floor=0.85),
             reason=f"out-of-domain: {ood_hits[0]}", matched_signals=ood_hits,
         )
     if strong_hexa and strong_ood:
         # Both fired — let total weight decide; tie → hexa (specialist-leaning).
+        # Proportional formula preserved (it conveys "how strongly H beats O"),
+        # but with floor 0.85 since r52 shows both-fired-* bin acc = 1.00.
         if hexa_total >= ood_total:
             return ClassifierDecision(
-                label="hexa", confidence=min(1.0, hexa_total / (hexa_total + ood_total)),
+                label="hexa", confidence=_emit_conf(hexa_total, hexa_total + ood_total, floor=0.85),
                 reason=f"both-fired-hexa-wins: hexa={hexa_total:.1f} ood={ood_total:.1f}",
                 matched_signals=hexa_hits + ood_hits,
             )
         return ClassifierDecision(
-            label="ood", confidence=min(1.0, ood_total / (hexa_total + ood_total)),
+            label="ood", confidence=_emit_conf(ood_total, hexa_total + ood_total, floor=0.85),
             reason=f"both-fired-ood-wins: hexa={hexa_total:.1f} ood={ood_total:.1f}",
             matched_signals=hexa_hits + ood_hits,
         )
 
-    # 5. Ambiguous imperative (must come before weak-hexa fallthrough — these
-    # short prompts can accidentally match weak hexa keywords).
+    # 5. Ambiguous imperative — empirical acc 1.00 on r51's 22 ambiguous tasks;
+    # bump from 0.5 → 0.85 floor.
     for name, pat in _AMBIGUOUS_PATTERNS:
         if pat.search(p) and len(p) < 80:  # short imperative
             return ClassifierDecision(
-                label="ood", confidence=0.5,
+                label="ood", confidence=0.85,
                 reason="ambiguous: under-specified imperative",
                 matched_signals=[name],
             )
 
-    # 6. Weak hexa (≥2 hits, no strong) → hexa.
+    # 6. Weak hexa (≥2 hits, no strong) → hexa. Single weak signal (total=1.0,
+    # divisor=4.0) used to emit 0.25 → bin [0.30, 0.40) under-conf cluster.
     if hexa_total >= 2.0:
         return ClassifierDecision(
-            label="hexa", confidence=min(1.0, hexa_total / 4.0),
+            label="hexa", confidence=_emit_conf(hexa_total, 4.0, floor=0.80),
             reason=f"weak-hexa: {hexa_hits[0]}", matched_signals=hexa_hits,
         )
 
@@ -401,16 +449,19 @@ def classify_prompt(prompt: str) -> ClassifierDecision:
     # < 2.0 patterns like prove-derive, complexity-bigO, ml-internals,
     # structured-json) so the downstream `select_vendor_tier()` can route to
     # the right tier (reason / struct / longctx) instead of defaulting to
-    # general. Without this, all weak-only OOD prompts route to claude-sonnet
-    # even when they're actually math/JSON/long-context.
+    # general. Single weak signal used to emit 0.33 → bin [0.30, 0.40).
     if ood_hits:
         return ClassifierDecision(
-            label="ood", confidence=min(1.0, ood_total / 3.0),
+            label="ood", confidence=_emit_conf(ood_total, 3.0, floor=0.80),
             reason=f"out-of-domain: {ood_hits[0]}",
             matched_signals=ood_hits,
         )
+    # No-signal fallthrough — least certain branch (per r52, ambiguous-but-no-
+    # signal prompts route here and have ~100% acc empirically but the path is
+    # speculative — keep below the signal-emit floor as an "unsure but routed
+    # ood" tier-band signal).
     return ClassifierDecision(
-        label="ood", confidence=0.3,
+        label="ood", confidence=0.55,
         reason="no-signal-fallthrough", matched_signals=[],
     )
 

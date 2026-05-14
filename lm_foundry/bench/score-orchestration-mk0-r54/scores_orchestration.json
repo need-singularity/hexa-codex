@@ -1,0 +1,71 @@
+{
+  "tasks_total": 300,
+  "overall_accuracy": 0.9833,
+  "per_category": {
+    "ambiguous": {
+      "n": 22,
+      "correct": 22,
+      "accuracy": 1.0
+    },
+    "in-domain": {
+      "n": 100,
+      "correct": 100,
+      "accuracy": 1.0
+    },
+    "long-context": {
+      "n": 21,
+      "correct": 21,
+      "accuracy": 1.0
+    },
+    "mid-confidence": {
+      "n": 34,
+      "correct": 34,
+      "accuracy": 1.0
+    },
+    "ood-delegate": {
+      "n": 98,
+      "correct": 93,
+      "accuracy": 0.949
+    },
+    "security-refuse": {
+      "n": 25,
+      "correct": 25,
+      "accuracy": 1.0
+    }
+  },
+  "confusion_matrix": {
+    "hexa->hexa": 134,
+    "ood->hexa": 5,
+    "ood->ood": 136,
+    "refuse->refuse": 25
+  },
+  "tier_routing": {
+    "n_eligible": 136,
+    "tool_match_accuracy": 0.9779,
+    "tier_match_accuracy": 0.9779,
+    "per_category": {
+      "ambiguous": {
+        "n": 22,
+        "tool_match": 22,
+        "tool_acc": 1.0,
+        "tier_match": 22,
+        "tier_acc": 1.0
+      },
+      "long-context": {
+        "n": 21,
+        "tool_match": 21,
+        "tool_acc": 1.0,
+        "tier_match": 21,
+        "tier_acc": 1.0
+      },
+      "ood-delegate": {
+        "n": 93,
+        "tool_match": 90,
+        "tool_acc": 0.9677,
+        "tier_match": 90,
+        "tier_acc": 0.9677
+      }
+    }
+  },
+  "spec": "papers/spec-orchestration-v0.5.0.md \u00a77 + v0.5.5 reason-class split (deep vs algo)"
+}
