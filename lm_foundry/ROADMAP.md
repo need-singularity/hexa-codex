@@ -6667,6 +6667,77 @@ r44-r66 orchestration runtime → v0.6.0 line GA.
    architectural (specialist ceiling / network DB / auto-retry / bio
    verb activation / paid-Gemini longctx measurement)
 
+### 2026-05-14 ~22:30 KST — round 68: v0.6.1 — `forge_keys setup` interactive walkthrough + `--paid` tier verification
+
+**Goal**: r65's `forge_keys` had 4 subcommands (status / add / remove /
+test) that worked but were per-vendor. After r67 GA mark, user requested
+CLI-driven setup for the remaining vendor key gaps (OpenAI missing,
+Gemini paid-tier verification). r68 ships an interactive `setup`
+subcommand + paid-tier test flag.
+
+**`tool/forge_keys.py` extensions**:
+
+1. **`setup` subcommand** (interactive walkthrough):
+   - For each vendor not yet registered OR registered-but-failing-test:
+     a. Print the vendor's web URL (anthropic/openai/gemini)
+     b. Auto-open URL in default browser (`open URL` on macOS;
+        `--no-open-url` to disable)
+     c. Prompt for the key via `getpass` (input hidden)
+     d. Validate prefix lightly (sk-ant- / sk- / AIza)
+     e. Store via `~/core/secret set vendor.api_key`
+     f. Auto-test via real API call
+   - Already-registered + working vendors are skipped with ✓ note
+   - End summary: N registered OK, M skipped
+
+2. **`test --paid` flag**: tests each vendor's flagship model
+   (claude-opus-4-7 / gpt-5 / gemini-2.5-pro) instead of the default
+   cheap tier (haiku / gpt-5-nano / flash-lite). Useful for verifying
+   the registered key is from a paid-tier account/project.
+
+3. **`test --model M` flag**: explicit model override (e.g.
+   `--model gemini-2.5-pro` to verify gemini paid project).
+
+4. Internal `_test_anthropic` / `_test_openai` / `_test_gemini` now
+   take an optional `model` parameter; defaults preserved for
+   backward compat.
+
+5. New error category in `_test_gemini`: `QUOTA (model): ...`
+   surfaces 429 / RESOURCE_EXHAUSTED separately from auth_fail,
+   making the diagnosis crystal-clear.
+
+**Diagnosis run at r68 time (Mac dev box)**:
+
+| Vendor | Status | --paid test (flagship) | Diagnosis |
+|---|---|---|---|
+| Anthropic | ✓ registered | ✓ `claude-opus-4-7` returned 'OK' (in=17 out=2) | **paid-tier confirmed** |
+| Gemini | ✓ registered | ✗ `gemini-2.5-pro` QUOTA 429 RESOURCE_EXHAUSTED | key from **free-tier project**; swap needed |
+| OpenAI | ✗ MISSING | (not testable yet) | needs initial `add` |
+
+→ Anthropic paid-tier works (no action needed). Gemini paid-tier still
+gated by GCP project billing (operator needs paid-project key swap).
+OpenAI needs initial registration.
+
+Both Gemini swap + OpenAI add can be done in one `forge_keys setup`
+session.
+
+**Production runbook update**: OPERATIONS.md §0 pre-deploy checklist
+will be amended to include `forge_keys test --paid` as step 5 instead
+of just basic `forge_keys test all`. The cheap-tier test only confirms
+the key is registered and accepted; it does NOT confirm the project is
+paid-tier. Operators must run `--paid` to verify upper-tier model
+access before relying on opus / gpt-5 / gemini-2.5-pro routes.
+
+**Smoke regressions: zero** (forge_keys is a separate tool, doesn't
+touch the runtime). All r66 gates green.
+
+**Round 68 commits:** this ROADMAP entry · `tool/forge_keys.py` (NEW
+`setup` subcommand + `--paid` / `--model` flags + paid_models map) ·
+`LEARNING_PROGRAMMING.md` §8 r68 row.
+
+**Cost**: \$0.0008 (verification calls during dev: opus ×1, pro ×1).
+**GA UNCHANGED**: r39 v3-t3patch (94.29% Mk.I strict).
+**dancinlab/\* repos LIVE: 42** (unchanged — tooling-only round).
+
 
 
 
