@@ -219,6 +219,16 @@ class ForgeRuntimeConfig:
     multi_turn_memory_max_turns:    int  = 5
     multi_turn_memory_max_chars:    int  = 8000
     multi_turn_memory_auto_prepend: bool = False
+    # v0.5.12 (r60): optional file-backed conversation memory for
+    # cross-process restart-persistence. Default None = in-memory only
+    # (process-local, matches r57 behavior). When set, loads existing
+    # turns on __init__ and appends new turns on `_record_conversation_turn`.
+    # JSONL format, one record per turn:
+    #   {"conv_id": str, "turn": {turn_id, timestamp_utc, user_prompt,
+    #     assistant_text, classifier_label, tool, model}}
+    # CAVEAT: NOT multi-process-safe (no locking). Single-process restart-
+    # persistence only. Same safety boundary as r56 vendor_cache_path.
+    conv_history_path:              Path | None = None
     # v0.5.11 (r59): vendor-native message-list threading.
     # When True (requires auto_prepend=True), instead of building a
     # `Previous conversation:` string preamble, the runtime constructs a
@@ -699,6 +709,12 @@ class ForgeRuntime:
             self._vendor_cache_load_from_file()
         # v0.5.9 (r57): multi-turn conversation memory.
         self._conv_history: dict[str, list[ConversationTurn]] = {}
+        # v0.5.12 (r60): conversation memory stats counter (mirrors cache stats).
+        self._conv_history_stats = {"file_loads": 0, "file_writes": 0}
+        # v0.5.12 (r60): optional file-backed conv-history load on init.
+        if (cfg.multi_turn_memory_enabled
+                and cfg.conv_history_path is not None):
+            self._conv_history_load_from_file()
 
     # ---- public entry point ----
 
@@ -1327,8 +1343,117 @@ class ForgeRuntime:
     def clear_conversation(self, conv_id: str) -> None:
         """Drop the conversation buffer for `conv_id`. Useful when a session
         ends, when the user explicitly resets, or to bound long-running
-        conv memory."""
+        conv memory. r60: if file-backed, also compacts the file so the
+        cleared conversation's turns don't accumulate."""
+        existed = conv_id in self._conv_history
         self._conv_history.pop(conv_id, None)
+        if existed and self.cfg.conv_history_path is not None:
+            self._conv_history_compact_file()
+
+    def _conv_history_load_from_file(self) -> None:
+        """r60: load conversation buffers from `cfg.conv_history_path` on
+        __init__. Best-effort: a malformed line is skipped with a stderr
+        note. Respects `multi_turn_memory_max_turns` per conv_id (oldest
+        dropped on overflow during reconstruction)."""
+        path = self.cfg.conv_history_path
+        if path is None or not path.exists():
+            return
+        try:
+            lines = path.read_text(encoding="utf-8").splitlines()
+        except (OSError, UnicodeDecodeError) as e:
+            print(f"[forge_runtime] conv-history file unreadable, skipping load: {e!r}",
+                  file=_sys.stderr)
+            return
+        n_loaded = 0
+        n_malformed = 0
+        max_n = self.cfg.multi_turn_memory_max_turns
+        for line in lines:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                rec = json.loads(line)
+                conv_id = str(rec["conv_id"])
+                t = rec["turn"]
+                turn = ConversationTurn(
+                    turn_id=str(t["turn_id"]),
+                    timestamp_utc=str(t["timestamp_utc"]),
+                    user_prompt=str(t["user_prompt"]),
+                    assistant_text=str(t["assistant_text"]),
+                    classifier_label=str(t["classifier_label"]),
+                    tool=t.get("tool"),
+                    model=t.get("model"),
+                )
+            except (json.JSONDecodeError, KeyError, ValueError, TypeError):
+                n_malformed += 1
+                continue
+            buf = self._conv_history.setdefault(conv_id, [])
+            buf.append(turn)
+            if len(buf) > max_n:
+                del buf[: len(buf) - max_n]
+            n_loaded += 1
+        self._conv_history_stats["file_loads"] += n_loaded
+        if n_malformed:
+            print(f"[forge_runtime] conv-history load: skipped {n_malformed} malformed lines",
+                  file=_sys.stderr)
+
+    def _conv_history_append_to_file(self, conv_id: str, turn: "ConversationTurn") -> None:
+        """r60: append one JSONL record on each successful `_record_conversation_turn`."""
+        path = self.cfg.conv_history_path
+        if path is None:
+            return
+        path.parent.mkdir(parents=True, exist_ok=True)
+        rec = {
+            "conv_id": conv_id,
+            "turn": {
+                "turn_id":          turn.turn_id,
+                "timestamp_utc":    turn.timestamp_utc,
+                "user_prompt":      turn.user_prompt,
+                "assistant_text":   turn.assistant_text,
+                "classifier_label": turn.classifier_label,
+                "tool":             turn.tool,
+                "model":            turn.model,
+            },
+        }
+        try:
+            with path.open("a", encoding="utf-8") as f:
+                f.write(json.dumps(rec, ensure_ascii=False) + "\n")
+            self._conv_history_stats["file_writes"] += 1
+        except OSError as e:
+            print(f"[forge_runtime] conv-history append failed (in-memory only): {e!r}",
+                  file=_sys.stderr)
+
+    def _conv_history_compact_file(self) -> None:
+        """r60: rewrite conv-history file from current in-memory state.
+        Called after `clear_conversation` so dropped convs don't persist
+        in the file. tmp+rename for atomicity."""
+        path = self.cfg.conv_history_path
+        if path is None:
+            return
+        path.parent.mkdir(parents=True, exist_ok=True)
+        records: list[str] = []
+        for conv_id, buf in self._conv_history.items():
+            for turn in buf:
+                rec = {
+                    "conv_id": conv_id,
+                    "turn": {
+                        "turn_id":          turn.turn_id,
+                        "timestamp_utc":    turn.timestamp_utc,
+                        "user_prompt":      turn.user_prompt,
+                        "assistant_text":   turn.assistant_text,
+                        "classifier_label": turn.classifier_label,
+                        "tool":             turn.tool,
+                        "model":            turn.model,
+                    },
+                }
+                records.append(json.dumps(rec, ensure_ascii=False))
+        tmp_path = path.with_suffix(path.suffix + ".tmp")
+        try:
+            tmp_path.write_text("\n".join(records) + ("\n" if records else ""),
+                                encoding="utf-8")
+            tmp_path.replace(path)
+        except OSError as e:
+            print(f"[forge_runtime] conv-history compact failed: {e!r}", file=_sys.stderr)
 
     def _record_conversation_turn(self, conv_id: str, turn_id: str,
                                     user_prompt: str, result: "TurnResult") -> None:
@@ -1360,8 +1485,17 @@ class ForgeRuntime:
         buf.append(turn)
         # Cap to max_turns — drop oldest.
         max_n = self.cfg.multi_turn_memory_max_turns
+        evicted = False
         if len(buf) > max_n:
             del buf[: len(buf) - max_n]
+            evicted = True
+        # r60: file-backed conv-history append (or compact on eviction so
+        # the file doesn't grow with evicted entries).
+        if self.cfg.conv_history_path is not None:
+            if evicted:
+                self._conv_history_compact_file()
+            else:
+                self._conv_history_append_to_file(conv_id, turn)
 
     def _build_prompt_with_history(self, conv_id: str, user_prompt: str) -> str:
         """Construct an auto-prepended prompt: prior turns rendered as a
@@ -1858,6 +1992,77 @@ def _smoke_test() -> int:
                   f"turn 3 sent {len(msgs3)} msgs; gemini-translate ✓")
         finally:
             _self_mod._vendor_call = _orig_vendor_call
+
+        # Case 14: v0.5.12 (r60) persistent conv memory cross-process.
+        # Mirrors case [11] file-backed cache pattern. Runtime A records
+        # turns to a JSONL conv-history file; runtime B (independent
+        # instance) loads them on init and queries via get_conversation_history.
+        _self_mod._vendor_call = _fake_call
+        _call_count[0] = 0
+        conv_file = Path("/tmp/forge_runtime_smoke_conv_history.jsonl")
+        if conv_file.exists():
+            conv_file.unlink()
+        try:
+            cfg_conv_a = ForgeRuntimeConfig(
+                anthropic_api_key="stub", openai_api_key="stub", gemini_api_key="stub",
+                telemetry_path=Path("/tmp/forge_runtime_smoke_conv_a.jsonl"),
+                use_orchestration=True,
+                vendor_cache_enabled=False,
+                multi_turn_memory_enabled=True,
+                multi_turn_memory_max_turns=5,
+                multi_turn_memory_auto_prepend=False,  # disable to keep test focused on storage
+                conv_history_path=conv_file,
+            )
+            rt_ca = ForgeRuntime(cfg_conv_a)
+            conv_id = "smoke-conv-14"
+            # Runtime A: record 3 turns
+            for q in ["Question 1.", "Question 2.", "Question 3."]:
+                rt_ca.run_turn(q, gen_fn=lambda _: "", conv_id=conv_id)
+            assert conv_file.exists(), "conv-history file should exist after first record"
+            file_lines = len(conv_file.read_text().strip().splitlines())
+            assert file_lines == 3, f"expected 3 records, got {file_lines}"
+            hist_a = rt_ca.get_conversation_history(conv_id)
+            assert len(hist_a) == 3
+
+            # Runtime B: brand-new instance, same conv_history_path
+            cfg_conv_b = ForgeRuntimeConfig(
+                anthropic_api_key="stub", openai_api_key="stub", gemini_api_key="stub",
+                telemetry_path=Path("/tmp/forge_runtime_smoke_conv_b.jsonl"),
+                use_orchestration=True,
+                vendor_cache_enabled=False,
+                multi_turn_memory_enabled=True,
+                multi_turn_memory_max_turns=5,
+                conv_history_path=conv_file,
+            )
+            rt_cb = ForgeRuntime(cfg_conv_b)
+            assert rt_cb._conv_history_stats["file_loads"] == 3, (
+                f"expected 3 loaded, got {rt_cb._conv_history_stats}"
+            )
+            hist_b = rt_cb.get_conversation_history(conv_id)
+            assert len(hist_b) == 3, f"runtime B should have 3 loaded turns, got {len(hist_b)}"
+            assert hist_b[0].user_prompt == "Question 1."
+            assert hist_b[2].user_prompt == "Question 3."
+
+            # Append one more turn through runtime B → file grows to 4 lines
+            rt_cb.run_turn("Question 4.", gen_fn=lambda _: "", conv_id=conv_id)
+            file_lines_after = len(conv_file.read_text().strip().splitlines())
+            assert file_lines_after == 4, f"expected 4 records after append, got {file_lines_after}"
+            hist_b2 = rt_cb.get_conversation_history(conv_id)
+            assert len(hist_b2) == 4
+
+            # clear_conversation through runtime B → file compacted (0 records)
+            rt_cb.clear_conversation(conv_id)
+            assert rt_cb.get_conversation_history(conv_id) == []
+            file_lines_after_clear = len(conv_file.read_text().strip().splitlines())
+            assert file_lines_after_clear == 0, (
+                f"expected 0 records after clear, got {file_lines_after_clear}"
+            )
+            print(f"[14] ORCH file-backed conv memory: rt_b loaded {rt_cb._conv_history_stats['file_loads']} "
+                  f"turns; append→4 records; clear→0 records (compacted)")
+        finally:
+            _self_mod._vendor_call = _orig_vendor_call
+            if conv_file.exists():
+                conv_file.unlink()
 
     print("\n=== SMOKE TESTS PASSED ===")
     return 0

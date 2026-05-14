@@ -5735,6 +5735,115 @@ NEW `_build_messages_with_history` + `run_turn` branch + smoke case [13]) ·
 **GA UNCHANGED**: r39 v3-t3patch (94.29% Mk.I strict).
 **dancinlab/\* repos LIVE: 42** (unchanged — software-only round).
 
+### 2026-05-14 ~18:30 KST — round 60: v0.5.12 — persistent conversation memory across restarts (`conv_history_path: Path`); 14/14 smoke pass
+
+**Goal**: r57 introduced in-memory conv buffers; r56 made the vendor
+cache file-backed for cross-restart persistence. r60 closes the
+symmetry: opt-in file-backing for the conversation memory too. Same
+safety boundary as r56 — single-process, OSError graceful, malformed
+lines skipped, NOT multi-process safe.
+
+**Implementation surface — `tool/forge_runtime.py`**:
+
+| Component | Change |
+|---|---|
+| `ForgeRuntimeConfig.conv_history_path: Path \| None = None` | NEW config field (default None = in-memory only, backward-compat) |
+| `_conv_history_stats: {"file_loads", "file_writes"}` | NEW stats counter on `ForgeRuntime` |
+| `__init__` load-on-init | If `multi_turn_memory_enabled AND conv_history_path`: load JSONL records, reconstruct per-conv buffers respecting `max_turns` cap |
+| `_record_conversation_turn` | After in-memory append + cap: file append (steady-state) OR compact (on eviction) |
+| `clear_conversation` | After in-memory drop: compact file so cleared conv's turns don't persist |
+| `_conv_history_load_from_file` | NEW — best-effort with try/except OSError + UnicodeDecodeError |
+| `_conv_history_append_to_file` | NEW — single JSONL record append per turn |
+| `_conv_history_compact_file` | NEW — tmp+rename atomic rewrite from in-memory state |
+
+**JSONL format** (one record per turn):
+```json
+{
+  "conv_id": "user-123",
+  "turn": {
+    "turn_id": "...",
+    "timestamp_utc": "2026-05-14T18:25:00Z",
+    "user_prompt": "...",
+    "assistant_text": "...",
+    "classifier_label": "ood",
+    "tool": "claude-api",
+    "model": "claude-sonnet-4-6"
+  }
+}
+```
+
+**Smoke case [14]** verifies the cross-process pattern:
+1. Runtime A with `conv_history_path=/tmp/...` records 3 turns through `run_turn`
+2. Verify file has 3 JSONL lines
+3. Brand-new Runtime B with same path — should load all 3 on init (`file_loads=3`)
+4. Runtime B's `get_conversation_history` returns the 3 turns with correct user_prompt content
+5. Append 1 more turn through Runtime B → file grows to 4 records
+6. `clear_conversation` through Runtime B → file compacts to 0 records
+
+All 14/14 forge_runtime smoke pass.
+
+**Zero regression**:
+- forge_runtime smoke: **14/14** (was 13/13; +1 = case 14 conv file)
+- classify_prompt smoke: 21/21 (unchanged)
+- select_vendor_tier smoke: 14/14 (unchanged)
+- forge_audit `--smoke`: PASSED (unchanged)
+- DLG-mk0: classifier overall 0.9833 / tier_match 1.000 / tool_match 0.9926 / Brier 0.0242 / ECE 0.0461 (all unchanged)
+
+**Combined persistence story** (v0.5.x now ships both):
+
+| What | Knob | Persisted to | Smoke |
+|---|---|---|---|
+| Per-prompt vendor responses (r56) | `vendor_cache_path` | JSONL | case 11 |
+| Per-conv turn buffer (r60) | `conv_history_path` | JSONL | case 14 |
+
+Both survive `ForgeRuntime` instance death. Production use:
+
+```python
+cfg = ForgeRuntimeConfig.from_env(
+    vendor_cache_path=Path("/var/lib/forge/cache.jsonl"),
+    multi_turn_memory_enabled=True,
+    conv_history_path=Path("/var/lib/forge/conv_history.jsonl"),
+)
+```
+
+After a restart, both the vendor-response cache (within 5-min TTL) AND
+the conversation buffers (up to `multi_turn_memory_max_turns` per
+conv_id) are restored.
+
+**Honesty caveats** (mirror r56):
+
+- **NOT multi-process safe**. Two processes appending to the same conv
+  file CAN interleave; reads aren't synchronized. For multi-process
+  production, use a shared store (SQLite WAL / Redis / Postgres) —
+  remains v0.6.0+ scope.
+- **File contains conversation contents verbatim**. Production
+  deployments should put `conv_history_path` on local disk with
+  appropriate ACLs, NOT shared-team or cloud-synced paths.
+- **Eviction compacts the whole file**. If `max_turns=5` and a conv
+  reaches 6 turns, the file is rewritten on the 6th turn. For
+  high-throughput workloads, consider raising `max_turns` to minimize
+  compaction cycles.
+- **No retroactive redaction**. Turns are stored as-recorded (post-
+  redaction of the user prompt during the original turn). If the
+  redactor logic changes later, prior persisted turns retain the OLD
+  redaction state — call `clear_conversation()` to invalidate.
+- **No expiration**. Unlike the cache (5-min TTL), conv turns persist
+  indefinitely until cleared explicitly. For long-running deployments,
+  the calling code should periodically clear inactive conversations or
+  apply a sliding window via a custom cron.
+
+**Round 60 commits:** this ROADMAP entry · `tool/forge_runtime.py`
+(NEW `conv_history_path` config field + `_conv_history_stats` counter +
+load-on-init + append-on-record + compact-on-eviction + compact-on-clear
++ 3 new private helpers + smoke case [14]) · `LEARNING_PROGRAMMING.md` §8 r60 row.
+
+**Cost**: \$0 (CPU; smoke only).
+**GA UNCHANGED**: r39 v3-t3patch (94.29% Mk.I strict).
+**dancinlab/\* repos LIVE: 42** (unchanged — software-only round).
+
+**v0.5.x persistence story now complete**: vendor cache + conv memory
+both restart-persistent. Multi-process shared store remains v0.6.0+.
+
 
 
 
