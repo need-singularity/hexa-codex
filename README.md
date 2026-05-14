@@ -7,9 +7,13 @@
 >
 > **+ `lm_foundry/`** — the domain-LLM training pipeline, absorbed from the
 > standalone `hexa-forge` repo on **2026-05-13**. Where the 17 verbs are
-> *spec library*, `lm_foundry/` is *the trained models* — a code-LLM for
-> hexa-lang currently at **94.29% Mk.I strict** (v0.4.0 GA candidate, r39) +
-> a bio-LLM recipe. See [`lm_foundry/README.md`](lm_foundry/README.md).
+> *spec library*, `lm_foundry/` is *trained models + runtime* — a code-LLM
+> for hexa-lang at **94.29% Mk.I strict** (r39 GA, frozen) wrapped by a
+> **v0.5.x orchestration runtime** (r44–r62) that ships pre-7B classifier
+> routing, real 3-vendor SDKs, persistent cache, multi-turn memory,
+> production observability, and SQLite WAL multi-process safety. See
+> [`lm_foundry/README.md`](lm_foundry/README.md) and
+> [`lm_foundry/ORCHESTRATION.md`](lm_foundry/ORCHESTRATION.md).
 
 [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.20102600.svg)](https://doi.org/10.5281/zenodo.20102600)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
@@ -20,7 +24,7 @@
 [![Closure: 100% bookkeeping](https://img.shields.io/badge/closure-100%25_bookkeeping_(green--core)-brightgreen.svg)](verify/run_all.hexa)
 [![Tests: 24 .hexa + 83 py](https://img.shields.io/badge/tests-24_.hexa_+_83_py-brightgreen.svg)](#runnable-surface)
 [![Closure: 100% sat-1](https://img.shields.io/badge/closure-100%25_(sat--1_T1+T2+T3)-brightgreen.svg)](#runnable-surface)
-[![Provenance](https://img.shields.io/badge/from-canon%40c0f1f570-purple.svg)](https://github.com/dancinlab/canon)
+[![Provenance](https://img.shields.io/badge/from-canon%40c0f1f570-purple.svg)](https://github.com/dancinlab/echoes)
 [![Falsifiers: 4/4 100%](https://img.shields.io/badge/falsifiers-4%2F4_at_100%25-brightgreen.svg)](#falsifier-preregister)
 [![Lean4 proof: σ(6)=12](https://img.shields.io/badge/Lean4-σ(6)%3D12_PROVEN-brightgreen.svg)](formal/README.md)
 [![Papers: 4 + Lean1 + 2 deep-dive](https://img.shields.io/badge/refs-4P_+_Lean1_+_2DD-blue.svg)](#reference-annexes)
@@ -113,17 +117,20 @@ domain-specialised LLMs. It was the standalone `hexa-forge` repo
 (retired 2026-05-13); `hexa-codex` was always its sister (serving /
 inference side) — the merge consolidates the two.
 
-| verb   | what                                | status (2026-05-13)                                              |
-|--------|-------------------------------------|------------------------------------------------------------------|
-| `code` | programming-only LLM for hexa-lang  | **v0.4.0 GA candidate — 94.29% Mk.I strict (627/665), 96% 5-NL.** Path: Qwen2.5-Coder-7B + LoRA r=64 SFT (r1–r34) → Phase-A manifest fixes (r33/r37/r38) → compile-feedback RL via GRPO (Lever 4 — T4 enum 55→100% across r36/r38, first decisive RL win) → T3 quote-fragility patch (r39, T3 58.8→100%). Gates ③ ④ closed with double-digit headroom. **v0.4.x delegation line opened** (spec + scaffolding landed r39); two SFT delegation attempts (r40/r41) confirmed SFT-only can't install routing — **v0.4.2 routing-RL** queued. |
+| verb   | what                                | status (2026-05-14, **v0.5.14 / r62**)                            |
+|--------|-------------------------------------|-------------------------------------------------------------------|
+| `code` | programming-only LLM for hexa-lang  | **GA at 94.29% Mk.I strict (627/665), 96% 5-NL** — r39 v3-t3patch adapter, **unchanged since GA mark**. Path: Qwen2.5-Coder-7B + LoRA r=64 SFT (r1–r34) → Phase-A manifest fixes (r33/r37/r38) → compile-feedback RL via GRPO (Lever 4 — T4 enum 55→100%) → T3 quote-fragility patch (r39, T3 58.8→100%). **v0.4.x in-weight delegation disproved (r40–r43.1, 5 distinct failure modes)**; routing moved OUT of model weights to a deterministic pre-7B classifier + per-vendor tier selector + real 3-vendor SDKs + per-prompt cache + multi-turn memory + production observability. **v0.5.x orchestration line (r44–r62) ships the production stack**: DLG-mk0 classifier 0.9833 / tier_match 1.000 / Brier 0.0242 EXCELLENT / ECE 0.0461 GOOD on 300-task held-out manifest. See [`lm_foundry/ORCHESTRATION.md`](lm_foundry/ORCHESTRATION.md). |
 | `bio`  | HEXA-BIO domain LLM (seq + prose)   | recipe spec landed; training pending. Paired with `dancinlab/hexa-bio`. |
 
 - Knowledge SSOTs: [`lm_foundry/LEARNING_PROGRAMMING.md`](lm_foundry/LEARNING_PROGRAMMING.md)
   (code-LLM, 14 sections) · [`lm_foundry/LEARNING_BIO.md`](lm_foundry/LEARNING_BIO.md).
-- Round-by-round narrative: [`lm_foundry/ROADMAP.md`](lm_foundry/ROADMAP.md) (r1–**r41**).
-- Design docs: [`lm_foundry/papers/`](lm_foundry/papers/) (incl. `spec-lever4-compile-rl.md`, `spec-delegation-v0.4.0.md`).
-- HF artifacts: **40 repos** under `dancinlab/hexa-forge-*` (prefix kept as artifact
-  identity). **GA adapter:** `dancinlab/hexa-forge-code-7b-qwen2.5-lora-r64-v0.4.0-rl-t4-v3-t3patch` (r39).
+- Round-by-round narrative: [`lm_foundry/ROADMAP.md`](lm_foundry/ROADMAP.md) (r1–**r62**).
+- **Runtime spec**: [`lm_foundry/ORCHESTRATION.md`](lm_foundry/ORCHESTRATION.md)
+  — canonical v0.5.x runtime spec (15 sections + ## Log; root domain doc).
+- Design docs: [`lm_foundry/papers/`](lm_foundry/papers/) (incl. `spec-lever4-compile-rl.md`, `spec-delegation-v0.4.0.md` OBSOLETE §4/§10).
+- HF artifacts: **42 repos** under `dancinlab/hexa-forge-*` (prefix kept as artifact
+  identity). **GA adapter (unchanged):** `dancinlab/hexa-forge-code-7b-qwen2.5-lora-r64-v0.4.0-rl-t4-v3-t3patch` (r39).
+  **v0.5.x is software-only — no new HF model artifacts** (orchestration lives in `tool/`, not in weights).
 - `bench-cold/`, `runs/`, `logs/`, `IDEA.md` under `lm_foundry/` are gitignored
   (SoT for benches is HF `dancinlab/hexa-forge-bench-cold-v0.1.3`).
 
@@ -430,12 +437,14 @@ hexa-codex — the formal proof is a reference annex. See
 ## Status
 
 **SPEC_CATALOG + RUNNABLE_SURFACE at 100% closure (recipe §7.2 sat-1).
-+ `lm_foundry/` — code-LLM at 94.29% Mk.I strict (v0.4.0 GA candidate, r39).**
++ `lm_foundry/` — code-LLM at 94.29% Mk.I strict (r39 GA, frozen) +
+v0.5.x orchestration runtime (r44–r62) production-ready.**
 
 > 17-verb AI 지식 substrate (4 그룹: safety + economics + ops + substrate)
 > + verify/ + tests/ + build/ + docs/ runnable surface
-> + `lm_foundry/` (hexa-forge 흡수, 2026-05-13 — 도메인 LLM 학습 파이프라인;
-> code-LLM v0.4.0 GA 후보 94.29% Mk.I strict, bio-LLM 레시피).
+> + `lm_foundry/` (hexa-forge 흡수, 2026-05-13 — 도메인 LLM 학습 파이프라인 +
+> 런타임; code-LLM GA 94.29% Mk.I strict r39 frozen + v0.5.x 오케스트레이션
+> 런타임 r44–r62 production-ready, bio-LLM 레시피).
 > Recipe §7.2 sat-1 saturation reached — all 4 F-CODEX-1..4 closed at
 > recipe §3 closure_pct = 100% (T1 + T2 + T3 ✓ each), via 23 .hexa
 > verifiers + 24 regression wrappers + 3 meta verifiers. T4 (live

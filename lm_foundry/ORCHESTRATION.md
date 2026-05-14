@@ -593,34 +593,57 @@ The list of regex names that fired. In production, scrape this to spot:
 
 ## 12. v0.6.0+ roadmap
 
-The v0.5.x line is **features-complete** as of r49. Future work:
+The v0.5.x line shipped through **v0.5.14 (r62, 2026-05-14)** with
+production-grade observability, persistence, multi-process safety, and
+maintenance tooling. Specialist weights remain frozen at r39 GA by design.
+v0.6.0+ scope narrows to items that v0.5.x can't address from CPU + the
+existing weights:
 
-- **v0.5.6** — OpenAI key provisioning (currently `smoke-openai` skips —
-  blocks real o4-mini end-to-end verification). User-action: add
-  `openai.api_key` to secret CLI.
-- **v0.5.7** — Brier-score calibration eval on classifier confidence
-  (predicted vs actual accuracy in each band).
-- **v0.5.8** — Multi-turn delegation memory + dialogue context cache
-  (different from r48's per-prompt cache).
-- **v0.5.9** — Shared cache (Redis or file-backed) for cross-process
-  cache sharing.
-- **v0.6.0** — Either (a) raise the specialist ceiling further (Lever 5+:
-  full-FT, larger adapter rank, more SFT data), OR (b) explore the
-  routing-LoRA architectural alternative (separate weight artifact, not
-  re-purposed specialist).
+- **OpenAI key provisioning** (user-action) — currently `smoke-openai`
+  skips and `_vendor_call("openai-api", ...)` returns `auth_fail`. The
+  classifier+selector correctly route to o4-mini / gpt-5-mini; vendor
+  SDK + key are the only block. End-to-end reason-algo + struct
+  validation needs this.
+- **Gemini paid tier** (user-action) — currently free-tier limit=0 on
+  gemini-2.5-pro causes `upstream_quota` on every longctx call. The
+  quota mapping is verified (r48 + r53); actual long-doc answer quality
+  is not yet measured.
+- **Anthropic cross-turn cache ROI measurement** — r62 ships the
+  cache_control marker on multi-turn dispatches; `forge_audit` already
+  captures `cached_tokens`. A follow-up round can compare cached-token-
+  ratio before/after on real conversational workloads.
+- **SQLite schema migration tooling** — r62 ships `SCHEMA_VERSION`
+  detection-only (stderr warning on mismatch). A real migration story
+  needs either a versioned filename convention (`forge.v2.sqlite3`) or
+  an explicit migration script.
+- **`incremental` vacuum** — currently `forge_vacuum` requires runtime
+  idle (exclusive lock on `VACUUM`). Enabling `PRAGMA auto_vacuum=INCREMENTAL`
+  at DB creation (requires schema migration) would let `VACUUM` run
+  concurrently with reads.
+- **Connection pooling** — `_db` is a single connection per runtime.
+  For 10K+ writes/sec workloads, batched writes or a real connection
+  pool would help.
+- **Specialist ceiling** — either (a) Lever 5+: full-FT, larger LoRA
+  rank, more SFT data; OR (b) routing-LoRA as a separate weight artifact
+  (the v0.4.x architectural alternative deferred). Both are GPU-bound.
 
 ---
 
-## 13. Implementation file map
+## 13. Implementation file map (current — through r62)
 
 | File | Lines | Role |
 |---|---:|---|
-| `tool/classify_prompt.py` | ~440 | Stage-based regex classifier (§4) |
-| `tool/select_vendor_tier.py` | ~210 | Pure function: decision → tier (§5) |
-| `tool/forge_runtime.py` | ~1400 | Runtime dispatcher + vendor SDKs + cache (§6 / §8 / §9) |
-| `tool/score_orchestration_mk0.py` | ~210 | CPU eval (§10) |
-| `eval/delegation-mk0/manifest.jsonl` | 200 rows | Routing eval surface |
-| `papers/spec-orchestration-v0.5.0.md` | 342 | OBSOLETE — superseded by this doc |
+| `tool/classify_prompt.py` | ~470 | Stage-based regex classifier — refuse / hexa / mid-conf / OOD with reason-deep/algo/ml-comparison signals + `_emit_conf` calibrated emission (§4) |
+| `tool/select_vendor_tier.py` | ~225 | Pure function — 6-step priority cascade: longctx / ml-comparison demote / reason-algo / reason-deep / struct / general (§5) |
+| `tool/forge_runtime.py` | ~1900 | Runtime dispatcher · 3 vendor SDKs · per-prompt cache · file cache · SQLite WAL cache · multi-turn memory · native messages threading · file conv · SQLite WAL conv · anthropic cross-turn cache mark · schema versioning (§6 / §8 / §9) |
+| `tool/score_orchestration_mk0.py` | ~225 | CPU eval — classifier accuracy + tier_match + tool_match (§10) |
+| `tool/score_brier_mk0.py` | ~220 | Calibration eval — Brier + ECE + 10-bin reliability table |
+| `tool/forge_audit.py` | ~660 | Production observability CLI — aggregation + health gates (§11) |
+| `tool/forge_vacuum.py` | ~280 | SQLite maintenance CLI — expire-cleanup + LRU cap + VACUUM + optimize (cron-friendly) |
+| `tool/build_manifest_r51_extras.py` | ~340 | Manifest expansion script (200→300) |
+| `tool/smoke_e2e_r53.py` | ~280 | End-to-end production smoke (24 prompts × real APIs) |
+| `eval/delegation-mk0/manifest.jsonl` | 300 rows | Routing eval surface (expanded r51) |
+| `papers/spec-orchestration-v0.5.0.md` | 342 | OBSOLETE — superseded |
 | `papers/spec-delegation-v0.4.0.md` | 482 | OBSOLETE §4/§10; §1-3, §5-9 still valid |
 | `ORCHESTRATION.md` | this file | CONSOLIDATED spec (root domain doc, per `domain-meta-domain` convention) |
 
@@ -628,11 +651,14 @@ The v0.5.x line is **features-complete** as of r49. Future work:
 
 ## 14. Bookmarks
 
-- `LEARNING_PROGRAMMING.md` §8 — round-by-round SFT/RL/orchestration recipe table
-- `LEARNING_PROGRAMMING.md` §12 — original delegation thesis (now archived)
-- ROADMAP §CHANGELOG r40-r49 — round-by-round narrative
-- `bench/score-orchestration-mk0-r49/` — r49 score artifacts
-- `bench/score-delegation-mk0-r39/` — r39 GA score artifacts
+- `LEARNING_PROGRAMMING.md` §8 — round-by-round SFT/RL/orchestration recipe table (r1 through r62)
+- `LEARNING_PROGRAMMING.md` §12 — original delegation thesis (now archived; superseded by v0.5.0)
+- ROADMAP §CHANGELOG r40-r62 — round-by-round narrative with honesty caveats
+- `bench/score-orchestration-mk0-r55/` — r55 score artifacts (latest classifier patterns)
+- `bench/score-brier-mk0-r55/` — calibration artifacts (Brier 0.0242 / ECE 0.0461)
+- `bench/score-e2e-r53/` — r53 end-to-end production smoke artifacts ($0.43 spend across 24 prompts)
+- `bench/score-orchestration-mk0-r49/` — r49 baseline (200-task) score artifacts
+- `bench/score-delegation-mk0-r39/` — r39 GA score artifacts (specialist quality)
 - Memory pointers (in `~/.claude/projects/-Users-ghost-core-hexa-codex/memory/`):
   - `[[pure-rl-exploration-collapse]]` — r42 lesson
   - `[[rl-tail-vs-greedy-eval]]` — r43+r43.1 lesson
@@ -642,14 +668,22 @@ The v0.5.x line is **features-complete** as of r49. Future work:
 
 ---
 
-## 15. Honesty caveats
+## 15. Honesty caveats (current — through r62)
 
-- **Tier_match=1.000 on DLG-mk0** is on the *same 200-task manifest
-  used to design the patterns*. The r49 fixes were targeted at the 7
-  specific misses surfaced in r48. **There is genuine overfit risk**;
-  v0.5.x+ candidate is manifest expansion (200 → 300+ tasks with new
-  reason-deep / reason-algo / ml-comparison edge cases) to validate the
-  patterns hold on held-out prompts.
+- **DLG-mk0 surface is now 300 tasks** (r51 expansion). r55 patterns
+  achieved tier_match=1.000 / tool_match=0.987 / overall=0.9833 on the
+  expanded surface, but these are still designed against the manifest's
+  specific phrasings. **Production rollout should monitor
+  `state/delegation_log.jsonl` for novel no-signal-fallthrough patterns
+  and feed back via manifest expansion.** Cross-vendor tier equiv
+  (sonnet↔mini, opus↔flagship, haiku↔nano) is applied per spec §5 — so
+  tier_match=1.000 means cost-band-equivalent, not vendor-identical.
+- **Confidence calibration is GOOD but not perfect**. Brier 0.0242 is
+  EXCELLENT (<0.05); ECE 0.0461 passes the 0.05 strict threshold for
+  first time post-r55 but the per-bin gap is still slight (-0.046 mean,
+  -0.45 on the smallest no-signal bin). For cost-sensitive cutoffs,
+  treat confidence as a categorical band (high ≥0.9 / med 0.7-0.9 /
+  low <0.7) rather than a raw probability.
 - **Cache TTL = 300s** is set by convention (Anthropic prompt-cache TTL
   mirror), not empirically tuned. Production workloads with different
   prompt-repeat distributions may want longer (lower miss rate) or shorter
@@ -661,7 +695,32 @@ The v0.5.x line is **features-complete** as of r49. Future work:
 - **`upstream_quota` distinguishes 429 from 5xx** but does not yet retry
   automatically. The user-facing message says "retry in a moment"; the
   client (calling code) must implement the retry loop. Auto-retry with
-  exponential backoff is a v0.5.x+ candidate.
+  exponential backoff is a v0.6.x candidate.
+- **Multi-process safety requires `forge_db_path` SQLite WAL** — the
+  JSONL `vendor_cache_path` / `conv_history_path` modes are
+  single-process. Two processes appending to the same JSONL CAN
+  interleave; use SQLite for any multi-process deployment.
+- **SQLite WAL requires local disk** — NOT NFS, CIFS, or other network
+  filesystems. For distributed deployments, use a real network DB
+  (Postgres / managed Redis / DynamoDB) — not in scope for v0.5.x.
+- **Anthropic cross-turn cache_control (r62) shipped but unmeasured** —
+  the SDK marker is in place; ROI (input-token savings on long convs)
+  needs production telemetry to confirm. `forge_audit` already captures
+  `cached_tokens`; a measurement round can compare before/after on
+  real conversational workloads.
+- **`forge_vacuum` requires runtime idle during VACUUM** (exclusive
+  lock). Schedule cron in a low-traffic window.
+- **Schema versioning is detection-only** — `SCHEMA_VERSION = 1` is
+  tracked via `PRAGMA user_version`; runtime warns on mismatch but
+  does NOT auto-migrate. A future schema change requires either a
+  versioned filename (`forge.v2.sqlite3`) or a manual migration script.
+- **Cost-saved-estimate in `forge_audit`** is a heuristic (avg same-
+  (tool, model) miss cost × hits). High variance per-call workloads
+  make the estimate noisier; track over time to gauge true cache ROI.
+- **Latency percentiles in `forge_audit`** include only REAL calls
+  (`not cache_hit and ok`). This is the right denominator for "how
+  fast is upstream", NOT "what does the user feel" (which includes
+  cache hits at ~0ms making user-perceived p95 much better).
 
 ---
 
@@ -694,4 +753,72 @@ Chronological build history (cross-ref ROADMAP §CHANGELOG for full per-round na
   to `papers/spec-orchestration-v0.5.5.md`, then moved to root as
   `ORCHESTRATION.md` per dancinlab `domain-meta-domain` convention
   (per-topic roadmap as root UPPERCASE.md, one domain = one file).
+- **2026-05-14 r51** — DLG-mk0 manifest expanded 200→300 (held-out r49
+  validation) via `tool/build_manifest_r51_extras.py`. r49 patterns hold
+  with -0.17pp regression. SURFACED 5 critical security-refuse gaps
+  (brute-force conjugation, jailbreak-policy, prompt-injection, weapon-
+  synthesis, doxing) — all CLOSED in same round. tier_match 0.978 on
+  300 with 5 documented boundary cases.
+- **2026-05-14 r52** — Brier-score calibration eval (`tool/score_brier_mk0.py`).
+  Honest finding: Brier 0.0920 GOOD but ECE 0.1650 POOR (-15.61pp
+  systematically underconfident). Root cause: `min(1.0, X/Y)` formulas
+  emit 0.25-0.50 for single-signal cases with empirical 100% accuracy.
+  No code change in r52 — the deliverable IS the measurement.
+- **2026-05-14 r53** — End-to-end production smoke (`tool/smoke_e2e_r53.py`).
+  24 novel held-out prompts × real vendor SDKs × \$0.43 across 2 runs.
+  label_match 24/24, tool_match 17/18, anthropic 10/10 successful,
+  gemini upstream_quota 2/2, openai auth_fail 5/5 (no key in secret),
+  cache fidelity 2/2 cross-process. **v0.5.x stack GA-quality on real APIs.**
+- **2026-05-14 r54** — v0.5.6 confidence recalibration. NEW `_emit_conf`
+  helper replaces pessimistic `min(1.0, X/Y)` at 7 sites with shifted-
+  and-scaled floors (0.80-0.95). Brier 0.0920 → 0.0351 EXCELLENT (-62%);
+  ECE 0.1650 → 0.0674 (-59%). Label dispatch UNCHANGED by construction.
+- **2026-05-14 r55** — v0.5.7 classifier coverage expansion. 5 new/
+  extended OOD patterns (golang broad, swift-framework, ml-internals
+  +MoE/RLHF/DPO/KL, llm-infra, generic-write-code) + 2 ambiguous +
+  derivation-algo widen + ml-comparison widen. Closes 17 no-signal-
+  fallthrough + 3 tier-routing misses (DLG-100 MoE trade-offs / DLG-227
+  master theorem / DLG-230 Big-O quickselect). **Final: Brier 0.0242
+  EXCELLENT / ECE 0.0461 GOOD / tier_match 1.000 RESTORED / tool_match
+  0.9926.**
+- **2026-05-14 r56** — v0.5.8 file-backed shared cache. NEW config
+  `vendor_cache_path: Path` for cross-process restart-persistence.
+  JSONL append + load-on-init + LRU-compact-on-evict. Single-process
+  only (not multi-process safe; SQLite WAL ships in r61). Smoke [11].
+- **2026-05-14 r57** — v0.5.9 multi-turn delegation memory. Two-layer
+  design: (a) `ConversationTurn` storage per conv_id with max_turns cap;
+  (b) optional auto-prepend `Previous conversation:` string preamble.
+  Public API: `get_conversation_history` / `clear_conversation`. Smoke [12].
+- **2026-05-14 r58** — v0.5.10 production audit CLI (`tool/forge_audit.py`).
+  Reads `state/delegation_log.jsonl`, aggregates cache/vendor/error/
+  latency/cost. 3 output formats (text/json/csv) + health gate alerts
+  (cache_hit_min / error_rate_max / cost_day_max → exit 2). Self-test
+  on 20 synthetic rows verifies every metric.
+- **2026-05-14 r59** — v0.5.11 vendor-native `messages=[...]` threading.
+  Replaces r57 string-concat workaround. All 4 vendor functions accept
+  optional `messages` kwarg. NEW `_messages_to_gemini_contents` (assistant
+  → model role; content → parts:[{text:...}]). Cache key adapts to
+  serialized-messages hash. Backward-compat (default OFF). Smoke [13].
+- **2026-05-14 r60** — v0.5.12 persistent conv memory across restarts.
+  NEW `conv_history_path: Path` mirrors r56 pattern for ConversationTurn
+  buffers. Load-on-init + append-on-record + compact-on-evict/clear.
+  Smoke [14].
+- **2026-05-14 r61** — v0.5.13 SQLite WAL multi-process backend. NEW
+  `forge_db_path: Path` unified DB (vendor_cache + conv_turns tables
+  with indexes; WAL mode; NORMAL sync). When set, OVERRIDES JSONL paths.
+  Closes the "NOT multi-process safe" caveat from r56+r60. stdlib
+  sqlite3 only (no external dep). Smoke [15] + [16].
+- **2026-05-14 r62** — v0.5.14 production maturity bundle (user's "전부
+  한번에" directive). 3 features one round: (a) anthropic cross-turn
+  cache_control via `_anthropic_cache_mark` helper (caches conv prefix
+  on multi-turn dispatches); (b) SQLite schema versioning (`SCHEMA_VERSION
+  = 1` + `PRAGMA user_version` detection); (c) `tool/forge_vacuum.py`
+  cron CLI (expire-cleanup + LRU cap + retention + VACUUM + optimize,
+  idempotent, dry-run flag). Smoke [17] + [18] + `forge_vacuum --smoke`.
+- **2026-05-14 r62.1 (this update)** — ORCHESTRATION.md refreshed to
+  reflect r51-r62 changes: §12 v0.6.0+ roadmap rewritten with realized
+  state; §13 file map updated with new tools + accurate line counts;
+  §14 bookmarks pointed at latest score artifacts; §15 honesty caveats
+  expanded with 7 new entries covering r51-r62 surface; ## Log
+  appended with chronological r51-r62 narratives.
 
