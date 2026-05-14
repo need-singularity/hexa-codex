@@ -4689,6 +4689,62 @@ formula derivations), r49 cuts the per-call cost on those routes by
 **v0.5.0 GA stack: production-ready with quota-aware errors + per-prompt
 cache + reason-class split for cost-optimal tier routing.**
 
+### 2026-05-14 ~13:30 KST — round 50: v0.5.5 — consolidated spec doc (papers/spec-orchestration-v0.5.5.md, 659 lines); v0.5.0 spec marked OBSOLETE; no code change
+
+**Why this round**: After 6 software-only rounds (r44-r49), the
+orchestration spec was scattered across:
+- `papers/spec-orchestration-v0.5.0.md` (r44 base architecture)
+- ROADMAP §CHANGELOG r45-r49 (per-round implementation deltas)
+- `LEARNING_PROGRAMMING.md` §8 (recipe rows with implementation details)
+
+New onboarding readers couldn't get the current v0.5.x picture without
+reading 5 ROADMAP entries + the v0.5.0 spec and mentally diffing them.
+
+**The fix**: `papers/spec-orchestration-v0.5.5.md` (659 lines) consolidates:
+
+- §1 **Goal + non-goals** with the 12-row acceptance gates table (all met)
+- §2 **v0.4.x post-mortem** (kept verbatim — five failure modes)
+- §3 **Architecture** with the runtime-layer flow diagram (classify →
+  dispatch → redact/auth/budget → cache → vendor SDK → telemetry)
+- §4 **Classifier** with all 6 stages, every regex pattern, every
+  signal (refuse / hexa-canon / mid-conf / OOD with r49 derivation-algo
+  + ml-comparison)
+- §5 **Tier selector** with the 6-step priority cascade and the
+  cross-vendor `_TIER_EQUIV` table
+- §6 **Runtime contract** with the `_run_turn_orchestrated` flow and
+  `DelegationCall` telemetry record schema
+- §7 **Redaction + authorization + budget** (kept from v0.4.0)
+- §8 **Vendor SDKs** — anthropic / openai / gemini with pricing tables,
+  error-mapping (including r48 `upstream_quota`), key provisioning
+  (r47 `_load_key` bugfix), and error-to-user-message map
+- §9 **Per-prompt vendor cache** (r48) — TTL knobs, key construction,
+  LRU eviction, fidelity guarantees, what it does NOT do
+- §10 **Eval** — DLG-mk0 manifest schema + v0.5.5 actual scores table
+  (classifier 0.985 / tier_match 1.000 / tool_match 0.987)
+- §11 **Telemetry + observability** — `state/delegation_log.jsonl` aggregation
+  patterns for production operators
+- §12 **v0.6.0+ roadmap** — what's deferred (OpenAI key, Brier calibration,
+  multi-turn memory, shared cache, model-round candidates)
+- §13 **Implementation file map** — every file with line count + role
+- §14 **Bookmarks** — cross-refs to LEARNING, ROADMAP, memories, bench artifacts
+- §15 **Honesty caveats** — overfit risk on DLG-mk0 (the r49 fixes were
+  targeted at the 7 specific misses; manifest expansion in v0.5.6 candidate),
+  cache TTL is convention not empirically tuned, specialist frozen at r39,
+  upstream_quota distinguishes 429 but doesn't auto-retry yet
+
+**`papers/spec-orchestration-v0.5.0.md` gets a SUPERSEDED banner** pointing
+to v0.5.5 — kept on disk for historical design-rationale lookup, not
+deleted.
+
+**No code change.** `git diff` is one new file + one banner edit.
+
+**Round 50 commits:** this ROADMAP entry · `papers/spec-orchestration-v0.5.5.md`
+NEW · `papers/spec-orchestration-v0.5.0.md` (banner).
+
+**dancinlab/\* repos LIVE: 42** (unchanged — doc-only).
+**GA UNCHANGED**: r39 v3-t3patch.
+**Cost**: \$0 (CPU, no inference).
+
 
 
 

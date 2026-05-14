@@ -1,5 +1,12 @@
 # Pre-7B orchestration routing — v0.5.0 architecture line
 
+> **⚠️ SUPERSEDED by [`spec-orchestration-v0.5.5.md`](spec-orchestration-v0.5.5.md)** (r50, 2026-05-14).
+> This document captures the v0.5.0 base design. The v0.5.5 consolidated
+> spec layers in r45 (forge wire-up) + r46 (tier routing) + r47 (real
+> OpenAI/Gemini SDKs) + r48 (quota + cache) + r49 (reason-class split)
+> and is the authoritative reference. Kept here for historical / design-
+> rationale lookup.
+
 **Status:** SPEC · draft 1 · 2026-05-14 · supersedes the in-weight
 routing approach of `spec-delegation-v0.4.0.md` after v0.4.x's 5
 confirmed failure modes (r40 SFT-25%, r41 SFT-9%, r42 pure-RL, r43
