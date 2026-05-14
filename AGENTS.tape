@@ -45,7 +45,8 @@
 
 @I id001 := "hexa-codex" :: identity-claim [d=2026-05-14 active]
   kind = "HEXA-Codex family — codified theorems"
-  parent = "dancinlab ecosystem · cites echoes/LATTICE_POLICY.md as authority"
+  brief = "HEXA-Codex family · codified theorems"
+  parent = "dancinlab/echoes"
 
 @D g_inherit := "inherits-lattice-policy" :: governance [required]
   rule = "All echoes/LATTICE_POLICY.md rules apply — real-limits-first · lattice-is-tool · verification-anchor-real-limit · no-artificial-ceilings · honesty-obligation-external."
@@ -64,7 +65,6 @@
 
 @D g3 := "honesty-obligation-external" :: governance [required deny:write]
   rule = "Claims about external entities (companies · fabs · vendors) must NOT include lattice-fit assertions. Use their OWN invariants."
-  authority = "raw#10 C3 · [@x_lattice_policy] §1.3"
   @> AGENTS.md
 
 @D g4 := "commit-conventions" :: governance [recommended]
@@ -77,7 +77,6 @@
 
 @X x_lattice_policy := "echoes/LATTICE_POLICY.md" :: policy [d=2026-05-12 active]
   url = "https://github.com/dancinlab/echoes/blob/main/LATTICE_POLICY.md"
-  scope = "cross-project SSOT — real-limits-first · external-entity ban · raw#10 C3"
 
 @X x_tape_spec := "tape v1.2 spec" :: spec [d=2026-05-14 active]
   url = "https://github.com/dancinlab/tape/blob/main/spec/tape.md"
