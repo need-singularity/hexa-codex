@@ -122,6 +122,14 @@
   rule = "AI-assisted commits include \`Co-Authored-By: <model> <noreply@anthropic.com>\` trailer; Conventional Commits title."
   @> AGENTS.md
 
+@D g_arch_vs_log_split := "v1.2 architecture-vs-history split" :: governance [required d=2026-05-14 active]
+  rule = "UPPERCASE.tape files are EDITABLE architecture (latest-wins per id). Append-only event history lives in UPPERCASE.log.tape siblings."
+  why = "declarative entries (governance · config · layout · identity) evolve naturally; locking them as append-only via ~> supersedes creates noisy histories. The split lets architecture stay current and history stay immutable."
+  applies-to = "AGENTS.tape · all UPPERCASE.tape root files"
+  authority = "[@x_tape_spec] §Domain-tape sibling §Architecture-vs-history split"
+  @> AGENTS.md
+
+
 @F f1 := "lattice-fit-on-external-entity" :: governance [required deny:write]
   pattern = "applying n=6 lattice as derivation rule to TSMC · ASML · IPCC · NASA · SpaceX · CERN · DeepMind · NIST · or any external vendor"
   exception = "values may coincidentally match — observation OK, derivation NOT OK"
