@@ -201,11 +201,11 @@ _OOD_PATTERNS: list[tuple[str, re.Pattern[str], float]] = [
     ("ml-internals",      re.compile(r"\battention\b|\btransformer\b|\bRoPE\b|\bLoRA\b|\bDoRA\b|\bGRPO\b|\bPPO\b|\bRAG\b|\bembedding\b|\bsoftmax\b", re.IGNORECASE), 1.5),
 
     # Structured output / JSON extraction
-    ("structured-json",   re.compile(r"\b(?:parse|convert|extract|classify|validate|return)\b.*\bjson\b", re.IGNORECASE), 1.5),
+    ("structured-json",   re.compile(r"\b(?:parse|convert|extract|classify|validate|return|summari[zs]e|generate|output|emit)\b.*\bjson\b", re.IGNORECASE), 1.5),
     ("json-schema",       re.compile(r"\bjson schema\b|\bzod\b|\bjsonschema\b", re.IGNORECASE),         1.5),
 
     # Long-context explicit token count
-    ("long-context",      re.compile(r"\b\d{2,4}K-?token\b|\b\d+\.\d+M-?token\b|\b\d+K[-_ ]?token\b", re.IGNORECASE), 2.0),
+    ("long-context",      re.compile(r"\b\d{2,4}K-?token\b|\b\d+(?:\.\d+)?M-?token\b|\b\d+K[-_ ]?token\b", re.IGNORECASE), 2.0),
 ]
 
 
@@ -374,7 +374,18 @@ def classify_prompt(prompt: str) -> ClassifierDecision:
             reason=f"weak-hexa: {hexa_hits[0]}", matched_signals=hexa_hits,
         )
 
-    # 7. Fallthrough → ood.
+    # 7. Fallthrough → ood. Preserve any weak OOD signals that fired (weight
+    # < 2.0 patterns like prove-derive, complexity-bigO, ml-internals,
+    # structured-json) so the downstream `select_vendor_tier()` can route to
+    # the right tier (reason / struct / longctx) instead of defaulting to
+    # general. Without this, all weak-only OOD prompts route to claude-sonnet
+    # even when they're actually math/JSON/long-context.
+    if ood_hits:
+        return ClassifierDecision(
+            label="ood", confidence=min(1.0, ood_total / 3.0),
+            reason=f"out-of-domain: {ood_hits[0]}",
+            matched_signals=ood_hits,
+        )
     return ClassifierDecision(
         label="ood", confidence=0.3,
         reason="no-signal-fallthrough", matched_signals=[],

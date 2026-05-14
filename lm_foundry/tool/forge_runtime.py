@@ -53,6 +53,20 @@ except ImportError:
     ClassifierDecision = None  # type: ignore
     _HAS_CLASSIFIER = False
 
+# v0.5.2: per-vendor tier selector. Picks (tool, model, max_tokens) per
+# classifier signals — long-context → gemini-pro, math/proof → claude-opus,
+# structured-output → openai-mini, else claude-sonnet. Pure function; imported
+# lazily for the same reason as classify_prompt.
+# NOTE: classify_prompt.py (imported above) scrubs _THIS_DIR from sys.path at
+# its own import time; re-insert here so the tier selector module is findable.
+_sys.path.insert(0, _THIS_DIR)
+try:
+    from select_vendor_tier import select_vendor_tier  # type: ignore
+    _HAS_TIER_SELECTOR = True
+except ImportError:
+    select_vendor_tier = None
+    _HAS_TIER_SELECTOR = False
+
 # ============================================================================
 # Token grammar (spec §2)
 # ============================================================================
@@ -623,13 +637,17 @@ class ForgeRuntime:
             )
 
         # --- ood path ---
-        # Pick vendor + model from config defaults (v0.5.1 will refine with
-        # tier routing based on classifier signals — long-context → gemini-pro,
-        # math/proof → claude-opus, etc).
-        tool = self.cfg.default_ood_tool
-        model = self.cfg.default_ood_model
-        max_tokens = self.cfg.default_ood_max_tokens
-        reason = d.reason
+        # v0.5.2: pick vendor + model + max_tokens by classifier signal class
+        # (long-context → gemini-pro, math/proof → claude-opus, structured →
+        # openai-mini, else claude-sonnet). Falls back to config defaults
+        # when the selector isn't importable.
+        if _HAS_TIER_SELECTOR:
+            tool, model, max_tokens, reason = select_vendor_tier(d, user_prompt)
+        else:
+            tool = self.cfg.default_ood_tool
+            model = self.cfg.default_ood_model
+            max_tokens = self.cfg.default_ood_max_tokens
+            reason = d.reason
 
         # Redaction (spec §6).
         redacted_prompt, redaction_hits, hard_block = redact(user_prompt)
@@ -909,27 +927,21 @@ def _smoke_test() -> int:
         assert not r.delegations
         print(f"[6] ORCH hexa-route: label={r.classifier_label!r} reason={r.classifier_reason[:50]!r}")
 
-        # Case 7: OOD prompt → classifier=ood → vendor stub path (openai-api stub).
-        # Override default to openai-api so we hit the stub (anthropic now wired
-        # to real SDK and would attempt a network call with stub key).
-        cfg_orch_oai = ForgeRuntimeConfig(
-            anthropic_api_key="stub", openai_api_key="stub", gemini_api_key="stub",
-            telemetry_path=Path("/tmp/forge_runtime_smoke_orch.jsonl"),
-            use_orchestration=True,
-            default_ood_tool="openai-api",
-            default_ood_model="gpt-5-mini",
-        )
-        rt_orch_oai = ForgeRuntime(cfg_orch_oai)
+        # Case 7: OOD prompt → classifier=ood → tier selector → openai-api stub.
+        # Use a structured-output prompt so the v0.5.2 tier selector routes to
+        # openai-api gpt-5-mini (which is still STUB in _vendor_call); claude-api
+        # is wired to real SDK and would attempt a network call with stub key.
         def gen7(_): raise AssertionError("gen_fn must NOT be called for ood path")
-        r = rt_orch_oai.run_turn(
-            "Write a Rust async server using tokio that listens on TCP port 8080.",
+        r = rt_orch.run_turn(
+            "Parse 'Alice, 32, alice@example.com' into JSON {name, age, email}.",
             gen7,
         )
         assert r.classifier_label == "ood", f"expected ood, got {r.classifier_label}"
         assert len(r.delegations) == 1
         assert r.delegations[0].ok is True, f"delegation failed: {r.delegations[0].error}"
-        assert r.delegations[0].tool == "openai-api"
-        print(f"[7] ORCH ood-route (stub vendor): label={r.classifier_label!r} text={r.user_facing_text[:80]!r}")
+        assert r.delegations[0].tool == "openai-api", f"expected openai-api (struct tier), got {r.delegations[0].tool}"
+        assert r.delegations[0].model == "gpt-5-mini"
+        print(f"[7] ORCH ood→struct→openai-mini (stub): label={r.classifier_label!r} text={r.user_facing_text[:80]!r}")
 
         # Case 8: refuse prompt → classifier=refuse → direct refusal. No 7B, no vendor.
         def gen8(_): raise AssertionError("gen_fn must NOT be called for refuse path")
@@ -945,9 +957,11 @@ def _smoke_test() -> int:
         # Case 9: classifier-routed redaction hard-block. OOD prompt that
         # contains an api-key pattern in the prompt body → redaction fires
         # at the orchestrated path's step 4 → returns redaction_block.
+        # Use a JSON-parsing prompt so tier selector picks openai-api (stub),
+        # avoiding the real Anthropic SDK path on stub keys.
         def gen9(_): raise AssertionError("gen_fn must NOT be called when redaction blocks")
-        r = rt_orch_oai.run_turn(
-            "Show a Python decorator. My key is sk-" + "A" * 40,
+        r = rt_orch.run_turn(
+            "Parse this into JSON. My key is sk-" + "A" * 40,
             gen9,
         )
         assert r.classifier_label == "ood"

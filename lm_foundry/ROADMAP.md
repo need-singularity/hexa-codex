@@ -4261,6 +4261,124 @@ v0.5.2 candidates: per-vendor tier routing (long-context → gemini-2.5-pro,
 math/proof → claude-opus, etc) based on classifier signals + prompt
 heuristics; option B Qwen-1.5B classifier-SFT only if accuracy ceiling hits.
 
+### 2026-05-14 ~11:30 KST — round 46: v0.5.2 — per-vendor tier routing; classifier signals → claude-sonnet / claude-opus / openai-mini / gemini-pro; tool_match 94.81%, tier_match 90.91% on DLG-mk0
+
+**Round 46 = the v0.5.2 PR signposted by r45's exit. The orchestration runtime
+now picks the RIGHT vendor + model per prompt instead of always defaulting to
+claude-sonnet. NEW `tool/select_vendor_tier.py` (~210 LOC, pure function)
+maps classifier signals → (tool, model, max_tokens). `tool/forge_runtime.py`
+extended to use it; `tool/score_orchestration_mk0.py` extended with
+tool_match + tier_match accuracy on must_delegate rows.**
+
+**Tier routing rules** (`select_vendor_tier.py` §_CLASS_TO_ROUTE):
+
+| classifier signal class | vendor + model | max_tokens | rationale |
+|---|---|---:|---|
+| **longctx** (prompt ≥12K chars or "long-context" sig or "[NK\|NM]-token" mention) | **gemini-api / gemini-2.5-pro** | 8192 | 2M context window |
+| **reason** (prove-derive / complexity-bigO / ml-internals / agda-coq-lean) | **claude-api / claude-opus-4-7** | 4096 | strongest reasoning |
+| **struct** (structured-json / json-schema — parse/convert/extract/classify/validate/return/summarise/generate/output ... json) | **openai-api / gpt-5-mini** | 2048 | OpenAI Structured Outputs feature |
+| **general** (default fallback) | **claude-api / claude-sonnet-4-6** | 2048 | best general-purpose code |
+
+Selection priority is first-match-wins: longctx > reason > struct > general.
+
+**Implementation changes (3 files):**
+
+- `tool/select_vendor_tier.py` (NEW, ~210 LOC): pure function
+  `select_vendor_tier(decision, prompt) → (tool, model, max_tokens, reason)`.
+  Plus `model_tier(model_id) → tier_name` for cross-vendor tier-class lookup.
+  10-case smoke test (`python3 tool/select_vendor_tier.py`) passes 10/10.
+- `tool/classify_prompt.py`: two refinements:
+  - **fallthrough preserves weak signals** — the "no-signal-fallthrough" return
+    in the OOD path now includes `ood_hits` from weak (weight < 2.0) regex
+    matches (prove-derive, complexity-bigO, structured-json, etc) so the
+    downstream tier selector can route to reason/struct. Without this, all
+    weak-only OOD prompts defaulted to general/sonnet.
+  - **long-context regex** widened to match `1M-token` (was matching only
+    `\d+\.\d+M` patterns; bare `1M-token` slipped through).
+  - **structured-json regex** broadened to catch `summarise / generate /
+    output / emit ... JSON` (was only `parse / convert / extract / classify
+    / validate / return ... JSON` — 4 manifest prompts using "summarise into
+    JSON" / "generate ... JSON list" / "output a JSON" were misrouted).
+- `tool/forge_runtime.py`: `_run_turn_orchestrated()` ood path now calls
+  `select_vendor_tier(d, user_prompt)` instead of using
+  `cfg.default_ood_tool/model/max_tokens`. Defaults are kept as a fallback
+  when the selector module isn't importable (`_HAS_TIER_SELECTOR = False`).
+  Smoke case [7] updated to use a structured-output prompt (routes to
+  openai-api stub) so the offline smoke doesn't hit the real Anthropic SDK.
+- `tool/score_orchestration_mk0.py`: extends scorer with
+  `tier_routing` section in `scores_orchestration.json` — overall
+  `tool_match_accuracy`, `tier_match_accuracy`, and per-category breakdown.
+  Cross-vendor tier equivalence (sonnet↔mini, opus↔flagship, haiku↔nano)
+  matches the spec-delegation §9.B TIER_EQUIVS table.
+
+**DLG-mk0 tier accuracy:**
+
+| metric | value |
+|---|---:|
+| classifier overall | **0.9850** (197/200) — unchanged from r44, +6.5pp over GA gate |
+| **tool_match** | **0.9481** (vendor pick matches preferred_tool) |
+| **tier_match** | **0.9091** (model tier matches preferred_model_tier, cross-vendor equiv) |
+
+| category | n | tool_acc | tier_acc |
+|---|---:|---:|---:|
+| ambiguous | 10 | **1.000** | **1.000** |
+| long-context | 10 | **1.000** | **1.000** |
+| ood-delegate | 57 | 0.930 | 0.877 |
+
+**Remaining tier misses (11/77 = 14.3%)** — analyzed:
+- 3 ML-internals routed to opus where manifest preferred sonnet
+  ("LoRA vs DoRA when does DoRA help" / "temperature 0.7 GRPO diversity" /
+  "FlashAttention-2 vs naive attention") — semantic distinction my regex
+  can't see (deep-internals = opus vs comparison-questions = sonnet).
+- 1 TS zod schema routed to struct/openai-mini where manifest preferred
+  general/claude-sonnet — debatable; "zod schema" IS structured-output
+  but TS lib idioms ARE general code. Manifest design call.
+- 4 manifest-says-struct cases now CORRECTLY routed to struct (was
+  general before the regex broaden — 87.7% → 93.0% tool-acc on ood-delegate).
+- 3 other cases — math/proof routed to opus where manifest preferred
+  o4-mini for complexity analysis — `reason` class is right; the
+  cross-vendor equivalence (opus≡flagship; manifest "mini" rejects opus)
+  bites here. Future v0.5.3 could split reason into "reason-deep" (opus)
+  and "reason-algo" (o4-mini) but that's diminishing returns.
+
+**End-to-end smoke (all 9 forge_runtime cases pass):**
+
+- Cases [1-5] legacy in-weight (use_orchestration=False) — backward compat ✓
+- Cases [6-9] orchestration:
+  - [6] hexa prompt → 7B path
+  - [7] structured-output prompt → tier selector → openai-api/gpt-5-mini (stub) ✓
+  - [8] refuse prompt → canonical refusal, no 7B no vendor
+  - [9] redaction hard-block on OOD with api-key
+
+Tier-routing verified for all 4 classes in ad-hoc tests:
+- Rust prompt → general/claude-sonnet-4-6
+- "Prove sum of odd integers = n²" → reason/claude-opus-4-7
+- "Parse {name,age,email} from text" → struct/openai-api/gpt-5-mini
+- "1M-token transcript find contradictions" → longctx/gemini-2.5-pro
+
+**OpenAI + Gemini SDK wire-up DEFERRED** to v0.5.3+ (per spec §9
+roadmap defer policy). Current stubs return deterministic placeholders
+for shape-testing the runtime contract. The Anthropic SDK is already
+wired (post-r41 closure) so claude-api routes (sonnet/opus/haiku) make
+real calls; openai-api and gemini-api routes return stubs until a
+production round justifies the SDK install + auth wire-up. Tier
+selection itself is fully functional — the routing decisions are made
+and logged in telemetry regardless of which vendor SDK is hot.
+
+**dancinlab/\* repos LIVE: 42** (unchanged — software-only round).
+**GA UNCHANGED**: r39 v3-t3patch. **v0.5.0 GA stack now includes
+per-vendor tier routing** in addition to the classifier + Anthropic
+wire-up. Forge code-LLM ships as: pure-specialist 7B + deterministic
+keyword classifier + signal-driven tier selector + real Anthropic SDK
+(openai/gemini stubs pending v0.5.3+).
+
+**Round 46 commits:** this ROADMAP entry · `tool/select_vendor_tier.py`
+(NEW, ~210 LOC) · `tool/classify_prompt.py` (fallthrough preserves weak
+signals; long-context + structured-json regex broaden) ·
+`tool/forge_runtime.py` (tier selector wire-up + smoke case [7] update) ·
+`tool/score_orchestration_mk0.py` (tier_routing section in summary) ·
+`LEARNING_PROGRAMMING.md` §8 r46 row.
+
 
 
 
