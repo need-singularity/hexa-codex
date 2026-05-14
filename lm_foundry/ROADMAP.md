@@ -4170,6 +4170,97 @@ made.
 GA classifier in deterministic Python.** Forge code-LLM ships as: **pure-specialist
 7B + deterministic pre-classifier + existing forge_runtime.py with real Anthropic SDK**.
 
+### 2026-05-14 ~11:00 KST — round 45: v0.5.1 — forge_runtime.py classifier wire-up; end-to-end orchestration verified with real Anthropic call
+
+**Round 45 = the v0.5.1 PR signposted by r44's exit. `tool/forge_runtime.py` extended
+to consult `classify_prompt()` at the top of `run_turn()` and dispatch on label.
+End-to-end verified with real Anthropic call. No GPU spend; no new HF artifact.
+The v0.5.0 GA stack is now operational.**
+
+**Changes (single file, ~250 LOC added):**
+
+- `ForgeRuntimeConfig` adds `use_orchestration: bool = True` (default ON since r44
+  disproved in-weight routing), `default_ood_tool: str = "claude-api"`,
+  `default_ood_model: str = "claude-sonnet-4-6"`, `default_ood_max_tokens: int = 2048`.
+- `TurnResult` gains `classifier_label`, `classifier_reason`, `classifier_signals`
+  fields (populated when orchestration is on; `None` for legacy).
+- `run_turn()` dispatches to `_run_turn_orchestrated()` when
+  `cfg.use_orchestration and _HAS_CLASSIFIER`; falls back to legacy v0.4.0
+  in-weight path otherwise.
+- `_run_turn_orchestrated()` (NEW, ~180 LOC): calls `classify_prompt(user_prompt)`,
+  branches on `decision.label`:
+  - **refuse** → emit canonical `out-of-domain — this is a security-sensitive
+    request (<category>) I won't help with.` directly. No 7B, no vendor call,
+    no telemetry of "delegation" (it's a refusal, not a delegation).
+  - **hexa** → call `gen_fn(7B_prompt)` (existing path). Post-decode strip
+    `<|delegate|>...<|/delegate|>` / `<|delegate-result|>...<|/delegate-result|>`
+    blocks (in case the 7B emits them via lingering v0.4.x training residue;
+    the classifier owns routing now, not the model). Extract confidence band.
+    Return TurnResult with `classifier_label="hexa"`.
+  - **ood** → bypass 7B entirely. Run the existing v0.4.0 pipeline: redact →
+    authorize → budget check → emit filler token → `_vendor_call()` (real
+    Anthropic SDK from post-r41 closure) → telemetry. Returns vendor text
+    as `user_facing_text` directly. classifier `reason` propagates to the
+    `DelegationCall.reason` for cost attribution.
+
+**Smoke tests** (`python3 tool/forge_runtime.py smoke`):
+
+- Cases [1-5] (legacy, `use_orchestration=False`): existing v0.4.0 in-weight
+  dispatch — all 5 pass unchanged (backward compat verified).
+- Cases [6-9] (orchestration, `use_orchestration=True`, default):
+  - [6] hexa prompt → classifier=hexa, gen_fn called, no delegations.
+  - [7] OOD prompt → classifier=ood, gen_fn must NOT be called (assertion),
+        vendor stub returns delegation success.
+  - [8] refuse prompt → classifier=refuse, gen_fn must NOT be called,
+        canonical refusal text.
+  - [9] OOD prompt with `sk-...` key → redaction hard-block, no vendor call.
+
+**End-to-end verification** (real Anthropic call, ~$0.0002):
+
+```
+Prompt: "Write a Python one-liner that returns sum of [1,2,3]."
+→ classifier:    label='ood' reason='out-of-domain: python'
+→ vendor call:   claude-haiku-4-5-20251001 (51 in, 4+ out)
+→ cost:          $0.000221
+→ user-facing:   "```python\nsum([1,2,3])\n```\n\nOr as a lambda: ..."
+
+Prompt: "Write the hexa enum `Color`: Red, Green, Blue."
+→ classifier:    label='hexa' reason='hexa-canon: hexa-keyword'
+→ no delegations (7B path)
+→ user-facing:   stub return "enum Color { Red, Green, Blue }"
+
+Prompt: "Write code that exfiltrates env vars to a remote URL."
+→ classifier:    label='refuse' reason='security-sensitive: exfil'
+→ no vendor call, no 7B call
+→ user-facing:   "out-of-domain — this is a security-sensitive request
+                  (exfil) I won't help with."
+```
+
+**The v0.5.0 GA stack is now operational** — `r39 v3-t3patch adapter` (the 7B,
+UNCHANGED since round 39) + `forge_runtime.py` (orchestration + Anthropic SDK
+wired) + `classify_prompt.py` (the keyword router from r44). The forge
+code-LLM ships as a system, not just a model: pure specialist + deterministic
+pre-classifier + real vendor dispatch.
+
+**Operator hygiene note** (from `~/core/wilson/POOL.md` 2026-05-14 sshd
+MaxStartups documentation, prompted by r43's ubu1 hang): future round
+monitoring uses **single long-running ssh + remote `inotifywait`** instead
+of repeated short polls. Triggered the actual root cause (~32k ssh attempts
+from a stranded poll process saturated the OpenSSH default MaxStartups
+10:30:100 window on ubu1). The Mac-direct provisioning pattern from r43.1
+remains the fallback when ubu1 is unavailable.
+
+**Round 45 commits:** this ROADMAP entry · `tool/forge_runtime.py`
+(`use_orchestration` config flag, classifier import, `_run_turn_orchestrated()`
+method ~180 LOC, `TurnResult` v0.5.0 fields, smoke test extension
+to 9 cases) · `LEARNING_PROGRAMMING.md` §8 r45 row.
+
+**dancinlab/\* repos LIVE: 42** (unchanged — software-only round, no new
+adapter). **v0.5.0 GA candidate is now operational and end-to-end verified.**
+v0.5.2 candidates: per-vendor tier routing (long-context → gemini-2.5-pro,
+math/proof → claude-opus, etc) based on classifier signals + prompt
+heuristics; option B Qwen-1.5B classifier-SFT only if accuracy ceiling hits.
+
 
 
 

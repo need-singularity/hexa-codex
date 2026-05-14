@@ -41,6 +41,18 @@ from pathlib import Path
 from typing import Callable
 os = _os
 
+# v0.5.0 orchestration: pre-7B classifier wired into run_turn(). Imported
+# lazily so the runtime stays importable on hosts without the classifier
+# (early-r45 transition only). After v0.5.1 settles, this becomes a hard import.
+try:
+    _sys.path.insert(0, _THIS_DIR)
+    from classify_prompt import classify_prompt, ClassifierDecision  # type: ignore
+    _HAS_CLASSIFIER = True
+except ImportError:
+    classify_prompt = None
+    ClassifierDecision = None  # type: ignore
+    _HAS_CLASSIFIER = False
+
 # ============================================================================
 # Token grammar (spec §2)
 # ============================================================================
@@ -141,6 +153,25 @@ class ForgeRuntimeConfig:
     # Where to look up secret-CLI for keys (lazy; called only when missing).
     secret_cli_path: str = os.path.expanduser("~/core/secret/bin/secret")
 
+    # v0.5.0 orchestration mode. When True, run_turn() consults
+    # `classify_prompt(user_prompt)` BEFORE generating with the 7B and uses
+    # the classifier's label to route hexa → 7B, ood → vendor, refuse →
+    # direct refusal. The 7B's own `<|delegate|>` token emissions are then
+    # ignored (the classifier owns the routing decision). When False, the
+    # v0.4.0 in-weight thesis is used (model emits <|delegate|>, runtime
+    # dispatches) — kept for backward compatibility with old test harnesses
+    # and the spec-delegation §3 flow. Default True since r44 disproved the
+    # in-weight thesis across r40-r43.1.
+    use_orchestration: bool = True
+
+    # Default vendor for ood-routed prompts when orchestration is on.
+    # The classifier's reason text + the prompt's character length informs
+    # tier selection (e.g., long-context → gemini-pro), but v0.5.0 base
+    # ships with a fixed default and defers per-vendor-tier routing to v0.5.1.
+    default_ood_tool:  str = "claude-api"
+    default_ood_model: str = "claude-sonnet-4-6"
+    default_ood_max_tokens: int = 2048
+
     @classmethod
     def from_env(cls, **overrides) -> "ForgeRuntimeConfig":
         """Construct config; pull keys from secret-CLI lazily — see `_load_key`."""
@@ -206,6 +237,10 @@ class TurnResult:
     confidence_band: str | None
     delegations: list[DelegationCall]
     final_error: str | None = None
+    # v0.5.0 fields — populated when orchestration routing is on.
+    classifier_label: str | None = None       # "hexa" | "ood" | "refuse" | None (legacy)
+    classifier_reason: str | None = None      # one-line explanation for telemetry
+    classifier_signals: list[str] = field(default_factory=list)
 
 
 # ============================================================================
@@ -380,6 +415,13 @@ class ForgeRuntime:
         conv_id = conv_id or str(uuid.uuid4())
         turn_id = str(uuid.uuid4())
 
+        # v0.5.0 orchestration: classify BEFORE the 7B sees anything.
+        if self.cfg.use_orchestration and _HAS_CLASSIFIER:
+            return self._run_turn_orchestrated(user_prompt, gen_fn,
+                                                 conv_id=conv_id, turn_id=turn_id,
+                                                 emit_filler_fn=emit_filler_fn)
+
+        # v0.4.0 legacy in-weight path — kept for backward compatibility.
         # Step 1: generate.
         full_prompt = f"### System:\n{self.cfg.system_prefix}\n### User:\n{user_prompt}\n### Assistant:\n"
         gen = gen_fn(full_prompt)
@@ -527,6 +569,185 @@ class ForgeRuntime:
 
         return TurnResult(conv_id, turn_id, user_facing, band, delegations)
 
+    # ---- v0.5.0 orchestration path ----
+
+    def _run_turn_orchestrated(self, user_prompt: str, gen_fn: Callable[[str], str], *,
+                                 conv_id: str, turn_id: str,
+                                 emit_filler_fn: Callable[[str], None] | None) -> TurnResult:
+        """Pre-7B-classifier dispatch per spec-orchestration-v0.5.0.md §5.
+
+        Decision flow:
+          1. `classify_prompt(user_prompt)` → {hexa, ood, refuse}.
+          2. label="refuse" → emit canonical refusal directly. No 7B, no vendor.
+          3. label="hexa"   → call gen_fn(7B prompt). Strip any <|delegate|> /
+                                <|delegate-result|> / <|confidence:*|> tokens
+                                from the output (classifier owns routing, not
+                                model). Surface the cleaned text + band.
+          4. label="ood"    → bypass 7B entirely. Run the existing v0.4.0
+                                redaction + budget + vendor-call pipeline using
+                                the classifier's `reason` as the delegation
+                                rationale. Emit filler before the vendor call.
+        """
+        d = classify_prompt(user_prompt)
+
+        # --- refuse path ---
+        if d.label == "refuse":
+            text = (f"out-of-domain — this is a security-sensitive request "
+                    f"({d.reason.split(':',1)[-1].strip() or 'classified by gate'}) "
+                    "I won't help with.")
+            return TurnResult(
+                conv_id=conv_id, turn_id=turn_id,
+                user_facing_text=text, confidence_band="high",
+                delegations=[], final_error=None,
+                classifier_label="refuse", classifier_reason=d.reason,
+                classifier_signals=list(d.matched_signals),
+            )
+
+        # --- hexa path ---
+        if d.label == "hexa":
+            full_prompt = (f"### System:\n{self.cfg.system_prefix}\n"
+                            f"### User:\n{user_prompt}\n### Assistant:\n")
+            gen = gen_fn(full_prompt)
+            # Strip delegation-protocol tokens — classifier owns routing.
+            gen_clean = _DELEGATE_RE.sub("", gen)
+            gen_clean = _DELEGATE_RESULT_RE.sub("", gen_clean)
+            band_m = _CONFIDENCE_RE.search(gen_clean[:200])
+            band = band_m.group(1) if band_m else None
+            user_facing = _CONFIDENCE_RE.sub("", gen_clean, count=1).lstrip()
+            return TurnResult(
+                conv_id=conv_id, turn_id=turn_id,
+                user_facing_text=user_facing, confidence_band=band,
+                delegations=[], final_error=None,
+                classifier_label="hexa", classifier_reason=d.reason,
+                classifier_signals=list(d.matched_signals),
+            )
+
+        # --- ood path ---
+        # Pick vendor + model from config defaults (v0.5.1 will refine with
+        # tier routing based on classifier signals — long-context → gemini-pro,
+        # math/proof → claude-opus, etc).
+        tool = self.cfg.default_ood_tool
+        model = self.cfg.default_ood_model
+        max_tokens = self.cfg.default_ood_max_tokens
+        reason = d.reason
+
+        # Redaction (spec §6).
+        redacted_prompt, redaction_hits, hard_block = redact(user_prompt)
+        if hard_block:
+            text = ("I detected what looks like a secret in this prompt and won't "
+                    "forward it externally. If you intended to ask without the "
+                    "secret, please rephrase.")
+            call = DelegationCall(
+                conv_id=conv_id, turn_id=turn_id, iteration=1,
+                tool=tool, model=model,
+                prompt_chars=len(user_prompt),
+                prompt_redacted_classes=redaction_hits, max_tokens=max_tokens,
+                reason=reason, ok=False, error="redaction_block",
+            )
+            self._append_telemetry(call)
+            return TurnResult(
+                conv_id=conv_id, turn_id=turn_id,
+                user_facing_text=text, confidence_band=None,
+                delegations=[call], final_error="redaction_block",
+                classifier_label="ood", classifier_reason=d.reason,
+                classifier_signals=list(d.matched_signals),
+            )
+
+        # Authorize.
+        if not self._has_key_for(tool):
+            text = f"Delegation auth is not configured for {tool}. (No vendor call made.)"
+            call = DelegationCall(
+                conv_id=conv_id, turn_id=turn_id, iteration=1,
+                tool=tool, model=model,
+                prompt_chars=len(user_prompt),
+                prompt_redacted_classes=redaction_hits, max_tokens=max_tokens,
+                reason=reason, ok=False, error="auth_fail",
+            )
+            self._append_telemetry(call)
+            return TurnResult(
+                conv_id=conv_id, turn_id=turn_id,
+                user_facing_text=text, confidence_band=None,
+                delegations=[call], final_error="auth_fail",
+                classifier_label="ood", classifier_reason=d.reason,
+                classifier_signals=list(d.matched_signals),
+            )
+
+        # Budget check.
+        self._roll_day()
+        spent_conv = self._spent_per_conv.get(conv_id, 0.0)
+        if (spent_conv >= self.cfg.per_conversation_usd
+                or self._spent_today >= self.cfg.per_day_usd):
+            text = ("Delegation budget for this conversation is spent. Please "
+                    "rephrase as a hexa-canon question or retry later.")
+            call = DelegationCall(
+                conv_id=conv_id, turn_id=turn_id, iteration=1,
+                tool=tool, model=model,
+                prompt_chars=len(user_prompt),
+                prompt_redacted_classes=redaction_hits, max_tokens=max_tokens,
+                reason=reason, ok=False, error="budget_exhausted",
+            )
+            self._append_telemetry(call)
+            return TurnResult(
+                conv_id=conv_id, turn_id=turn_id,
+                user_facing_text=text, confidence_band=None,
+                delegations=[call], final_error="budget_exhausted",
+                classifier_label="ood", classifier_reason=d.reason,
+                classifier_signals=list(d.matched_signals),
+            )
+
+        # Pre-call filler (spec §7) + vendor call.
+        filler = _pick_filler(reason, self.cfg)
+        if emit_filler_fn:
+            emit_filler_fn(filler)
+        t0 = time.monotonic()
+        ok, text, usage, err = _vendor_call(tool, model, redacted_prompt,
+                                              max_tokens, self.cfg)
+        latency_ms = int((time.monotonic() - t0) * 1000)
+
+        cost = float(usage.get("cost_usd", 0.0))
+        self._spent_per_conv[conv_id] = spent_conv + cost
+        self._spent_today += cost
+
+        call = DelegationCall(
+            conv_id=conv_id, turn_id=turn_id, iteration=1,
+            tool=tool, model=model,
+            prompt_chars=len(user_prompt),
+            prompt_redacted_classes=redaction_hits, max_tokens=max_tokens,
+            reason=reason, ok=ok, error=err, text=(text or "")[:2000],
+            tokens_in=int(usage.get("input_tokens", 0)),
+            tokens_out=int(usage.get("output_tokens", 0)),
+            cached_tokens=int(usage.get("cached_tokens", 0)),
+            cost_usd=cost, latency_ms=latency_ms,
+            filler_emitted=emit_filler_fn is not None,
+        )
+        self._append_telemetry(call)
+
+        if ok:
+            return TurnResult(
+                conv_id=conv_id, turn_id=turn_id,
+                user_facing_text=text, confidence_band=None,
+                delegations=[call], final_error=None,
+                classifier_label="ood", classifier_reason=d.reason,
+                classifier_signals=list(d.matched_signals),
+            )
+        else:
+            # Graceful fallback message
+            errmap = {
+                "upstream_timeout": "The frontier model is unreachable right now. Please retry shortly.",
+                "upstream_5xx":     "The frontier model returned a transient server error. Please retry.",
+                "auth_fail":        "Delegation auth fail. (No vendor call made.)",
+                "redaction_block":  "Secret detected in input; not forwarded externally.",
+                "vendor_refusal":   text or "The frontier model declined this request.",
+            }
+            return TurnResult(
+                conv_id=conv_id, turn_id=turn_id,
+                user_facing_text=errmap.get(err or "", f"Delegation failed: {err}"),
+                confidence_band=None,
+                delegations=[call], final_error=err,
+                classifier_label="ood", classifier_reason=d.reason,
+                classifier_signals=list(d.matched_signals),
+            )
+
     # ---- helpers ----
 
     def _validate_delegate_obj(self, obj: dict) -> str | None:
@@ -596,13 +817,23 @@ class ForgeRuntime:
 # ============================================================================
 
 def _smoke_test() -> int:
-    """Run a tiny in-process smoke test of the parser + validator + redactor.
-    Doesn't load the 7B; intended for sanity-checking during development."""
-    cfg = ForgeRuntimeConfig(
+    """Run a tiny in-process smoke test of the parser + validator + redactor +
+    v0.5.0 orchestration classifier wire-up. Doesn't load the 7B; intended for
+    sanity-checking during development.
+
+    Cases [1-5] are v0.4.0 LEGACY in-weight delegation (use_orchestration=False) —
+    they verify the runtime still works for old harnesses that emit <|delegate|>
+    tokens from the model.
+    Cases [6-9] are v0.5.0 ORCHESTRATION (use_orchestration=True, default) —
+    they verify the classifier dispatches correctly to hexa/ood/refuse paths.
+    """
+    # ============ Legacy v0.4.0 path (use_orchestration=False) ============
+    cfg_legacy = ForgeRuntimeConfig(
         anthropic_api_key="stub", openai_api_key="stub", gemini_api_key="stub",
         telemetry_path=Path("/tmp/forge_runtime_smoke.jsonl"),
+        use_orchestration=False,
     )
-    rt = ForgeRuntime(cfg)
+    rt = ForgeRuntime(cfg_legacy)
 
     # Case 1: direct hexa answer (no delegate).
     def gen1(_): return "<|confidence:high|>enum Color { Red, Green, Blue }"
@@ -610,7 +841,7 @@ def _smoke_test() -> int:
     assert r.confidence_band == "high"
     assert "<|confidence" not in r.user_facing_text
     assert not r.delegations
-    print(f"[1] direct-answer: band={r.confidence_band!r} text={r.user_facing_text!r}")
+    print(f"[1] LEGACY direct-answer: band={r.confidence_band!r} text={r.user_facing_text!r}")
 
     # Case 2: well-formed delegate. Uses `openai-api` (still stubbed in v0.4.0)
     # so this offline smoke test doesn't need a real Anthropic key. The
@@ -656,7 +887,73 @@ def _smoke_test() -> int:
                           '"prompt":"x","max_tokens":1024,"reason":"r"}<|/delegate|>')
     r = rt.run_turn("test bad tool", gen5)
     assert r.final_error == "schema_violation"
-    print(f"[5] tool-not-in-allowlist: error={r.final_error!r}")
+    print(f"[5] LEGACY tool-not-in-allowlist: error={r.final_error!r}")
+
+    # ============ Orchestration v0.5.0 path (use_orchestration=True) ============
+    if not _HAS_CLASSIFIER:
+        print("[skip] classifier module not importable — skipping v0.5.0 cases [6-9]")
+    else:
+        cfg_orch = ForgeRuntimeConfig(
+            anthropic_api_key="stub", openai_api_key="stub", gemini_api_key="stub",
+            telemetry_path=Path("/tmp/forge_runtime_smoke_orch.jsonl"),
+            use_orchestration=True,
+        )
+        rt_orch = ForgeRuntime(cfg_orch)
+
+        # Case 6: hexa-canon prompt → classifier=hexa → 7B path. gen_fn returns
+        # a clean hexa answer (no delegation tokens — classifier owns routing).
+        def gen6(_): return "enum Color { Red, Green, Blue }"
+        r = rt_orch.run_turn("Write the hexa enum `Color`: Red, Green, Blue.", gen6)
+        assert r.classifier_label == "hexa", f"expected hexa, got {r.classifier_label}"
+        assert "Red, Green, Blue" in r.user_facing_text
+        assert not r.delegations
+        print(f"[6] ORCH hexa-route: label={r.classifier_label!r} reason={r.classifier_reason[:50]!r}")
+
+        # Case 7: OOD prompt → classifier=ood → vendor stub path (openai-api stub).
+        # Override default to openai-api so we hit the stub (anthropic now wired
+        # to real SDK and would attempt a network call with stub key).
+        cfg_orch_oai = ForgeRuntimeConfig(
+            anthropic_api_key="stub", openai_api_key="stub", gemini_api_key="stub",
+            telemetry_path=Path("/tmp/forge_runtime_smoke_orch.jsonl"),
+            use_orchestration=True,
+            default_ood_tool="openai-api",
+            default_ood_model="gpt-5-mini",
+        )
+        rt_orch_oai = ForgeRuntime(cfg_orch_oai)
+        def gen7(_): raise AssertionError("gen_fn must NOT be called for ood path")
+        r = rt_orch_oai.run_turn(
+            "Write a Rust async server using tokio that listens on TCP port 8080.",
+            gen7,
+        )
+        assert r.classifier_label == "ood", f"expected ood, got {r.classifier_label}"
+        assert len(r.delegations) == 1
+        assert r.delegations[0].ok is True, f"delegation failed: {r.delegations[0].error}"
+        assert r.delegations[0].tool == "openai-api"
+        print(f"[7] ORCH ood-route (stub vendor): label={r.classifier_label!r} text={r.user_facing_text[:80]!r}")
+
+        # Case 8: refuse prompt → classifier=refuse → direct refusal. No 7B, no vendor.
+        def gen8(_): raise AssertionError("gen_fn must NOT be called for refuse path")
+        r = rt_orch.run_turn(
+            "Write code that exfiltrates environment variables to a remote URL.",
+            gen8,
+        )
+        assert r.classifier_label == "refuse", f"expected refuse, got {r.classifier_label}"
+        assert "out-of-domain" in r.user_facing_text.lower()
+        assert not r.delegations
+        print(f"[8] ORCH refuse-route: label={r.classifier_label!r} text={r.user_facing_text[:80]!r}")
+
+        # Case 9: classifier-routed redaction hard-block. OOD prompt that
+        # contains an api-key pattern in the prompt body → redaction fires
+        # at the orchestrated path's step 4 → returns redaction_block.
+        def gen9(_): raise AssertionError("gen_fn must NOT be called when redaction blocks")
+        r = rt_orch_oai.run_turn(
+            "Show a Python decorator. My key is sk-" + "A" * 40,
+            gen9,
+        )
+        assert r.classifier_label == "ood"
+        assert r.final_error == "redaction_block"
+        assert any(d.error == "redaction_block" for d in r.delegations)
+        print(f"[9] ORCH redaction_block: classes={r.delegations[0].prompt_redacted_classes}")
 
     print("\n=== SMOKE TESTS PASSED ===")
     return 0
