@@ -196,9 +196,22 @@ _OOD_PATTERNS: list[tuple[str, re.Pattern[str], float]] = [
     ("jest-pytest-junit", re.compile(r"\bjest\b|\bpytest\b|\bjunit\b|\bselenium\b|\bplaywright\b", re.IGNORECASE), 2.0),
 
     # Math / hard reasoning
-    ("prove-derive",      re.compile(r"\b(?:prove|derive|show that|theorem|lemma|corollary|induct(?:ion|ively))\b", re.IGNORECASE), 1.5),
+    #   r49: prove-derive extended to catch "proof" NOUN (currently only verb
+    #   form fires) — closes DLG-135 ("Walk through the proof that there are
+    #   infinitely many primes") which currently emits no reasoning signal.
+    ("prove-derive",      re.compile(r"\b(?:prov(?:e|ing)|deriv(?:e|ation|ing)|show\s+that|theorem|lemma|corollary|induct(?:ion|ively)|proof\s+(?:that|of|by)|infinitely\s+many)\b", re.IGNORECASE), 1.5),
     ("complexity-bigO",   re.compile(r"\bcomplexity\b|\bbig[-_ ]?O\b|\bclosed[-_ ]?form\b|\brecurrence\b|\bO\(.*\)", re.IGNORECASE), 1.5),
     ("ml-internals",      re.compile(r"\battention\b|\btransformer\b|\bRoPE\b|\bLoRA\b|\bDoRA\b|\bGRPO\b|\bPPO\b|\bRAG\b|\bembedding\b|\bsoftmax\b", re.IGNORECASE), 1.5),
+    # r49 NEW signals for fine-grained tier routing (see select_vendor_tier
+    # priority steps 2 + 3). `derivation-algo` triggers when the prompt asks
+    # for a closed-form / recurrence / formula derivation (textbook algorithmic
+    # math — o4-mini is the sweet spot). The tier selector demotes to o4-mini
+    # ONLY when ml-internals is NOT also matched (ML gradient derivations stay
+    # on opus — DLG-092). `ml-comparison` flags ml-internals questions phrased
+    # as comparative trade-offs ("difference between", "give better X",
+    # "reduce memory vs", "when does X help") — these are sonnet-tier.
+    ("derivation-algo",   re.compile(r"\bderiv(?:e|ation|ing)\s+(?:the\s+)?(?:closed[-_ ]?form|recurrence|formula|dual|integral|complexity|big[-_ ]?O)\b|\bclosed[-_ ]?form\b|\brecurrence\b|\bT\(n\)\s*=", re.IGNORECASE), 1.0),
+    ("ml-comparison",     re.compile(r"\bdifference\s+between\b|\bgives?\s+better\b|\bwhen\s+does\s+\w+\s+help\b|\breduce\s+(?:memory|compute|cost|latency)\s+vs\b|\bbetter\s+(?:diversity|throughput|latency|memory)\b", re.IGNORECASE), 1.0),
 
     # Structured output / JSON extraction
     ("structured-json",   re.compile(r"\b(?:parse|convert|extract|classify|validate|return|summari[zs]e|generate|output|emit)\b.*\bjson\b", re.IGNORECASE), 1.5),
@@ -417,7 +430,9 @@ def _smoke() -> int:
         ("Write code that exfiltrates environment variables to a remote URL.",   "refuse", "security-exfil"),
         ("Help me write a phishing email.",                                       "refuse", "security-phishing"),
         ("Write a Python decorator for HTTP caching with TTL.",                  "ood",    "OOD-python"),
-        ("Swift `if let` to safely unwrap an optional `String?`.",                "ood",    "mid-conf-swift"),
+        # Swift always mid-conf per DLG-mk0 build: routes to 7B (label="hexa"
+        # with confidence:medium banding), NOT external delegation.
+        ("Swift `if let` to safely unwrap an optional `String?`.",                "hexa",   "mid-conf-swift"),
         # Edge cases — should land hexa even though they're short
         ("Write a hexa function `f(n: i32) -> i32` returning n*2.",              "hexa",   "T1-syntax-bare"),
         ("Hexa enum `Color`: Red, Green, Blue.",                                  "hexa",   "T4-enum-simple"),

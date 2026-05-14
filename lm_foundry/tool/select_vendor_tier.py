@@ -56,11 +56,20 @@ _SIGNAL_TO_CLASS: dict[str, str] = {
 
 
 # Tier-class → (tool, model, max_tokens) route.
+#   r49 split the legacy "reason" tier into two:
+#     * "reason-deep"  — foundational proofs / theorem walkthroughs /
+#                        deep ml-internals mechanism explanations (opus).
+#     * "reason-algo"  — closed-form derivations / recurrence / Big-O
+#                        analysis — textbook algorithmic math (o4-mini).
+#   Legacy "reason" key kept as alias for "reason-deep" so older tests
+#   that hand-pick `_CLASS_TO_ROUTE["reason"]` keep working.
 _CLASS_TO_ROUTE: dict[str, tuple[str, str, int]] = {
-    "longctx": ("gemini-api", "gemini-2.5-pro",            8192),
-    "reason":  ("claude-api", "claude-opus-4-7",           4096),
-    "struct":  ("openai-api", "gpt-5-mini",                2048),
-    "general": ("claude-api", "claude-sonnet-4-6",         2048),
+    "longctx":     ("gemini-api", "gemini-2.5-pro",            8192),
+    "reason-deep": ("claude-api", "claude-opus-4-7",           4096),
+    "reason-algo": ("openai-api", "o4-mini",                   2048),
+    "reason":      ("claude-api", "claude-opus-4-7",           4096),  # legacy alias
+    "struct":      ("openai-api", "gpt-5-mini",                2048),
+    "general":     ("claude-api", "claude-sonnet-4-6",         2048),
 }
 
 
@@ -103,12 +112,21 @@ def select_vendor_tier(decision, prompt: str) -> tuple[str, str, int, str]:
         `reason_string` includes the tier-class for telemetry; it's used as
         the `reason` field in the `DelegationCall`.
 
-    Selection priority (first match wins):
-        1. Length ≥ 12 000 chars OR matched_signals contains long-context →
-           longctx route (gemini-2.5-pro).
-        2. matched_signals contains a reason-class signal → reason route.
-        3. matched_signals contains a struct-class signal → struct route.
-        4. Fallback → general route (claude-sonnet-4-6).
+    Selection priority (first match wins, r49 split):
+        1. Long-context (≥12K chars OR long-context signal) → longctx (gemini-2.5-pro).
+        2. ml-comparison + ml-internals (comparative-Q form) → general (sonnet).
+           Demotion from naive ml-internals→opus path. Comparative
+           trade-off questions are sonnet-tier work, not opus.
+        3. derivation-algo AND NOT ml-internals → reason-algo (o4-mini).
+           Textbook closed-form / recurrence / Big-O derivations are
+           o4-mini's sweet spot. ML gradient derivations (which also
+           fire derivation-algo) stay on opus via step 4 because
+           ml-internals is also matched.
+        4. Legacy reason set (prove-derive / complexity-bigO / ml-internals /
+           agda-coq-lean) → reason-deep (opus). Foundational proofs +
+           deep ml-internals mechanism explanations.
+        5. struct-class signal → struct (gpt-5-mini).
+        6. Fallback → general (claude-sonnet-4-6).
     """
     if getattr(decision, "label", None) != "ood":
         raise ValueError(f"select_vendor_tier requires label='ood', got {decision.label!r}")
@@ -121,17 +139,31 @@ def select_vendor_tier(decision, prompt: str) -> tuple[str, str, int, str]:
         tool, model, max_tokens = _CLASS_TO_ROUTE["longctx"]
         return tool, model, max_tokens, f"longctx: {decision.reason}"
 
-    # 2. Hard reasoning / math / proof / ml-internals.
-    if sig_set & {"prove-derive", "complexity-bigO", "ml-internals", "agda-coq-lean"}:
-        tool, model, max_tokens = _CLASS_TO_ROUTE["reason"]
-        return tool, model, max_tokens, f"reason: {decision.reason}"
+    # 2. ml-comparison demotion: ml-internals topic in comparative-Q form
+    #    (difference between / give better / reduce X vs / when does Y help)
+    #    is sonnet-tier (trade-off explanation), not opus.
+    if "ml-comparison" in sig_set and "ml-internals" in sig_set:
+        tool, model, max_tokens = _CLASS_TO_ROUTE["general"]
+        return tool, model, max_tokens, f"general (ml-comparison): {decision.reason}"
 
-    # 3. Structured output / extraction / classification.
+    # 3. Algorithmic derivation: closed-form, recurrence, Big-O, formula
+    #    derivation — textbook math, o4-mini is the right cost/quality tier.
+    #    Excludes ML-gradient derivations (ml-internals fires → step 4 opus).
+    if "derivation-algo" in sig_set and "ml-internals" not in sig_set:
+        tool, model, max_tokens = _CLASS_TO_ROUTE["reason-algo"]
+        return tool, model, max_tokens, f"reason-algo: {decision.reason}"
+
+    # 4. Deep reasoning / math / proof / ml-internals mechanism.
+    if sig_set & {"prove-derive", "complexity-bigO", "ml-internals", "agda-coq-lean"}:
+        tool, model, max_tokens = _CLASS_TO_ROUTE["reason-deep"]
+        return tool, model, max_tokens, f"reason-deep: {decision.reason}"
+
+    # 5. Structured output / extraction / classification.
     if sig_set & {"structured-json", "json-schema"}:
         tool, model, max_tokens = _CLASS_TO_ROUTE["struct"]
         return tool, model, max_tokens, f"struct: {decision.reason}"
 
-    # 4. Fallback: general OOD code / frameworks / language idioms.
+    # 6. Fallback: general OOD code / frameworks / language idioms.
     tool, model, max_tokens = _CLASS_TO_ROUTE["general"]
     return tool, model, max_tokens, f"general: {decision.reason}"
 
@@ -148,9 +180,16 @@ def _smoke() -> int:
         # (prompt, expected_tier_class)
         ("Write a Rust async server using tokio that listens on TCP port 8080.", "general"),
         ("Show a Python decorator that caches function results with a TTL.",     "general"),
-        ("Prove that the sum of the first n odd integers equals n².",            "reason"),
-        ("Derive the closed-form of the recurrence T(n) = 2T(n/2) + n.",         "reason"),
-        ("Explain how multi-head attention's QKV projections work.",             "reason"),
+        # r49 reason-deep: foundational proof / theorem walkthrough
+        ("Prove that the sum of the first n odd integers equals n².",            "reason-deep"),
+        ("Walk through the proof that there are infinitely many primes.",        "reason-deep"),
+        ("Explain how multi-head attention's QKV projections work.",             "reason-deep"),  # deep ml-internals mechanism
+        # r49 reason-algo: closed-form / recurrence / formula derivation
+        ("Derive the closed-form of the recurrence T(n) = 2T(n/2) + n.",         "reason-algo"),
+        ("Derive the formula for the variance of the sum of two RVs.",           "reason-algo"),
+        # r49 ml-comparison: ml topic in comparative-Q form → sonnet
+        ("What's the difference between LoRA and DoRA?",                         "general"),
+        ("How does FlashAttention-2 reduce memory vs naive attention?",          "general"),
         ("Parse 'Alice, 32, alice@example.com' into JSON {name, age, email}.",  "struct"),
         ("Classify this support ticket as urgent|normal|low; return JSON.",       "struct"),
         ("Here is a 500K-token spec document. Summarise rate-limiting section.", "longctx"),

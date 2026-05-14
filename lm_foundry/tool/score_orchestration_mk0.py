@@ -169,7 +169,7 @@ def main() -> int:
                 for cat, d in sorted(tier_per_cat.items())
             },
         },
-        "spec": "papers/spec-orchestration-v0.5.0.md §7 + v0.5.2 tier routing",
+        "spec": "papers/spec-orchestration-v0.5.0.md §7 + v0.5.5 reason-class split (deep vs algo)",
     }
     out_summary = args.output / "scores_orchestration.json"
     out_summary.write_text(json.dumps(summary, indent=2))

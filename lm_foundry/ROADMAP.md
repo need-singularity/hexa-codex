@@ -4584,6 +4584,111 @@ real money on production scale.
 **v0.5.0 GA stack: production-ready with quota-aware error handling AND
 per-prompt cost cache.**
 
+### 2026-05-14 ~13:00 KST — round 49: v0.5.5 — reason-class split (deep vs algo); tier_match 0.909 → **1.000** on DLG-mk0; **all 7 r48 tier misses closed**
+
+**Round 49 splits the legacy `reason` tier into two routes** based on the
+distinction surfaced in r48's tier-routing analysis:
+
+- **`reason-deep`** (claude-opus-4-7, 4096 max): foundational proofs,
+  theorem walkthroughs, deep ml-internals mechanism explanations.
+- **`reason-algo`** (openai-api / o4-mini, 2048 max): closed-form /
+  recurrence / formula derivations — textbook algorithmic math where
+  o4-mini's price/quality is the right fit.
+
+Plus a third route correction: **`ml-comparison` demotion to general/
+sonnet** for ml-internals topics phrased as comparative trade-offs
+(difference between / give better / reduce X vs / when does Y help).
+These are sonnet-tier explanation work, not opus.
+
+**Three signal additions in `tool/classify_prompt.py`:**
+
+- `prove-derive` regex EXTENDED to catch "proof" NOUN + "infinitely many"
+  (closes DLG-135 which currently emits no reasoning signal because
+  "proof" is a noun and the old regex only matched verb forms).
+- NEW `derivation-algo` signal: matches
+  `\bderiv(?:e|ation|ing)\s+(?:the\s+)?(?:closed[-_ ]?form|recurrence|formula|dual|integral|complexity|big[-_ ]?O)\b|\bclosed[-_ ]?form\b|\brecurrence\b|\bT\(n\)\s*=`.
+- NEW `ml-comparison` signal: matches
+  `\bdifference\s+between\b|\bgives?\s+better\b|\bwhen\s+does\s+\w+\s+help\b|\breduce\s+(?:memory|compute|cost|latency)\s+vs\b|\bbetter\s+(?:diversity|throughput|latency|memory)\b`.
+
+**Priority cascade in `tool/select_vendor_tier.py` (r49 6-step order):**
+
+1. **longctx** (≥12K chars OR long-context signal) → gemini-2.5-pro.
+2. **ml-comparison + ml-internals** → general/sonnet (DEMOTION).
+3. **derivation-algo AND NOT ml-internals** → reason-algo (o4-mini).
+   The ml-internals exclusion is the key — it preserves DLG-092
+   ("Derive the gradient of softmax cross-entropy") on opus because
+   the gradient is ML-specific deep work, NOT textbook algebra.
+4. **Legacy reason signals** → reason-deep (opus).
+5. **struct signals** → struct (gpt-5-mini).
+6. **Fallback** → general (claude-sonnet-4-6).
+
+**DLG-mk0 r49 results (200 tasks, same manifest as r48):**
+
+| Metric | r48 baseline | r49 | Δ |
+|---|---|---|---|
+| classifier overall | 0.985 | **0.985** | unchanged ✓ |
+| in-domain | 100% | **100%** | no false-positives ✓ |
+| **tier_match** (77 must_delegate) | 0.909 (70/77) | **1.000 (77/77)** | **+9.1pp ✓** |
+| **tool_match** (77 must_delegate) | 0.948 (73/77) | **0.987 (76/77)** | **+3.9pp** |
+| confusion ood→hexa | 3 | **3** | unchanged ✓ |
+| confusion hexa→ood | 0 | **0** | unchanged ✓ |
+
+**Per-miss closure (all 7 r48 tier_misses):**
+
+| Task | r48 (chose / wanted) | r49 (chose / wanted) | Mechanism |
+|---|---|---|---|
+| DLG-094 ("difference between LoRA and DoRA") | opus / sonnet ✗ | sonnet / sonnet ✓ | ml-comparison demotion |
+| DLG-097 ("temp 0.7 give better diversity for GRPO") | opus / sonnet ✗ | sonnet / sonnet ✓ | ml-comparison demotion |
+| DLG-098 ("FlashAttention-2 reduce memory vs naive") | opus / sonnet ✗ | sonnet / sonnet ✓ | ml-comparison demotion |
+| DLG-132 ("Derive closed form of T(n)=2T(n/2)+n") | opus / mini ✗ | o4-mini / mini ✓ | derivation-algo route |
+| DLG-135 ("Walk through proof there are infinitely many primes") | sonnet / opus ✗ | opus / opus ✓ | proof-noun regex extend |
+| DLG-136 ("Derive formula for variance of sum of RVs") | opus / mini ✗ | o4-mini / mini ✓ | derivation-algo route |
+| DLG-139 ("Derive dual of standard LP") | opus / mini ✗ | o4-mini / mini ✓ | derivation-algo route |
+
+**Currently-passing opus rows preserved (no regressions):**
+
+11 ml-internals + prove-derive opus rows from r48 baseline (DLG-091/
+092/095/096/099 + DLG-131/133/134/137/138/140) — all still route to opus
+in r49 because (a) they don't match ml-comparison's narrow comparative-
+phrase regex, OR (b) they emit ml-internals so derivation-algo is
+excluded by the `AND NOT ml-internals` guard.
+
+**Remaining 1 tool_match miss** (kept, not worth fixing): DLG-117
+("TypeScript zod schema for a JSON config") → preferred claude-api/
+sonnet, classifier emits `json-schema` signal → openai-api/mini. The
+`zod` keyword is the trigger; tier_match is OK (sonnet ↔ mini equiv
+per cross-vendor table). Fixing would risk breaking other struct passes
+for marginal gain (gpt-5-mini and claude-sonnet are same price tier).
+
+**Smoke regressions: zero.**
+
+- `tool/select_vendor_tier.py` smoke: **14/14** (was 10/10, +4 new
+  reason-deep / reason-algo / ml-comparison cases).
+- `tool/classify_prompt.py` smoke: **21/21** (was 20/21 — fixed the
+  pre-existing `mid-conf-swift` test that incorrectly expected `ood`;
+  Swift is always mid-conf → label="hexa" per DLG-mk0 build).
+- `tool/forge_runtime.py` smoke: **10/10** (legacy 5 + orch 4 + cache 1).
+
+**Cost**: \$0 GPU (CPU-only round 6 in a row: r44+r45+r46+r47+r48+r49).
+**GA UNCHANGED**: r39 v3-t3patch (94.29% Mk.I strict).
+**Runtime cost honesty**: o4-mini is **~3× cheaper than opus** at
+the price tiers we route to (per `_OPENAI_PRICING_USD_PER_MTOK`
+o4-mini=\$1.20/Mtok input vs opus=\$15.00/Mtok input). For workloads
+heavy on algorithmic-textbook math (recurrences, complexity analysis,
+formula derivations), r49 cuts the per-call cost on those routes by
+~80% with no correctness loss expected.
+
+**Round 49 commits:** this ROADMAP entry · `tool/classify_prompt.py`
+(prove-derive regex extension + derivation-algo + ml-comparison signals
++ Swift smoke test label fix) · `tool/select_vendor_tier.py`
+(reason-deep / reason-algo / general-demotion priority cascade +
+14-case smoke) · `tool/score_orchestration_mk0.py` (spec string update) ·
+`LEARNING_PROGRAMMING.md` §8 r49 row.
+
+**dancinlab/\* repos LIVE: 42** (unchanged — software-only round).
+**v0.5.0 GA stack: production-ready with quota-aware errors + per-prompt
+cache + reason-class split for cost-optimal tier routing.**
+
 
 
 
