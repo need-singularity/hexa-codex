@@ -6827,6 +6827,135 @@ production monitoring.
 **GA UNCHANGED**: r39 v3-t3patch (94.29% Mk.I strict).
 **dancinlab/\* repos LIVE: 42** (unchanged — software-only round).
 
+### 2026-05-14 ~23:30 KST — rounds 70+71+72: v0.6.3/4/5 operator UX bundle — `forge_route` decision-trace CLI + built-in log rotation + `forge` unified dispatcher; no GPU spend
+
+User-requested "all bg go" — execute remaining v0.7+ software-only
+candidates as a batch. Three small rounds shipped sequentially with
+separate commits:
+
+#### r70 (v0.6.3) — `tool/forge_route.py` decision-trace CLI
+
+Given a prompt, walks `classify → tier-select → cost-estimate`
+OFFLINE (no API). Use cases: pre-deploy prompt review, classifier
+signal debugging, cost projection for known templates.
+
+- Single prompt via argv OR stdin
+- `--batch` for JSONL lines from stdin
+- `--output text/json/csv`
+- `--estimate-tokens --expected-output-tokens N` for cost projection
+- Heuristic: chars/4 ≈ tokens; cache discount NOT applied (treat as
+  upper bound)
+- Built-in pricing table mirrors forge_runtime's
+
+Verified on 4 scenarios:
+- hexa (1.000 confidence, dispatch to 7B)
+- ood reason-algo (label ood, openai-api/o4-mini/2048, $0.002417 est for 14 in / 500 out)
+- refuse (signals [exfil, malware], canonical refusal)
+- JSON output for jq piping
+
+Committed in `5ce54c0`.
+
+#### r71 (v0.6.4) — built-in size-based log rotation
+
+`state/delegation_log.jsonl` no longer requires external logrotate.
+Two new `ForgeRuntimeConfig` fields:
+- `telemetry_max_size_bytes: int = 0` (default OFF for backward-compat)
+- `telemetry_keep_rotations: int = 5`
+
+When enabled: post-write size check; if > threshold, shift
+`.jsonl` → `.1` → `.2` → ... → drop oldest beyond `keep_rotations`.
+
+Smoke case [20] verifies 12 turns × 527-byte rows + threshold 800
+produces `.1 .2 .3` rotated files with `.4 .5` dropped per
+`keep_rotations=3`.
+
+All 20/20 forge smoke pass. OPERATIONS.md §1 updated: appended a note
+that built-in rotation as of r71 is available alongside external
+logrotate.
+
+Committed in `c0f7a35`.
+
+#### r72 (v0.6.5) — `forge` unified CLI dispatcher
+
+Single entry point that delegates to the appropriate sub-tool. Replaces
+the `python3 tool/X.py` pattern in OPERATIONS.md crons/runbooks with
+one consistent `forge <sub>` interface.
+
+`tool/forge.py` (~110 LOC) + `bin/forge` shell shim (5-line POSIX).
+
+Subcommand routing:
+
+| Subcommand | Tool | Description |
+|---|---|---|
+| `forge status` | forge_keys.py status | (alias) show vendor key status |
+| `forge keys` | forge_keys.py | status / add / remove / test / setup |
+| `forge audit` | forge_audit.py | health gates + observability |
+| `forge vacuum` | forge_vacuum.py | SQLite maintenance cron |
+| `forge route` | forge_route.py | offline decision trace |
+| `forge smoke` | run_all_smoke.py | unified 7-step verifier |
+| `forge perf` | perf_bench.py | latency benchmark |
+| `forge xcache` | bench_anthropic_cross_turn.py | cross-turn cache A/B |
+
+Path setup for operators:
+```bash
+export PATH="$HOME/core/hexa-codex/lm_foundry/bin:$PATH"
+forge status      # instead of python3 tool/forge_keys.py status
+forge smoke       # instead of python3 tool/run_all_smoke.py
+forge audit --since-hours 24
+```
+
+Per-subcommand `--help` flows through to the underlying tool.
+
+Verified across 5 invocations (status / route / unknown / bin shim /
+subcommand routing). Unknown subcommand returns exit 1; unknown args
+delegate to the sub-tool's own argparse.
+
+Committed in the next push.
+
+#### Combined results (all 3 rounds)
+
+- forge_runtime smoke: **20/20** (was 19/19 at r69; +1 case [20])
+- classify_prompt: 21/21 (unchanged)
+- select_vendor_tier: 14/14 (unchanged)
+- forge_audit + forge_vacuum smoke: PASSED
+- forge_route smoke: 4/4 scenarios verified by hand
+- forge dispatcher smoke: 5/5 invocations verified by hand
+- run_all_smoke: 7/7 ALL GREEN
+- DLG-mk0: 0.9833 / tier_match 1.000 / tool_match 0.9926 (unchanged)
+- Brier 0.0242 / ECE 0.0461 (unchanged)
+
+**v0.6.x feature matrix expansion**:
+
+| Layer | r70 | r71 | r72 |
+|---|---|---|---|
+| Operator UX | offline decision trace | size-based log rotation | unified dispatcher |
+| Production cron | (none) | telemetry self-rotates | `forge audit` / `forge vacuum` shorthand |
+| Debug workflow | `forge route` | (transparent) | `forge route` + `forge status` |
+
+**Honesty caveats**:
+- `forge_route` cost estimates are heuristic (chars/4 ≈ tokens, no
+  cache discount); treat as upper bound for budget planning.
+- Built-in log rotation triggers post-write on stat() check; on slow
+  disk / NFS this adds latency. High-throughput workloads should use
+  larger thresholds or out-of-band logrotate.
+- `forge` dispatcher is a thin subprocess delegator (no shared Python
+  process across subcommands). Each invocation re-imports forge_runtime
+  (~50-100ms cold start). For interactive use this is fine; for
+  scripting tight loops, call the underlying tools directly.
+
+**Total v0.6.x cumulative**: ~\$18.95 unchanged (all 3 rounds CPU-only).
+
+**Round 70 + 71 + 72 commits** (3 separate landings):
+- `tool/forge_route.py` NEW (~270 LOC)
+- `tool/forge_runtime.py` (telemetry rotation logic + config fields +
+  smoke case [20])
+- `tool/forge.py` NEW + `bin/forge` shim
+- `OPERATIONS.md` §1 update
+- `LEARNING_PROGRAMMING.md` r70 + r71 + r72 rows
+
+**GA UNCHANGED**: r39 v3-t3patch (94.29% Mk.I strict).
+**dancinlab/\* repos LIVE: 42** (unchanged — tooling + software-only rounds).
+
 
 
 

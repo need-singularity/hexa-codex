@@ -1,0 +1,4 @@
+#!/bin/sh
+# forge — convenience launcher for forge_foundry
+# Add to PATH: export PATH="$HOME/core/hexa-codex/lm_foundry/bin:$PATH"
+exec python3 "$(dirname "$0")/../tool/forge.py" "$@"
