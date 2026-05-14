@@ -6587,6 +6587,86 @@ general OOD (r46 baseline) is the only tier where measured cross-
 turn cache savings exist; opus and haiku tier choices should be
 weighed on raw input/output pricing alone.
 
+### 2026-05-14 ~22:00 KST — round 67: **v0.6.0 GA** — line accounting + closure (forge code-LLM production release)
+
+**Goal**: r44-r66 shipped 23 orchestration rounds on top of the r39
+specialist GA. Most were software-only ($0 spend). r67 doesn't add
+features — it MARKS the line as v0.6.0 GA and writes the honest
+accounting in `V0_6_0_GA.md` (root domain doc).
+
+**Why bump from v0.5.18 → v0.6.0**: the architectural surface at r66
+constitutes a major release:
+- 3 backend modes (in-memory / JSONL / SQLite WAL)
+- multi-turn dispatch (single / string preamble / native messages)
+- calibrated confidence (Brier EXCELLENT)
+- observability + maintenance tooling (audit + vacuum + run_all_smoke + perf_bench + forge_keys + bench_anthropic_cross_turn)
+- runbook (OPERATIONS.md) + spec (ORCHESTRATION.md) + 28-round chronicle (ROADMAP.md)
+
+That's a major-minor bump from the v0.5.x development line.
+
+**`V0_6_0_GA.md` NEW (root, ~340 lines)** — 8 sections:
+
+- §1 — What v0.6.0 IS (10-item production-ready list)
+- §2 — What v0.6.0 IS NOT (user-action gating + measurement gaps + architectural deferrals)
+- §3 — The numbers you can quote (empirically-verified claims + honesty notes)
+- §4 — Deployment recipe (single-process + multi-process + cron template + pre-deploy verification)
+- §5 — Cost ladder (~\$18.95 across 29 rounds; ~50% useful spend ratio)
+- §6 — What changes in v0.7+ (5 architectural items)
+- §7 — Bookmarks (ORCHESTRATION / OPERATIONS / ROADMAP / LEARNING / LATTICE_POLICY / bench/ / tool/ / HF artifact)
+- §8 — Honest closing notes (conservative GA mark; production-ready for anthropic-routed; partial for openai/gemini; specialist frozen at r39)
+- ## Log — r67 entry
+
+**Key empirically-honest numbers (full table in §3)**:
+
+| Metric | Value | Source |
+|---|---|---|
+| Specialist Mk.I strict | 94.29% | r39 GA, unchanged |
+| Specialist 5-NL i18n | 96% | r39 GA, unchanged |
+| Classifier overall (300-task) | 0.9833 | r55 |
+| tier_match (77 must_delegate) | 1.000 | r55 |
+| tool_match (77 must_delegate) | 0.9926 | r55 |
+| Brier (calibration) | 0.0242 EXCELLENT | r55 |
+| ECE 10-bin | 0.0461 GOOD | r55 |
+| Classifier latency p50 / p99 | 556μs / 1.66ms | r63 |
+| Sonnet cross-turn cache savings | ~90% on cached portion | r64 |
+
+**Honest scope-cuts documented in §2**:
+- OpenAI key not provisioned at GA (user-action; reason-algo + struct routes return auth_fail)
+- Gemini paid-tier project not active (gemini-2.5-pro upstream_quota; user-action via `forge_keys add gemini`)
+- opus/haiku cross-turn cache savings empirically zero (sonnet-only)
+- Multi-process SQLite WAL untested >1K writes/sec
+- Production telemetry baselines not yet measured (run forge_audit ≥1 week)
+- Specialist ceiling improvement (Lever 5+ / routing-LoRA) deferred to v0.7+ GPU rounds
+
+**Round 67 commits**:
+- this ROADMAP entry
+- `V0_6_0_GA.md` NEW at root (~340 lines)
+- `LEARNING_PROGRAMMING.md` §8 r67 row
+
+**Cost**: \$0 (doc-only round).
+**GA reaffirmed**: r39 v3-t3patch specialist (94.29% Mk.I strict) +
+r44-r66 orchestration runtime → v0.6.0 line GA.
+**dancinlab/\* repos LIVE: 42** (unchanged).
+**Smoke gates all green** (unchanged from r66 since no code touched).
+
+**v0.6.0 line closing accounting**:
+
+| Phase | Rounds | Result |
+|---|---|---|
+| Specialist build | r1-r39 | 94.29% Mk.I strict (frozen, ~\$5.0 spend) |
+| In-weight delegation disproof | r40-r43.1 | 5 failure modes documented (~\$5.5 + \$9.60 r43 zombie) |
+| Orchestration runtime build | r44-r53 | classifier + selector + 3 vendor SDKs + cache + e2e smoke (~\$0.43) |
+| Orchestration polish | r54-r66 | calibration + coverage + multi-process + multi-turn + observability + maintenance + perf + key CLI + cross-turn cache measurement (~\$0.85) |
+| **GA mark** | **r67** | **This — v0.6.0 GA closure** |
+
+**Next steps after v0.6.0 GA**:
+1. Operator: add OpenAI key via `forge_keys add openai`
+2. Operator: swap to paid-tier Gemini key via `forge_keys add gemini`
+3. Production: monitor `forge_audit` weekly; tune health gates based on real distribution
+4. v0.7.0 candidates documented in V0_6_0_GA.md §6 — all GPU-bound or
+   architectural (specialist ceiling / network DB / auto-retry / bio
+   verb activation / paid-Gemini longctx measurement)
+
 
 
 
