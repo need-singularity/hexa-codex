@@ -3993,6 +3993,80 @@ sampled decoding to reveal possible already-correct routing in the tail, OR
 the production-ready GA candidate; the v0.4.x delegation line is operationally
 **paused pending an architectural decision**, not blocked on a code/recipe bug.
 
+### 2026-05-14 09:39 KST — round 43.1: sampled re-score test (option b from r43 closure) — r43 routing NOT in the tail either; verdict says v0.4.4 needs architectural change
+
+**Round 43.1 = the lowest-effort v0.4.4 option from r43's exit plan: re-score the
+r43 adapter with temperature-sampled best-of-3 decoding to test the [[rl-tail-vs-greedy-eval]]
+hypothesis (GRPO trained routing in the sampling tail; greedy eval missed it).
+~\$0.10, 50 minutes wall.** Result: **the hypothesis is wrong** — routing is
+not in the tail either. DLG-mk0 overall 0.4490 → **0.4550** (+0.006, noise);
+OOD-delegate s_route stays at **0.000** (zero `<|delegate|>` emissions across
+60 must-delegate prompts at any of 3 sampled completions); ambig and long-ctx
+also 0.000. Only security-refuse moved (s_route 0.133 → 0.200; +1 of 15
+correctly refused under sampling).
+
+**Diagnostic value**: this round **rules out** the "GRPO trained routing but eval
+missed it" branch entirely. The pre-flight 3/10 emit observed mid-r43 was a
+transient post-SFT-bootstrap signal that GRPO subsequently **erased** — the
+reward gradient pulled the policy toward "direct answer everywhere" (the
+in-domain reward 1.0 amplified) and the bootstrap-induced delegate tokens
+got pushed out of even the top-3 sampling candidates.
+
+**Five v0.4.x failure modes now confirmed (r40+r41+r42+r43+r43.1):**
+
+1. SFT-only over-trains delegation, erasing the specialist (r40 25% / r41 9%).
+2. Pure RL with binary reward collapses on zero-baseline target class (r42).
+3. Hybrid SFT-bootstrap + RL trains briefly in the sampling tail but RL
+   erases the bootstrap signal (r43 + r43.1 confirm both greedy AND sampled).
+4. KL anchor that's tight enough to save the specialist is too tight to
+   allow routing exploration (all rounds).
+5. The specialist↔routing tradeoff in 7B + r=64 LoRA + DLG-mk0 reward shape
+   has no recipe-level solution — it's an architectural constraint of the
+   shared-LoRA gradient.
+
+**Run details:** Mac-direct provisioning bypassed the stuck ubu1 sshd
+(established the operator pattern: `~/Library/Python/3.14/bin/vastai` on
+Mac, Vast REST API + Mac's `~/.ssh/id_ed25519` SSH key, attach via
+`vastai attach ssh`). RTX 4090 24GB Brazil ($0.182/hr, contract 36718269,
+rel 0.993) — first non-A100 pod in the forge ladder. **Re-score is
+inference-only (7B bf16 ~14GB + KV cache, fits in 24GB)**; cost lesson
+documented for future rescore-only rounds. r43.1 sampled bench-cold
+uploaded to `dancinlab/hexa-forge-bench-cold-v0.1.3/delegation-mk0-7b-v043-route-rl-hybrid-sampled-t0.7-bo3/`.
+
+**Also destroyed r43 zombie** (contract 36681333 had been running ~12h
+post-r43 completion at $0.80/hr ≈ $9.60 wasted) — ops note: every round
+runner must destroy on completion, not just push to HF. Add to safe-recipe
+memory.
+
+**v0.4.x line decision (post-r43.1):** Four recipe variants disproved.
+Three remaining architectural options:
+
+1. **Adapter separation (v0.5.0)**: train a separate routing-LoRA with
+   distinct layer-stack target on top of r39 GA; weight-share but distinct
+   gradient paths so routing training doesn't share the specialist's LoRA
+   weight matrix. Complex; new build.
+2. **Orchestration-level routing (v0.4.x close)**: abandon in-weight
+   routing entirely. r39 GA ships as pure-specialist forever. The runtime
+   (already wired with real Anthropic SDK in post-r41 closure) classifies
+   prompts BEFORE the 7B at a pre-7B classification stage (small model or
+   keyword router), dispatching hexa prompts to the 7B and OOD prompts
+   directly to Claude/OpenAI/Gemini.
+3. **KL drop to 0.001 + accept specialist hit** (one more round, ~\$2):
+   try the loosest KL we haven't tried. Most likely outcome per the
+   tradeoff: specialist crashes back to r40/r41's ~83% Mk.I, routing
+   maybe lifts to 0.7. NOT an obvious win.
+
+Default recommendation: **(2) orchestration-level routing.** The runtime
+layer is already built (`tool/forge_runtime.py` + the real Anthropic call
++ redaction + budgets + filler). Adding a pre-7B classifier is ~150
+lines of code, no GPU. The 7B keeps being what it's best at:
+hexa-canon specialist at 94.29% Mk.I + 96% 5-NL. v0.4.x line gets a
+clean close as a specialist-only weight artifact, with delegation moved
+to v0.5.0 if/when adapter separation becomes worth the build.
+
+**dancinlab/\* repos LIVE: 42** (unchanged — r43.1 is bench-only, no new adapter).
+**GA UNCHANGED**: r39 v3-t3patch (94.29% Mk.I, 96% 5-NL).
+
 
 
 
