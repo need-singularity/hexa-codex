@@ -5287,6 +5287,96 @@ issue, not a confidence-formula issue.
 **dancinlab/\* repos LIVE: 42** (unchanged).
 **CPU-only streak**: 11 of 12 rounds since r43 (only r53 was real-API at \$0.43).
 
+### 2026-05-14 ~16:30 KST — round 56: v0.5.8 — file-backed shared cache (cross-process restart-persistence); +1 smoke case (11/11 pass); no code-path regression
+
+**Goal**: extend the r48 per-prompt vendor cache from in-memory-only
+to optionally file-backed, so cache entries survive process restart.
+Per ORCHESTRATION.md §9 honesty caveat: "current cache is in-memory
+per ForgeRuntime instance; cross-process or restart loses state."
+r56 closes the restart-loss; multi-process shared cache (Redis/SQLite)
+remains v0.6.0+ scope.
+
+**Design**:
+
+- New config field `ForgeRuntimeConfig.vendor_cache_path: Path | None = None`.
+  Default `None` = in-memory only (backward-compat with v0.5.4-v0.5.7).
+- When set, the cache file is a JSONL with one record per `_vendor_cache_put`:
+  ```json
+  {"key": [tool, model, max_tokens, sha256_hex], "text": "...", "usage": {...}, "expires": 12345.67}
+  ```
+- On `ForgeRuntime.__init__`: if path is set, load existing records,
+  drop expired ones (`expires <= now()`), cap at `vendor_cache_max_entries`
+  (most-recent kept by reverse-iteration).
+- On `_vendor_cache_put`:
+  - Steady-state: append a single JSONL record (cheap, atomic for single-line writes under POSIX PIPE_BUF).
+  - On eviction (LRU 25% drop): rewrite the file from in-memory state via tmp+rename atomic swap, so the file doesn't grow unboundedly with stale records.
+- All file I/O is wrapped in try/except OSError — failures degrade to
+  in-memory only with a stderr log; runtime never raises.
+- Malformed JSON lines are skipped with a count; corrupt cache file
+  doesn't break runtime startup.
+
+**`_vendor_cache_stats` extended** with `file_loads` (count of entries
+restored from file on init) and `file_writes` (count of successful
+JSONL appends).
+
+**Smoke test extension — Case [11]**:
+1. Create runtime A with `vendor_cache_path=/tmp/forge_runtime_smoke_cache_file.jsonl`
+2. Run one prompt through A → cache miss, real upstream call (monkey-patched fake), file write
+3. Verify file has 1 JSONL line
+4. Create **brand-new** runtime B (independent instance) with same `vendor_cache_path`
+5. Verify `rt_b._vendor_cache_stats["file_loads"] == 1`
+6. Run same prompt through B → **cache hit, NO upstream call, cost=$0**
+7. Cleanup
+
+All 11/11 forge_runtime smoke pass.
+
+**Critical safety boundaries**:
+
+- **NOT multi-process safe**. Two processes writing the same cache file
+  simultaneously CAN interleave appends (each append is one syscall, but
+  multiple writers don't coordinate). For single-process restart
+  persistence this is fine; for multi-process production behind a load
+  balancer, use a real cache layer (Redis / SQLite WAL / Cloudflare KV).
+  Documented in code comment and ORCHESTRATION.md.
+- **File contents include cached vendor responses verbatim**. If the
+  cache file is committed, downloaded, or shared, anything that was in
+  a vendor response is now persisted. For production deployments,
+  `vendor_cache_path` should be on local disk with appropriate ACLs;
+  do NOT use a shared-team or cloud-synced path.
+- **No cross-key invalidation**. If the prompt redaction logic changes
+  (e.g. a new PII class added in v0.5.x+), already-cached entries with
+  old redactor's hash continue to serve. The cache key is keyed on
+  *post-redacted* prompt SHA256, so a redactor change effectively
+  invalidates the cache (different hashes). Documented.
+
+**No code-path regression**:
+- forge_runtime smoke: **11/11** (was 10/10; +1 = case 11 file-backed)
+- classify_prompt smoke: 21/21 (unchanged)
+- select_vendor_tier smoke: 14/14 (unchanged)
+- DLG-mk0: 0.9833 / tier_match 1.000 / tool_match 0.9926 (all unchanged)
+- Brier: 0.0242 / ECE 0.0461 (unchanged)
+
+**Use case**:
+```python
+cfg = ForgeRuntimeConfig.from_env(
+    vendor_cache_path=Path("/var/lib/forge/cache.jsonl"),  # persistent across restarts
+)
+rt = ForgeRuntime(cfg)
+# Process exits, cache is on disk.
+# Next start of same process: loads unexpired entries automatically.
+# Same prompt within 5min TTL serves $0 from cache.
+```
+
+**Round 56 commits:** this ROADMAP entry · `tool/forge_runtime.py`
+(`vendor_cache_path` config field + `_vendor_cache_load_from_file()` +
+`_vendor_cache_append_to_file()` + `_vendor_cache_compact_file()` helpers +
+`__init__` load on construct + `_vendor_cache_put` write-on-success +
+smoke case [11]) · `LEARNING_PROGRAMMING.md` §8 r56 row.
+
+**Cost**: \$0 GPU (CPU; smoke only).
+**GA UNCHANGED**: r39 v3-t3patch (94.29% Mk.I strict).
+**dancinlab/\* repos LIVE: 42** (unchanged — software-only round).
+
 
 
 

@@ -196,6 +196,14 @@ class ForgeRuntimeConfig:
     vendor_cache_ttl_s:        int  = 300
     vendor_cache_max_entries:  int  = 1024   # hard cap to bound memory
     vendor_cache_enabled:      bool = True
+    # v0.5.8 (r56): optional file-backed cache for cross-process persistence.
+    # Default None = in-memory only (process-local). When set, loads existing
+    # unexpired entries on __init__ and appends new entries on `_vendor_cache_put`.
+    # Compaction on eviction. File format = JSONL with one record per put:
+    #   {"key": [tool, model, max_tokens, sha256], "text": "...", "usage": {...}, "expires": 12345.67}
+    # CAVEAT: NOT multi-process-safe (no locking) — single-process restart-
+    # persistence only. Multi-process shared cache (Redis / SQLite WAL) is v0.6.0+.
+    vendor_cache_path:         Path | None = None
 
     @classmethod
     def from_env(cls, **overrides) -> "ForgeRuntimeConfig":
@@ -585,7 +593,12 @@ class ForgeRuntime:
         # Cache eviction order — simple FIFO insertion ordering; Python dict
         # preserves insertion order. On full, pop the oldest 25% to amortise
         # the cleanup cost.
-        self._vendor_cache_stats = {"hits": 0, "misses": 0, "evictions": 0}
+        self._vendor_cache_stats = {"hits": 0, "misses": 0, "evictions": 0, "file_loads": 0, "file_writes": 0}
+        # v0.5.8 (r56): optional file-backed cache load for cross-process
+        # persistence. Reads existing JSONL, drops expired entries, populates
+        # in-memory dict. Capped at vendor_cache_max_entries (most-recent kept).
+        if cfg.vendor_cache_enabled and cfg.vendor_cache_path is not None:
+            self._vendor_cache_load_from_file()
 
     # ---- public entry point ----
 
@@ -1058,15 +1071,130 @@ class ForgeRuntime:
         return text, usage, expires
 
     def _vendor_cache_put(self, key: tuple, text: str, usage: dict) -> None:
-        """Insert a cache entry; evict the oldest 25% if over cap."""
+        """Insert a cache entry; evict the oldest 25% if over cap; optionally
+        persist to file-backing (r56) for cross-process restart-persistence."""
         # Cap enforcement via LRU eviction.
+        evicted_this_call = False
         if len(self._vendor_cache) >= self.cfg.vendor_cache_max_entries:
             n_evict = max(1, self.cfg.vendor_cache_max_entries // 4)
             for k in list(self._vendor_cache.keys())[:n_evict]:
                 self._vendor_cache.pop(k, None)
             self._vendor_cache_stats["evictions"] += n_evict
+            evicted_this_call = True
         expires = time.time() + self.cfg.vendor_cache_ttl_s
         self._vendor_cache[key] = (text, dict(usage), expires)
+        # File-backed persistence (r56).
+        if self.cfg.vendor_cache_path is not None:
+            if evicted_this_call:
+                # Eviction happened — compact the file (rewrite with current
+                # in-memory state) so it doesn't grow unboundedly with stale
+                # entries from prior evictions.
+                self._vendor_cache_compact_file()
+            else:
+                # Steady-state: append a single JSONL record (cheap).
+                self._vendor_cache_append_to_file(key, text, usage, expires)
+
+    # ---- v0.5.8 (r56) file-backed cache helpers ----
+
+    def _vendor_cache_load_from_file(self) -> None:
+        """Load JSONL cache entries from `cfg.vendor_cache_path`. Skip
+        expired records. Cap at max_entries (most-recent kept). Best-effort:
+        a malformed line is skipped with a stderr note, NOT raised, so a
+        truncated/corrupt cache file doesn't break runtime startup."""
+        path = self.cfg.vendor_cache_path
+        if path is None or not path.exists():
+            return
+        try:
+            lines = path.read_text(encoding="utf-8").splitlines()
+        except (OSError, UnicodeDecodeError) as e:
+            print(f"[forge_runtime] cache file unreadable, skipping load: {e!r}", file=_sys.stderr)
+            return
+        now = time.time()
+        loaded = 0
+        skipped_expired = 0
+        skipped_malformed = 0
+        # Process newest-first by iterating reversed; keep first `max_entries`.
+        for line in reversed(lines):
+            if loaded >= self.cfg.vendor_cache_max_entries:
+                break
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                rec = json.loads(line)
+                key_list = rec["key"]
+                key = (str(key_list[0]), str(key_list[1]), int(key_list[2]), str(key_list[3]))
+                text = rec["text"]
+                usage = dict(rec.get("usage", {}))
+                expires = float(rec["expires"])
+            except (json.JSONDecodeError, KeyError, ValueError, TypeError, IndexError):
+                skipped_malformed += 1
+                continue
+            if expires <= now:
+                skipped_expired += 1
+                continue
+            if key in self._vendor_cache:
+                # Newer entry already loaded (we're iterating newest-first).
+                continue
+            self._vendor_cache[key] = (text, usage, expires)
+            loaded += 1
+        # Re-insert in newest-last order so LRU eviction works correctly on
+        # the next put (Python dict preserves insertion order).
+        self._vendor_cache = dict(reversed(list(self._vendor_cache.items())))
+        self._vendor_cache_stats["file_loads"] += loaded
+        if skipped_malformed:
+            print(f"[forge_runtime] cache load: skipped {skipped_malformed} malformed lines",
+                  file=_sys.stderr)
+
+    def _vendor_cache_append_to_file(self, key: tuple, text: str,
+                                      usage: dict, expires: float) -> None:
+        """Append one JSONL record to the cache file. Atomic-enough for
+        single-process use (Python's text-mode line write is atomic at the
+        OS level for sizes under PIPE_BUF on POSIX; we're well under that)."""
+        path = self.cfg.vendor_cache_path
+        if path is None:
+            return
+        path.parent.mkdir(parents=True, exist_ok=True)
+        rec = {
+            "key":     [key[0], key[1], key[2], key[3]],
+            "text":    text,
+            "usage":   dict(usage),
+            "expires": float(expires),
+        }
+        try:
+            with path.open("a", encoding="utf-8") as f:
+                f.write(json.dumps(rec, ensure_ascii=False) + "\n")
+            self._vendor_cache_stats["file_writes"] += 1
+        except OSError as e:
+            # File write failures should NOT break the runtime — log and continue.
+            # The in-memory cache still has the entry; persistence is best-effort.
+            print(f"[forge_runtime] cache append failed (in-memory only): {e!r}",
+                  file=_sys.stderr)
+
+    def _vendor_cache_compact_file(self) -> None:
+        """Rewrite the cache file from current in-memory state. Called after
+        an LRU eviction so the file doesn't grow with stale records."""
+        path = self.cfg.vendor_cache_path
+        if path is None:
+            return
+        path.parent.mkdir(parents=True, exist_ok=True)
+        records: list[str] = []
+        for key, (text, usage, expires) in self._vendor_cache.items():
+            rec = {
+                "key":     [key[0], key[1], key[2], key[3]],
+                "text":    text,
+                "usage":   dict(usage),
+                "expires": float(expires),
+            }
+            records.append(json.dumps(rec, ensure_ascii=False))
+        # Write to a tmp file then rename for atomicity.
+        tmp_path = path.with_suffix(path.suffix + ".tmp")
+        try:
+            tmp_path.write_text("\n".join(records) + ("\n" if records else ""),
+                                encoding="utf-8")
+            tmp_path.replace(path)
+        except OSError as e:
+            print(f"[forge_runtime] cache compact failed: {e!r}", file=_sys.stderr)
 
 
 # ============================================================================
@@ -1262,6 +1390,62 @@ def _smoke_test() -> int:
             assert stats["hits"] == 1 and stats["misses"] == 2
         finally:
             _self_mod._vendor_call = _orig_vendor_call
+
+        # Case 11: v0.5.8 (r56) file-backed cache cross-process persistence.
+        # Same monkey-patch trick. Two runtime instances share a JSONL cache
+        # file; instance A writes, instance B (created after) reads on init.
+        _self_mod._vendor_call = _fake_call
+        _call_count[0] = 0  # reset
+        cache_file = Path("/tmp/forge_runtime_smoke_cache_file.jsonl")
+        if cache_file.exists():
+            cache_file.unlink()  # clean start
+        try:
+            cfg_file_a = ForgeRuntimeConfig(
+                anthropic_api_key="stub", openai_api_key="stub", gemini_api_key="stub",
+                telemetry_path=Path("/tmp/forge_runtime_smoke_file_a.jsonl"),
+                use_orchestration=True,
+                vendor_cache_enabled=True,
+                vendor_cache_ttl_s=300,
+                vendor_cache_path=cache_file,
+            )
+            rt_a = ForgeRuntime(cfg_file_a)
+            test_prompt = "Write a Python decorator that caches function results."
+            # Instance A: real upstream call → cache miss + file write
+            def gen_assert(_): raise AssertionError("not called")
+            r_a = rt_a.run_turn(test_prompt, gen_assert)
+            assert r_a.delegations[0].ok is True
+            assert r_a.delegations[0].cache_hit is False
+            assert _call_count[0] == 1
+            assert cache_file.exists(), "cache file should be created on first put"
+            file_lines_after_put = len(cache_file.read_text().strip().splitlines())
+            assert file_lines_after_put == 1, f"expected 1 JSONL record, got {file_lines_after_put}"
+
+            # Instance B: brand-new runtime, same cache file. Should load on init.
+            cfg_file_b = ForgeRuntimeConfig(
+                anthropic_api_key="stub", openai_api_key="stub", gemini_api_key="stub",
+                telemetry_path=Path("/tmp/forge_runtime_smoke_file_b.jsonl"),
+                use_orchestration=True,
+                vendor_cache_enabled=True,
+                vendor_cache_ttl_s=300,
+                vendor_cache_path=cache_file,
+            )
+            rt_b = ForgeRuntime(cfg_file_b)
+            # Instance B should have loaded 1 entry from file
+            assert rt_b._vendor_cache_stats["file_loads"] == 1, (
+                f"expected file_loads=1, got {rt_b._vendor_cache_stats}"
+            )
+            # Same prompt through instance B → cache hit, NO new upstream call
+            r_b = rt_b.run_turn(test_prompt, gen_assert)
+            assert r_b.delegations[0].ok is True
+            assert r_b.delegations[0].cache_hit is True, "instance B should hit cache loaded from file"
+            assert _call_count[0] == 1, f"instance B should NOT call upstream; got {_call_count[0]}"
+            assert r_b.delegations[0].cost_usd == 0.0
+            print(f"[11] ORCH file-backed cache: rt_b loaded {rt_b._vendor_cache_stats['file_loads']} "
+                  f"entry from file, served {rt_b._vendor_cache_stats['hits']} hit(s) cross-process")
+        finally:
+            _self_mod._vendor_call = _orig_vendor_call
+            if cache_file.exists():
+                cache_file.unlink()
 
     print("\n=== SMOKE TESTS PASSED ===")
     return 0
