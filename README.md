@@ -1,4 +1,27 @@
-# 📚 hexa-codex — AI knowledge substrate (HEXA family)
+<p align="center">
+  <img src="docs/logo.svg" width="140" alt="hexa-codex">
+</p>
+
+<h1 align="center">📜 hexa-codex</h1>
+
+<p align="center"><strong>HEXA-Codex family</strong> — codified theorems · AI knowledge substrate · 17 verbs · 4 groups</p>
+
+<p align="center">
+  <a href="LICENSE"><img alt="License" src="https://img.shields.io/badge/license-MIT-blue"></a>
+  <a href="https://doi.org/10.5281/zenodo.20102600"><img alt="DOI" src="https://zenodo.org/badge/DOI/10.5281/zenodo.20102600.svg"></a>
+  <img alt="Spec" src="https://img.shields.io/badge/spec-v1.0.0-success">
+  <img alt="Verbs" src="https://img.shields.io/badge/verbs-17%20(4%20groups)-informational">
+  <img alt="Verify" src="https://img.shields.io/badge/verify-34%2F34%20PASS-brightgreen">
+  <img alt="Falsifiers" src="https://img.shields.io/badge/falsifiers-4%2F4%20at%20100%25-brightgreen">
+  <img alt="lm_foundry" src="https://img.shields.io/badge/lm__foundry-94.29%25%20Mk.I-blueviolet">
+  <img alt="Family" src="https://img.shields.io/badge/family-HEXA--senses%20·%20HEXA--mind%20·%20HEXA--brain-blueviolet">
+</p>
+
+<p align="center">codified-theorems · AI-knowledge · safety · economics · ops · substrate · falsifiers · Lean4-proven · n=6 lattice · code-LLM · domain-LLM</p>
+
+---
+
+# 📜 hexa-codex — AI knowledge substrate (HEXA family)
 
 > 17-verb AI knowledge substrate organized in **4 groups**: safety + economics
 > + ops + substrate. A library-style (codex) spec catalog — each verb ships
@@ -563,6 +586,56 @@ sources for all 17 hexa-codex verbs + 5 hexa-senses verbs + 7 hexa-mind
 verbs).
 
 ---
+
+## Repo layout
+
+```
+hexa-codex/
+├── README.md                  this file
+├── LICENSE                    MIT
+├── AGENTS.tape                identity + governance (.tape v1.2)
+├── CLAUDE.md                  symlink → AGENTS.tape
+├── hexa.toml                  project metadata
+├── install.hexa               hx install entry
+├── cli/                       hexa-codex dispatcher (.hexa)
+│   SAFETY group (6 verbs):
+├── alignment/                 HELM-12-axis alignment-score aggregator   (F-CODEX-3)
+├── safety/                    refusal-matrix + capability-gate spec
+├── welfare/                   model-welfare probe protocol
+├── adversarial/               red-team failure-mode taxonomy
+├── consciousness/             IIT × GWT probe (BT-19 falsifier-in-action)
+├── interpret/                 SAE motif count = σ−φ = 10               (F-CODEX-4)
+│   ECONOMICS group (3 verbs):
+├── train_cost/                Chinchilla-fit N^J₂ scaling              (F-CODEX-1)
+├── infer_cost/                context^τ = context^4                    (F-CODEX-2)
+├── quality_scale/             HumanEval+/hexa-eval aggregate
+│   OPS group (4 verbs):
+├── deploy/                    hardware-tier deployment recipes
+├── enterprise/                enterprise customisation envelope
+├── agent_serving/             tool-use SLO + schema
+├── eval/                      Mk handoff eval template
+│   SUBSTRATE group (4 verbs):
+├── multimodal/                multimodal fusion spec
+├── rlhf/                      DPO/RLHF labelling hub
+├── cog_arch/                  cognitive architecture envelope
+├── causal/                    causal-chain reasoning spec
+├── lm_foundry/                domain-LLM training pipeline (absorbed from hexa-forge, 2026-05-13)
+├── formal/                    Lean 4 σ(6)=12 mechanically proven kernel
+├── papers/                    n=6 atlas papers (17/68-tech, ethics, governance)
+├── verify/                    34 .hexa-native verifiers (math_pure)
+├── tests/                     24 .hexa regression wrappers + 83 pytest
+├── build/                     pandoc + xelatex PDF rebuild
+├── docs/                      closure_status / numerics_methodology / quick_reference
+├── techniques/                T1-T4 closure-ladder per-pillar artifacts
+├── temporal-architecture/     research-tier modules
+├── reality-map/               canon meta-grid
+├── experiments/               sandbox runs (gitignored heavy outputs)
+├── LATTICE_POLICY.md          n=6 self-consistency aux policy
+├── LIMIT_BREAKTHROUGH.md      PAC / Kolmogorov / Rice's theorem anchors
+├── IMPORTED_FROM_CANON.md     extraction reference (canon@c0f1f570)
+├── TAPE-AUDIT.md              .tape v1.x adoption ledger
+└── CHANGELOG.md               change log
+```
 
 ## License
 
