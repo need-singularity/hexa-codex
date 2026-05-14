@@ -1,0 +1,37 @@
+==============================================================================
+CLASSIFIER CALIBRATION (Brier + ECE)
+==============================================================================
+input:      bench/score-orchestration-mk0-r55/per_task_orchestration.jsonl
+n_tasks:    300  (correct: 295, accuracy: 0.9833)
+avg conf:   0.9372
+overall gap (conf - acc): -0.0461  (underconfident)
+
+BRIER SCORE: 0.0242  (lower is better; perfect=0.0, uniform-random=0.25)
+ECE (10 bins): 0.0461  (lower is better; perfect=0.0)
+
+==============================================================================
+RELIABILITY TABLE (per equal-width confidence bin)
+==============================================================================
+bin                n   avg conf    avg acc      gap  reliability
+[0.70, 0.80)     37     0.7000     0.9189 -0.2189-  conf#################         acc**********************   
+[0.80, 0.90)     24     0.8514     1.0000 -0.1486-  conf#####################     acc*************************
+[0.90, 1.00)    239     0.9826     0.9916 -0.0091   conf########################  acc************************ 
+
+==============================================================================
+PER-LABEL BREAKDOWN
+==============================================================================
+label          n   accuracy   avg conf      brier
+hexa         139     0.9640     0.9194     0.0456
+ood          136     1.0000     0.9439     0.0067
+refuse        25     1.0000     1.0000     0.0000
+
+==============================================================================
+INTERPRETATION
+==============================================================================
+  Brier 0.0242: EXCELLENT calibration (rare for keyword classifiers).
+  ECE 0.0461: classifier confidence tracks empirical accuracy well.
+  Overall gap -0.0461: classifier is UNDERCONFIDENT (hedges more than needed).
+  
+  PRACTICAL USE: production code SHOULD NOT use confidence as a true probability
+  (e.g. for cost-sensitive cutoffs or expected-utility decisions) unless ECE < 0.05.
+  For routing decisions, the label is what matters; confidence is a tier-band signal.

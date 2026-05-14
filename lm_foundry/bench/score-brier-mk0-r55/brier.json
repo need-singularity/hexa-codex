@@ -1,0 +1,63 @@
+{
+  "input": "bench/score-orchestration-mk0-r55/per_task_orchestration.jsonl",
+  "n_tasks_scored": 300,
+  "n_correct": 295,
+  "overall_accuracy": 0.9833,
+  "overall_avg_confidence": 0.9372,
+  "calibration_gap_overall": -0.0461,
+  "brier_score": 0.0242,
+  "ece_n_bins": 10,
+  "ece": 0.0461,
+  "per_bin": [
+    {
+      "bin": "[0.70, 0.80)",
+      "n": 37,
+      "avg_confidence": 0.7,
+      "avg_accuracy": 0.9189,
+      "gap": -0.2189
+    },
+    {
+      "bin": "[0.80, 0.90)",
+      "n": 24,
+      "avg_confidence": 0.8514,
+      "avg_accuracy": 1.0,
+      "gap": -0.1486
+    },
+    {
+      "bin": "[0.90, 1.00)",
+      "n": 239,
+      "avg_confidence": 0.9826,
+      "avg_accuracy": 0.9916,
+      "gap": -0.0091
+    }
+  ],
+  "per_label": {
+    "hexa": {
+      "n": 139,
+      "accuracy": 0.964,
+      "avg_confidence": 0.9194,
+      "brier_score": 0.0456
+    },
+    "ood": {
+      "n": 136,
+      "accuracy": 1.0,
+      "avg_confidence": 0.9439,
+      "brier_score": 0.0067
+    },
+    "refuse": {
+      "n": 25,
+      "accuracy": 1.0,
+      "avg_confidence": 1.0,
+      "brier_score": 0.0
+    }
+  },
+  "interpretation": [
+    "Brier 0.0242: EXCELLENT calibration (rare for keyword classifiers).",
+    "ECE 0.0461: classifier confidence tracks empirical accuracy well.",
+    "Overall gap -0.0461: classifier is UNDERCONFIDENT (hedges more than needed).",
+    "",
+    "PRACTICAL USE: production code SHOULD NOT use confidence as a true probability",
+    "(e.g. for cost-sensitive cutoffs or expected-utility decisions) unless ECE < 0.05.",
+    "For routing decisions, the label is what matters; confidence is a tier-band signal."
+  ]
+}

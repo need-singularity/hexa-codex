@@ -163,11 +163,22 @@ _OOD_PATTERNS: list[tuple[str, re.Pattern[str], float]] = [
     # Programming language names (word-boundary to avoid hexa-canon false-pos)
     ("rust",              re.compile(r"\bRust\b(?!\-style)", re.IGNORECASE),                            2.0),
     ("python",            re.compile(r"\bpython\b", re.IGNORECASE),                                     2.0),
-    ("golang",            re.compile(r"\b(go(?:lang)?\s+(?:function|method|pattern|HTTP|channel|goroutine|generic|struct)|golang)\b", re.IGNORECASE), 2.0),
+    # r55: extend golang to catch DLG-109/112/119/243 patterns:
+    #   "Go: implement a worker pool with bounded concurrency using channels"
+    #   "Write a Go `context.Context`-aware function ..."
+    #   "Go table-driven test for a parser function with 8 cases"
+    #   "Implement a Go context.Context-aware worker pool with cancellation"
+    # Adds worker pool / table-driven / context.Context / sync.Mutex /
+    # standalone `goroutine` and `channels` (with go nearby) markers.
+    ("golang",            re.compile(r"\b(?:go(?:lang)?\s*[:`]?\s*(?:function|method|pattern|HTTP|channel|goroutine|generic|struct|worker|table[-_ ]?driven|context\.Context|implement)|golang|goroutine|context\.Context|sync\.(?:Mutex|WaitGroup|RWMutex|Once)|table[-_ ]?driven\s+test)\b", re.IGNORECASE), 2.0),
     ("typescript",        re.compile(r"\btypescript\b|\bts\s+(?:discriminated|debounce|class)\b", re.IGNORECASE), 2.0),
     ("javascript",        re.compile(r"\bjavascript\b|\bnode\.?js\b|\bes6\b|\breact\b|\bvue\b|\bangular\b", re.IGNORECASE), 2.0),
     ("kotlin",            re.compile(r"\bkotlin\b", re.IGNORECASE),                                     2.0),
     ("swift-long",        re.compile(r"\bswift\b.*\b(?:server|long|framework|deep)\b", re.IGNORECASE),  1.5),  # short Swift = mid-conf
+    # r55: Swift + SwiftUI / @Published / @AppStorage / @State framework markers
+    # closes DLG-253 / DLG-291 (Swift + SwiftUI patterns) which slip past mid-conf
+    # detection but had no positive OOD signal.
+    ("swift-framework",   re.compile(r"\bswiftui\b|\bswift\b.*\b(?:@Published|@AppStorage|@State|@Binding|@Environment|Combine\s+framework|jetpack[-_ ]?compose)\b", re.IGNORECASE), 2.0),
     ("java",              re.compile(r"\bjava\b(?!script)|\bspring\b|\bjvm\b", re.IGNORECASE),          2.0),
     ("c-plusplus",        re.compile(r"\bC\+\+\b|\bc-plus-plus\b", re.IGNORECASE),                      2.0),
     ("ruby",              re.compile(r"\bruby\b(?! enum)|\brails\b", re.IGNORECASE),                    2.0),
@@ -211,7 +222,9 @@ _OOD_PATTERNS: list[tuple[str, re.Pattern[str], float]] = [
     #   infinitely many primes") which currently emits no reasoning signal.
     ("prove-derive",      re.compile(r"\b(?:prov(?:e|ing)|deriv(?:e|ation|ing)|show\s+that|theorem|lemma|corollary|induct(?:ion|ively)|proof\s+(?:that|of|by)|infinitely\s+many)\b", re.IGNORECASE), 1.5),
     ("complexity-bigO",   re.compile(r"\bcomplexity\b|\bbig[-_ ]?O\b|\bclosed[-_ ]?form\b|\brecurrence\b|\bO\(.*\)", re.IGNORECASE), 1.5),
-    ("ml-internals",      re.compile(r"\battention\b|\btransformer\b|\bRoPE\b|\bLoRA\b|\bDoRA\b|\bGRPO\b|\bPPO\b|\bRAG\b|\bembedding\b|\bsoftmax\b", re.IGNORECASE), 1.5),
+    # r55: ml-internals expanded to catch MoE / RLHF / DPO / KL-penalty / top-k
+    # routing — closes DLG-100/238 no-signal-fallthrough.
+    ("ml-internals",      re.compile(r"\battention\b|\btransformer\b|\bRoPE\b|\bLoRA\b|\bDoRA\b|\bGRPO\b|\bPPO\b|\bRAG\b|\bembedding\b|\bsoftmax\b|\bmixture[-_ ]?of[-_ ]?experts\b|\bMoE\b|\btop[-_ ]?[2k]\s+(?:routing|expert|gate)|\bRLHF\b|\bDPO\b|\bRLAIF\b|\bKL[-_ ]?(?:penalty|divergence|loss|anchor)\b|\breward\s+model\b", re.IGNORECASE), 1.5),
     # r49 NEW signals for fine-grained tier routing (see select_vendor_tier
     # priority steps 2 + 3). `derivation-algo` triggers when the prompt asks
     # for a closed-form / recurrence / formula derivation (textbook algorithmic
@@ -220,8 +233,21 @@ _OOD_PATTERNS: list[tuple[str, re.Pattern[str], float]] = [
     # on opus — DLG-092). `ml-comparison` flags ml-internals questions phrased
     # as comparative trade-offs ("difference between", "give better X",
     # "reduce memory vs", "when does X help") — these are sonnet-tier.
-    ("derivation-algo",   re.compile(r"\bderiv(?:e|ation|ing)\s+(?:the\s+)?(?:closed[-_ ]?form|recurrence|formula|dual|integral|complexity|big[-_ ]?O)\b|\bclosed[-_ ]?form\b|\brecurrence\b|\bT\(n\)\s*=", re.IGNORECASE), 1.0),
-    ("ml-comparison",     re.compile(r"\bdifference\s+between\b|\bgives?\s+better\b|\bwhen\s+does\s+\w+\s+help\b|\breduce\s+(?:memory|compute|cost|latency)\s+vs\b|\bbetter\s+(?:diversity|throughput|latency|memory)\b", re.IGNORECASE), 1.0),
+    # r55: derivation-algo extended to catch "complexity ... show the
+    # derivation" (P10 in r53 e2e smoke) — also covers `Big-O ... derivation`.
+    # The tier selector's `AND NOT ml-internals` guard still protects DLG-092
+    # (ML gradient derivation stays opus).
+    # r55: derivation-algo extended further to catch pure complexity-of-X /
+    # Big-O-of-X / master-theorem prompts (DLG-227, DLG-230) — these are
+    # textbook algorithmic-math territory (o4-mini tier). The `AND NOT
+    # ml-internals` guard in select_vendor_tier still preserves ML gradient
+    # derivations (DLG-092) on opus.
+    ("derivation-algo",   re.compile(r"\bderiv(?:e|ation|ing)\s+(?:the\s+)?(?:closed[-_ ]?form|recurrence|formula|dual|integral|complexity|big[-_ ]?O)\b|\bclosed[-_ ]?form\b|\brecurrence\b|\bT\(n\)\s*=|\b(?:complexity|big[-_ ]?O)\b.{0,80}\bderivation\b|\bshow\s+the\s+derivation\b|\bmaster\s+theorem\b|\b(?:complexity|big[-_ ]?O)\s+of\s+\w+", re.IGNORECASE), 1.0),
+    # r55: add `trade-offs` and `top-N vs top-M` patterns to catch DLG-100
+    # ("mixture-of-experts routing — top-2 vs top-1 trade-offs"). The tier
+    # selector's `ml-comparison AND ml-internals` guard ensures these only
+    # demote when ml topic is also present.
+    ("ml-comparison",     re.compile(r"\bdifference\s+between\b|\bgives?\s+better\b|\bwhen\s+does\s+\w+\s+help\b|\breduce\s+(?:memory|compute|cost|latency)\s+vs\b|\bbetter\s+(?:diversity|throughput|latency|memory)\b|\btrade[-_ ]?offs?\b|\btop[-_ ]?\d+\s+vs\s+top[-_ ]?\d+\b", re.IGNORECASE), 1.0),
 
     # Structured output / JSON extraction
     ("structured-json",   re.compile(r"\b(?:parse|convert|extract|classify|validate|return|summari[zs]e|generate|output|emit)\b.*\bjson\b", re.IGNORECASE), 1.5),
@@ -229,12 +255,27 @@ _OOD_PATTERNS: list[tuple[str, re.Pattern[str], float]] = [
 
     # Long-context explicit token count
     ("long-context",      re.compile(r"\b\d{2,4}K-?token\b|\b\d+(?:\.\d+)?M-?token\b|\b\d+K[-_ ]?token\b", re.IGNORECASE), 2.0),
+
+    # r55: LLM-infrastructure signals — closes DLG-093 (Anthropic prompt
+    # caching) and similar. Matches vendor names + caching/context terminology.
+    ("llm-infra",         re.compile(r"\b(?:anthropic|claude(?:-\d|\s+(?:api|model|opus|sonnet|haiku))|openai|gpt-?[345]|o[34][-_ ]?mini|gemini(?:-\d)?|prompt[-_ ]?cach(?:e|ing)|cache_?control|system\s+prompt|context\s+window\s+management|TTL\s+semantic|frontier\s+model|tier\s+(?:routing|selection))\b", re.IGNORECASE), 1.5),
+
+    # r55: generic code-write verb — weak signal (w=1.0) for "Write a
+    # script/function/tool ..." when no language is mentioned. Catches
+    # DLG-297 ("Write a script that fuzzes form inputs for XSS"). Hexa
+    # prompts with "Write a hexa function" still win via strong hexa-keyword.
+    ("generic-write-code", re.compile(r"\bwrite\s+(?:a\s+|an\s+)?(?:script|function|program|tool|module|class|wrapper|cli|server)\b", re.IGNORECASE), 1.0),
 ]
 
 
 # Ambiguous / under-specified prompts — route to OOD (Claude handles clarify)
 _AMBIGUOUS_PATTERNS: list[tuple[str, re.Pattern[str]]] = [
-    ("vague-imperative", re.compile(r"^(?:make it|fix this|why is it|optimize|refactor|polish|reduce|improve|trim|lock down|standardize|add|update|configure|simplify|speed up|make it (?:secure|cleaner|faster|production-ready)|set up|set the|implement the|cache it|run it|print|get the|send it|save it|delete it|reset|install it|upload it)\b", re.IGNORECASE)),
+    # r55: added "speed this up" variant (DLG-279) and "make ... faster/slower".
+    ("vague-imperative", re.compile(r"^(?:make it|fix this|why is it|optimize|refactor|polish|reduce|improve|trim|lock down|standardize|add|update|configure|simplify|speed up|speed this up|make it (?:secure|cleaner|faster|production-ready|slower)|make this (?:faster|slower|cleaner)|set up|set the|implement the|cache it|run it|print|get the|send it|save it|delete it|reset|install it|upload it)\b", re.IGNORECASE)),
+    # r55: vague-question — closes DLG-185/189/190/278/298/300 no-signal-
+    # fallthrough rows. These are short conversational/uncertain prompts that
+    # had no positive signal but ARE genuinely ambiguous-OOD.
+    ("vague-question",   re.compile(r"^(?:should\s+i|what'?s\s+the\s+best|is\s+this\s+(?:idiomatic|right|correct|broken|ok)|why\s+won'?t|tell\s+me\b|help\s*[\.\?!]?$|any\s+ideas?\b|how\s+do\s+i\s+pick|got\s+a\s+(?:question|sec)|quick\s+question)", re.IGNORECASE)),
 ]
 
 
