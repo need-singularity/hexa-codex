@@ -31,6 +31,7 @@ import sys as _sys
 _THIS_DIR = _os.path.dirname(_os.path.abspath(__file__))
 _sys.path[:] = [p for p in _sys.path if _os.path.abspath(p) != _THIS_DIR]
 
+import hashlib
 import json
 import re
 import subprocess
@@ -186,6 +187,16 @@ class ForgeRuntimeConfig:
     default_ood_model: str = "claude-sonnet-4-6"
     default_ood_max_tokens: int = 2048
 
+    # v0.5.4: per-prompt vendor cache. Identical (tool, model, prompt) calls
+    # within the TTL window return the cached response with cost=$0 and
+    # `cache_hit=True` in telemetry. Default TTL 300s mirrors Anthropic's
+    # prompt-cache TTL — within that window, the upstream vendor's own
+    # prompt-cache would also be hot, so 300s is the natural pairing. Set
+    # to 0 to disable caching entirely.
+    vendor_cache_ttl_s:        int  = 300
+    vendor_cache_max_entries:  int  = 1024   # hard cap to bound memory
+    vendor_cache_enabled:      bool = True
+
     @classmethod
     def from_env(cls, **overrides) -> "ForgeRuntimeConfig":
         """Construct config; pull keys from secret-CLI lazily — see `_load_key`."""
@@ -250,6 +261,9 @@ class DelegationCall:
     cost_usd: float = 0.0
     latency_ms: int = 0
     filler_emitted: bool = False
+    # v0.5.4: True iff the response was served from the per-prompt vendor cache
+    # (no upstream call made; cost_usd=0; latency_ms = local cache lookup time).
+    cache_hit: bool = False
     timestamp_utc: str = field(default_factory=lambda: time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()))
 
 
@@ -318,8 +332,10 @@ def _anthropic_call(model: str, prompt: str, max_tokens: int,
     except anthropic.APITimeoutError:
         return False, "", {}, "upstream_timeout"
     except anthropic.APIStatusError as e:
-        # 4xx (non-401) are validation/refusal-like; 5xx are upstream errors.
-        if 500 <= int(e.status_code) < 600:
+        sc = int(getattr(e, "status_code", 0) or 0)
+        if sc == 429:
+            return False, "", {}, "upstream_quota"
+        if 500 <= sc < 600:
             return False, "", {}, "upstream_5xx"
         return False, "", {}, "upstream_5xx"  # treat other 4xx as upstream too
     except Exception:
@@ -398,7 +414,10 @@ def _openai_call(model: str, prompt: str, max_tokens: int,
     except openai.APITimeoutError:
         return False, "", {}, "upstream_timeout"
     except openai.APIStatusError as e:
-        return False, "", {}, "upstream_5xx" if 500 <= int(getattr(e, "status_code", 0) or 0) < 600 else "upstream_5xx"
+        sc = int(getattr(e, "status_code", 0) or 0)
+        if sc == 429:
+            return False, "", {}, "upstream_quota"
+        return False, "", {}, "upstream_5xx"
     except Exception:
         return False, "", {}, "upstream_5xx"
 
@@ -466,11 +485,15 @@ def _gemini_call(model: str, prompt: str, max_tokens: int,
         )
     except Exception as e:
         # google.genai errors are heterogeneous; coarse-classify by string.
+        # ClientError(429) for quota-exceeded uses 'RESOURCE_EXHAUSTED' /
+        # 'quota' phrasing — map to upstream_quota for finer-grained UX.
         msg = str(e).lower()
         if "authentication" in msg or "api key" in msg or "invalid api key" in msg or "permission" in msg:
             return False, "", {}, "auth_fail"
         if "timeout" in msg or "deadline" in msg:
             return False, "", {}, "upstream_timeout"
+        if "resource_exhausted" in msg or "quota" in msg or "rate limit" in msg or "429" in msg:
+            return False, "", {}, "upstream_quota"
         return False, "", {}, "upstream_5xx"
 
     text = getattr(resp, "text", None) or ""
@@ -554,6 +577,15 @@ class ForgeRuntime:
         self._spent_per_conv: dict[str, float] = {}
         self._spent_today: float = 0.0
         self._today: str = time.strftime("%Y-%m-%d", time.gmtime())
+        # v0.5.4 per-prompt vendor cache. Key: (tool, model, max_tokens,
+        # sha256(prompt)) — max_tokens included so a high-cap re-ask doesn't
+        # serve a truncated cached response. Value: (text, usage, expires_ts).
+        # In-memory dict with hard cap + LRU eviction; cleared on process exit.
+        self._vendor_cache: dict[tuple, tuple] = {}
+        # Cache eviction order — simple FIFO insertion ordering; Python dict
+        # preserves insertion order. On full, pop the oldest 25% to amortise
+        # the cleanup cost.
+        self._vendor_cache_stats = {"hits": 0, "misses": 0, "evictions": 0}
 
     # ---- public entry point ----
 
@@ -864,16 +896,34 @@ class ForgeRuntime:
                 classifier_signals=list(d.matched_signals),
             )
 
-        # Pre-call filler (spec §7) + vendor call.
-        filler = _pick_filler(reason, self.cfg)
-        if emit_filler_fn:
-            emit_filler_fn(filler)
-        t0 = time.monotonic()
-        ok, text, usage, err = _vendor_call(tool, model, redacted_prompt,
-                                              max_tokens, self.cfg)
-        latency_ms = int((time.monotonic() - t0) * 1000)
+        # v0.5.4: per-prompt vendor cache lookup. Identical (tool, model,
+        # max_tokens, prompt) within TTL → return cached response, cost=$0.
+        cache_key = self._vendor_cache_key(tool, model, max_tokens, redacted_prompt)
+        cache_hit = False
+        cached = self._vendor_cache_get(cache_key) if self.cfg.vendor_cache_enabled else None
+        if cached is not None:
+            text, usage, _expires = cached
+            ok, err = True, None
+            latency_ms = 0
+            cache_hit = True
+            self._vendor_cache_stats["hits"] += 1
+        else:
+            # Pre-call filler (spec §7) + real vendor call.
+            if self.cfg.vendor_cache_enabled:
+                self._vendor_cache_stats["misses"] += 1
+            filler = _pick_filler(reason, self.cfg)
+            if emit_filler_fn:
+                emit_filler_fn(filler)
+            t0 = time.monotonic()
+            ok, text, usage, err = _vendor_call(tool, model, redacted_prompt,
+                                                  max_tokens, self.cfg)
+            latency_ms = int((time.monotonic() - t0) * 1000)
+            # Cache successful responses only — failures should be retried.
+            if ok and self.cfg.vendor_cache_enabled and self.cfg.vendor_cache_ttl_s > 0:
+                self._vendor_cache_put(cache_key, text, usage)
 
-        cost = float(usage.get("cost_usd", 0.0))
+        # Cost is zero on cache hit (no upstream tokens consumed).
+        cost = 0.0 if cache_hit else float(usage.get("cost_usd", 0.0))
         self._spent_per_conv[conv_id] = spent_conv + cost
         self._spent_today += cost
 
@@ -887,7 +937,8 @@ class ForgeRuntime:
             tokens_out=int(usage.get("output_tokens", 0)),
             cached_tokens=int(usage.get("cached_tokens", 0)),
             cost_usd=cost, latency_ms=latency_ms,
-            filler_emitted=emit_filler_fn is not None,
+            filler_emitted=(emit_filler_fn is not None) and not cache_hit,
+            cache_hit=cache_hit,
         )
         self._append_telemetry(call)
 
@@ -904,6 +955,7 @@ class ForgeRuntime:
             errmap = {
                 "upstream_timeout": "The frontier model is unreachable right now. Please retry shortly.",
                 "upstream_5xx":     "The frontier model returned a transient server error. Please retry.",
+                "upstream_quota":   "The frontier model has hit its quota / rate-limit. Please retry in a moment, or upgrade the API tier.",
                 "auth_fail":        "Delegation auth fail. (No vendor call made.)",
                 "redaction_block":  "Secret detected in input; not forwarded externally.",
                 "vendor_refusal":   text or "The frontier model declined this request.",
@@ -979,6 +1031,42 @@ class ForgeRuntime:
         row = asdict(d)
         with self.cfg.telemetry_path.open("a") as f:
             f.write(json.dumps(row, ensure_ascii=False) + "\n")
+
+    # ---- v0.5.4 per-prompt vendor cache ----
+
+    @staticmethod
+    def _vendor_cache_key(tool: str, model: str, max_tokens: int, prompt: str) -> tuple:
+        """SHA256 the prompt + include (tool, model, max_tokens) so a different
+        target or generation cap doesn't serve a stale entry."""
+        h = hashlib.sha256(prompt.encode("utf-8")).hexdigest()
+        return (tool, model, int(max_tokens), h)
+
+    def _vendor_cache_get(self, key: tuple) -> tuple | None:
+        """Return (text, usage_dict, expires_ts) if cached and unexpired, else None.
+        Refreshes LRU position by re-inserting on hit."""
+        entry = self._vendor_cache.get(key)
+        if entry is None:
+            return None
+        text, usage, expires = entry
+        if time.time() >= expires:
+            # Expired; lazy-evict.
+            self._vendor_cache.pop(key, None)
+            return None
+        # Refresh LRU position.
+        self._vendor_cache.pop(key, None)
+        self._vendor_cache[key] = entry
+        return text, usage, expires
+
+    def _vendor_cache_put(self, key: tuple, text: str, usage: dict) -> None:
+        """Insert a cache entry; evict the oldest 25% if over cap."""
+        # Cap enforcement via LRU eviction.
+        if len(self._vendor_cache) >= self.cfg.vendor_cache_max_entries:
+            n_evict = max(1, self.cfg.vendor_cache_max_entries // 4)
+            for k in list(self._vendor_cache.keys())[:n_evict]:
+                self._vendor_cache.pop(k, None)
+            self._vendor_cache_stats["evictions"] += n_evict
+        expires = time.time() + self.cfg.vendor_cache_ttl_s
+        self._vendor_cache[key] = (text, dict(usage), expires)
 
 
 # ============================================================================
@@ -1122,6 +1210,58 @@ def _smoke_test() -> int:
         assert r.final_error == "redaction_block"
         assert any(d.error == "redaction_block" for d in r.delegations)
         print(f"[9] ORCH redaction_block: classes={r.delegations[0].prompt_redacted_classes}")
+
+        # Case 10: v0.5.4 per-prompt vendor cache. We patch _vendor_call at
+        # module scope to return a deterministic fake success (offline; no
+        # network). First call → cache miss + 1 fake call. Second identical
+        # call → cache hit, no fake call. Third different prompt → miss.
+        import sys as _sys_mod
+        _self_mod = _sys_mod.modules[__name__]
+        _orig_vendor_call = _self_mod._vendor_call
+        _call_count = [0]
+        def _fake_call(tool, model, prompt, max_tokens, cfg):
+            _call_count[0] += 1
+            return True, f"fake-vendor-response-{_call_count[0]}", {
+                "input_tokens": 100, "output_tokens": 50,
+                "cached_tokens": 0, "cost_usd": 0.0005,
+            }, None
+        _self_mod._vendor_call = _fake_call
+        try:
+            cfg_cache = ForgeRuntimeConfig(
+                anthropic_api_key="stub", openai_api_key="stub", gemini_api_key="stub",
+                telemetry_path=Path("/tmp/forge_runtime_smoke_cache.jsonl"),
+                use_orchestration=True,
+                vendor_cache_enabled=True,
+                vendor_cache_ttl_s=300,
+            )
+            rt_cache = ForgeRuntime(cfg_cache)
+            test_prompt = "Write a Rust async server using tokio that listens on TCP 8080."
+            # First call — miss
+            def gen_assert(_): raise AssertionError("not called")
+            r1 = rt_cache.run_turn(test_prompt, gen_assert)
+            assert r1.delegations[0].ok is True, f"call 1 failed: {r1.delegations[0].error}"
+            assert r1.delegations[0].cache_hit is False
+            assert _call_count[0] == 1, f"expected 1 upstream call, got {_call_count[0]}"
+            assert r1.delegations[0].cost_usd == 0.0005
+
+            # Second identical call — hit
+            r2 = rt_cache.run_turn(test_prompt, gen_assert)
+            assert r2.delegations[0].ok is True
+            assert r2.delegations[0].cache_hit is True, "expected cache_hit on second call"
+            assert _call_count[0] == 1, f"upstream should NOT be called twice; got {_call_count[0]}"
+            assert r2.delegations[0].cost_usd == 0.0, "cache hit should cost $0"
+            assert r2.user_facing_text == r1.user_facing_text, "cache should return identical text"
+
+            # Different prompt — miss again
+            r3 = rt_cache.run_turn(test_prompt + " (variant)", gen_assert)
+            assert r3.delegations[0].cache_hit is False
+            assert _call_count[0] == 2
+
+            stats = rt_cache._vendor_cache_stats
+            print(f"[10] ORCH per-prompt cache: hits={stats['hits']} misses={stats['misses']} (expected 1 / 2)")
+            assert stats["hits"] == 1 and stats["misses"] == 2
+        finally:
+            _self_mod._vendor_call = _orig_vendor_call
 
     print("\n=== SMOKE TESTS PASSED ===")
     return 0

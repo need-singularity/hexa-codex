@@ -4480,6 +4480,110 @@ removal + 2 new smoke-* CLI modes) · `LEARNING_PROGRAMMING.md` §8 r47 row.
 
 **dancinlab/\* repos LIVE: 42** (unchanged — software-only round).
 
+### 2026-05-14 ~12:30 KST — round 48: v0.5.4 — `upstream_quota` error code + per-prompt vendor cache (TTL 300s, LRU 1024); production cost optimization
+
+**Round 48 closes two gaps surfaced in r47's end-to-end testing:**
+1. **`upstream_quota`** — r47's Gemini 2.5-pro 429 hit was misclassified as
+   `upstream_5xx` ("server error, please retry"). The user-facing message
+   for a quota/rate-limit hit is materially different from a server bug
+   (different action: upgrade tier or wait, not retry hammering).
+2. **Per-prompt vendor cache** — identical (tool, model, prompt) calls
+   within a TTL window now return the cached response with `cost=$0` and
+   `cache_hit=True` in telemetry. The natural TTL is 300s (5 min), matching
+   Anthropic's prompt-cache TTL — within that window, the upstream's own
+   prefix cache is also hot. The forge cache complements rather than
+   replaces upstream caching.
+
+**`upstream_quota` mapping (`tool/forge_runtime.py`):**
+
+- Anthropic: `APIStatusError.status_code == 429` → `upstream_quota`.
+- OpenAI: `APIStatusError.status_code == 429` → `upstream_quota`.
+- Gemini: coarse string-match adds `resource_exhausted` / `quota` /
+  `rate limit` / `429` keywords → `upstream_quota`.
+- `_run_turn_orchestrated()` errmap adds:
+  `"upstream_quota": "The frontier model has hit its quota / rate-limit.
+  Please retry in a moment, or upgrade the API tier."`
+
+Verified end-to-end: direct `_gemini_call("gemini-2.5-pro", ...)` on the
+free tier returns `err='upstream_quota'` (was `upstream_5xx` in r47).
+
+**Per-prompt vendor cache (`ForgeRuntimeConfig.vendor_cache_*` knobs):**
+
+- `vendor_cache_ttl_s: int = 300` — 5-minute default mirroring Anthropic's
+  prompt-cache TTL.
+- `vendor_cache_max_entries: int = 1024` — hard cap; LRU eviction of
+  oldest 25% when full (amortized cleanup).
+- `vendor_cache_enabled: bool = True` — kill switch.
+
+Cache key is `(tool, model, max_tokens, sha256(prompt_redacted))`.
+`max_tokens` is included so a 4096-tok re-ask doesn't serve a 1024-tok
+truncated cache entry. Prompt is hashed POST-redaction (so the secret-
+laundered version is what's stored, not the raw user text).
+
+Cache lookup happens in `_run_turn_orchestrated()` *after* redaction +
+authorize + budget check but *before* the filler-emit + vendor call.
+A hit:
+- Returns the cached `text` and `usage_dict` (preserves the original
+  vendor's token counts for cost-attribution clarity).
+- Sets `DelegationCall.cost_usd = 0.0` (no upstream tokens consumed).
+- Sets `DelegationCall.cache_hit = True`.
+- Sets `DelegationCall.filler_emitted = False` (no point in showing a
+  filler — the response is instant).
+- Latency reported as 0 ms (local dict lookup is sub-microsecond).
+
+A miss falls through to the existing real vendor-call path; successful
+responses are inserted into the cache for next time. Failed responses
+are NOT cached (intentional — retries should hit upstream, not a stale
+error).
+
+**New `DelegationCall.cache_hit: bool` field** added to telemetry. Every
+JSONL row now has this so cost-attribution analyses can split paid vs
+cached spend.
+
+**Cache stats counter** (`self._vendor_cache_stats`): `hits / misses /
+evictions`. Not yet exposed via CLI; v0.5.5+ candidate for a `pool_audit`-
+style query if it proves useful in production.
+
+**Smoke test extension — Case [10]:**
+
+The offline smoke now patches `_vendor_call` to return a deterministic
+fake-response then exercises:
+- **Call 1** (identical prompt): `cache_hit=False`, calls fake vendor, cost=$0.0005
+- **Call 2** (identical prompt): `cache_hit=True`, NO fake-vendor call, cost=$0
+- **Call 3** (prompt with " (variant)" suffix): `cache_hit=False`, NEW fake call
+
+Asserts `_vendor_cache_stats == {"hits": 1, "misses": 2}`. 10/10 smoke
+cases now pass.
+
+**End-to-end real-vendor verification this round:**
+
+- Direct `_gemini_call("gemini-2.5-pro", ...)` → `err='upstream_quota'`
+  (free-tier limit=0; quota mapping verified).
+- 2 successive identical OOD prompts through `_run_turn_orchestrated`:
+  - Call 1: tool=claude-api, ok=True, cache_hit=False, **cost=$0.020472**
+  - Call 2: tool=claude-api, ok=True, cache_hit=True, **cost=$0**
+  - Identical user_facing_text returned (cache fidelity verified).
+  - rt._vendor_cache_stats = `{hits: 1, misses: 1}`.
+
+**Production cost impact** — for any real workload with repeated
+identical OOD prompts (e.g. an LSP-style autocomplete that asks "explain
+this Rust idiom" several times), the 5-minute TTL cache **eliminates
+duplicate billing** entirely. A burst of N identical questions in 5 min
+= 1 real call + (N-1) cached. At ~$0.02/turn for claude-sonnet, this is
+real money on production scale.
+
+**Round 48 commits:** this ROADMAP entry · `tool/forge_runtime.py`
+(`upstream_quota` mapping in all 3 vendor calls + `errmap` entry +
+`vendor_cache_*` config knobs + `DelegationCall.cache_hit` field +
+`_vendor_cache_get/put/key()` helpers + cache wire-up in
+`_run_turn_orchestrated` + smoke case [10]) · `LEARNING_PROGRAMMING.md`
+§8 r48 row.
+
+**dancinlab/\* repos LIVE: 42** (unchanged — software-only).
+**GA UNCHANGED**: r39 v3-t3patch.
+**v0.5.0 GA stack: production-ready with quota-aware error handling AND
+per-prompt cost cache.**
+
 
 
 
