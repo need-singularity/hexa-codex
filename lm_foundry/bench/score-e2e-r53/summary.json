@@ -1,0 +1,22 @@
+{
+  "spec": "r53 end-to-end production smoke for v0.5.x forge runtime",
+  "n_prompts": 20,
+  "n_refuse": 4,
+  "n_cache_replay": 2,
+  "vendor_cache_stats": {
+    "hits": 0,
+    "misses": 0,
+    "evictions": 0
+  },
+  "totals": {
+    "label_match": 24,
+    "tool_match_eligible": 16,
+    "tool_match_correct": 15,
+    "vendor_call_ok": 9,
+    "auth_fail": 5,
+    "upstream_quota": 2,
+    "upstream_5xx": 0,
+    "cache_hits_on_replay": 0,
+    "total_cost_usd": 0.218922
+  }
+}

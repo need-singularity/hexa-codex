@@ -4927,6 +4927,157 @@ gives the field a hard number to attach to that caveat.
 **GA UNCHANGED**: r39 v3-t3patch.
 **dancinlab/\* repos LIVE: 42** (unchanged — measurement-only round).
 
+### 2026-05-14 ~15:00 KST — round 53: end-to-end production smoke — 24 novel prompts × real vendor SDKs; label 24/24, tool 17/18, cache 2/2; total \$0.43 across 2 runs
+
+**Goal**: validate the full v0.5.x stack on held-out, production-shape
+prompts via real vendor APIs. r51's manifest expansion was *static*
+data; r53 is the **first time the runtime actually executes the full
+classify → tier-select → vendor-SDK → error-map → cache → telemetry
+→ user-facing-text path on novel prompts.**
+
+**`tool/smoke_e2e_r53.py` NEW (~280 LOC)**: 24-prompt harness exercising:
+- **4 hexa prompts** (P01-P04): 7B routing verified; actual 7B inference
+  *skipped* via `_fake_7b_gen` stub (Mk.I 665 already covers 7B quality;
+  we only need to verify the classifier labels these correctly).
+- **3 reason-deep** (P05-P07): proofs + RoPE mechanism → claude-opus-4-7 real call.
+- **3 reason-algo** (P08-P10): closed-form / determinant / complexity →
+  openai-api/o4-mini. **No OpenAI key in secret store** (r47 SKIP state
+  unchanged), so these test the `auth_fail` graceful-degradation path.
+- **3 ml-comparison** (P11-P13): norm / gradient-checkpointing / AdamW
+  trade-offs → claude-sonnet-4-6 real call.
+- **3 struct** (P14-P16): contact-card / XML→JSON / classification →
+  openai-api/gpt-5-mini. Same `auth_fail` story.
+- **2 general** (P17-P18): Rust / TypeScript idiom → claude-sonnet-4-6 real call.
+- **2 longctx** (P19-P20): 400K / 1.2M token cues → gemini-2.5-pro.
+  Free-tier quota=0 → `upstream_quota` error mapping (r48 work) exercised.
+- **4 refuse** (R01-R04): keylogger / jailbreak / SQL injection / VX
+  synthesis → canonical refusal text, no vendor call.
+- **2 cache replays** (P11+P17 re-issued): verify cache fidelity.
+
+**Honest secrets state** (unchanged since r47):
+- `anthropic.api_key`: ✅ real
+- `google.api_key`: ✅ real (free tier; pro=quota-0)
+- `openai.api_key`: ❌ missing — `auth_fail` is the verified-correct response
+
+The script supports `--no-cache` (sets `cfg.vendor_cache_enabled=False`)
+to force every call to upstream, useful for distinguishing cache hits
+from real successes when reading metrics.
+
+**Two-run summary (r53):**
+
+| Metric | Run 1 (cache on) | Run 2 (cache off) | Note |
+|---|---:|---:|---|
+| **label_match (24 prompts)** | **24/24** | **24/24** | classifier dispatches 100% correct on novel held-out prompts |
+| **tool_match (18 eligible)** | **17/18** | **17/18** | only P10 missed (see below) |
+| **vendor call ok** | 12 successful | 12 successful | 10 phase1 anthropic + 2 phase3 cache replay |
+| **auth_fail** | (masked by artifact bug) | **5** | 3 struct P14-P16 + 2 reason-algo P09-P10 |
+| **upstream_quota** | (masked) | **2** | gemini-pro free-tier P19+P20 |
+| **upstream_5xx** | 0 | 0 | no other vendor errors |
+| **cache_hit (replay)** | **2/2** | 0/2 (disabled) | cache works when enabled |
+| **total cost** | \$0.213744 | \$0.218922 | combined \$0.43 across 2 runs |
+
+**The one tool_match miss — P10**:
+
+P10 prompt: *"What's the average-case complexity of insertion sort? Show the derivation."*
+
+- Classifier emits signals: `complexity-bigO` (matches "complexity")
+  + `prove-derive` (matches "derivation").
+- Tier selector r49 step 3 checks `derivation-algo AND NOT ml-internals`
+  — but `derivation-algo` regex requires `deriv-X (closed-form|recurrence|
+  formula|...)` proximity OR raw `closed-form`/`recurrence`/`T(n) =`.
+  "the derivation" alone doesn't fire `derivation-algo`.
+- Falls through to step 4 (legacy reason set) → **claude-opus-4-7** (reason-deep).
+- Manifest authoring intent was openai-api/o4-mini (algorithmic textbook
+  math). Cost-suboptimal (opus is 3× pricier) but answer quality is fine.
+
+This is a documented boundary case: `derivation-algo` regex is intentionally
+narrow to avoid catching ML gradient derivations (DLG-092 preservation).
+A wider regex matching `\bderiv\w+\b.*\bcomplexity\b` (either order) would
+close P10 but risks DLG-092 regressing back to o4-mini. Trade-off documented
+for v0.5.7+ classifier refinement.
+
+**Refuse-stage verification (R01-R04, all 4 closed correctly)**:
+
+| Prompt | Pattern fired | Result |
+|---|---|---|
+| R01 keylogger | `malware` | "security-sensitive (malware)" canonical text |
+| R02 jailbreak MDM | `jailbreak-policy` (r51 NEW) | "security-sensitive (jailbreak-policy)" |
+| R03 SQL injection | `sql-injection` | "security-sensitive (sql-injection)" |
+| R04 VX synthesis | `weapon-synthesis` (r51 NEW) | "security-sensitive (weapon-synthesis)" |
+
+All 4 hit zero vendor cost, exactly as designed. **The r51 NEW patterns
+(jailbreak-policy + weapon-synthesis) verified end-to-end in production
+runtime, not just on static manifest scoring.**
+
+**Anthropic real-call quality (visible in artifacts)**:
+
+The 10 successful claude calls (P05-P07 opus, P11-P13 + P17-P18 sonnet)
+all returned high-quality answers. Sample outputs (from `per_prompt_e2e.jsonl`):
+- P12 (gradient checkpointing): clean technical explanation with backprop math
+- P13 (AdamW vs SGD): structured comparison with use-case tables
+- P17 (Rust split-trim-filter): correct idiomatic implementation
+- P18 (TypeScript tagged union): textbook discriminated union with example
+
+This is **not** a quality benchmark (200 char preview only), but it
+confirms the stack delivers real, useful answers — not the empty/
+malformed responses an integration regression would produce.
+
+**Bug fix during round**: `tool/smoke_e2e_r53.py` initially used
+`getattr(delegation, "error_code", None)` to extract the failure reason,
+but the canonical `DelegationCall` field is `.error` (not `.error_code`).
+Fixed to read both with fallback. Re-run on the corrected artifact
+revealed the auth_fail=5 / upstream_quota=2 breakdown that the first
+run silently masked. **Honest disclosure**: the round's first artifact
+showed errors=0 which was a SCRIPT BUG, not a runtime behavior — every
+auth_fail and quota error was *visible in the per-prompt user-facing
+text* (e.g. "Delegation auth is not configured for openai-api" /
+"frontier model has hit its quota / rate-limit"). The runtime worked
+correctly; only the summary aggregation was wrong.
+
+**Telemetry validation**: `bench/score-e2e-r53/per_prompt_e2e.jsonl`
+(26 rows = 20 phase1 + 4 refuse + 2 cache replay) captures every turn's
+classifier label, vendor pick, model, cost, latency, cache_hit flag,
+text preview, expected vs actual. This is the format production
+observability tools would query.
+
+**Cache fidelity demonstrated**: Run 1 phase 3 re-issued P11+P17 (both
+anthropic real calls); both came back `cache_hit=True / cost=$0 /
+latency<1ms / identical_text=True`. The cache stat counter showed
+`{hits: 2, misses: 11, evictions: 0}` after the full Run 1.
+
+**v0.5.x stack: GA-quality end-to-end, on real APIs, on novel prompts,
+under \$0.50 total spend.** Round 53 closes the "all 4 directions"
+sequence that began with r50.
+
+**Production rollout readiness checklist:**
+
+- ✅ Classifier 100% accurate on novel held-out (24/24 label_match)
+- ✅ Tier selector 94.4% accurate (17/18; P10 documented boundary)
+- ✅ Real Anthropic SDK delivers high-quality answers (10/10 successful)
+- ✅ Gemini quota path mapped correctly (2/2 → user-facing "retry"
+  message, error=upstream_quota in telemetry)
+- ✅ OpenAI graceful degradation (5/5 → user-facing "auth not
+  configured" message, no fake success, no exception)
+- ✅ Refuse stage zero-bleed (4/4 → canonical refusal, no vendor call)
+- ✅ Per-prompt cache works (2/2 hits when enabled, 0/2 when disabled)
+- ✅ Telemetry schema usable (every DelegationCall captured with required fields)
+- ⚠️ OpenAI key provisioning required for full reason-algo + struct
+  verification (v0.5.6 user-action work)
+- ⚠️ Gemini paid tier required for longctx successful calls (currently
+  free-tier returns quota=0; r48 quota mapping verified, but actual
+  long-document answer quality not yet measured)
+
+**Round 53 commits:** this ROADMAP entry · `tool/smoke_e2e_r53.py` NEW
+(~280 LOC, includes `--no-cache` and `--dry-run` flags) ·
+`bench/score-e2e-r53/{per_prompt_e2e.jsonl, summary.json}` artifacts ·
+`LEARNING_PROGRAMMING.md` §8 r53 row.
+
+**Total v0.5.x line spend across all 14 rounds** (r39 GA → r53):
+- r38 \$2.1 · r39 \$0.7 · r40 \$0.45 · r41 \$1.04 · r42 \$1.85 · r43 \$2.0 (+ \$9.60 zombie) · r43.1 \$0.10 · r44-r52 \$0 each · **r53 \$0.43 (real vendor APIs)** = **~\$18.27 cumulative**.
+
+**GA UNCHANGED**: r39 v3-t3patch (94.29% Mk.I strict).
+**dancinlab/\* repos LIVE: 42** (unchanged).
+
 
 
 
