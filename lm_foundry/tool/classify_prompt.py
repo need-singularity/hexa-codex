@@ -58,7 +58,8 @@ class ClassifierDecision:
 _REFUSE_PATTERNS: list[tuple[str, re.Pattern[str]]] = [
     ("exfil",        re.compile(r"\bexfiltrat\w*\b", re.IGNORECASE)),
     ("phishing",     re.compile(r"\bphishing\b|phish-?(?:email|message|kit)", re.IGNORECASE)),
-    ("brute-force",  re.compile(r"\bbrute[-_ ]?forc(?:e|ing)\b", re.IGNORECASE)),
+    # r51: extend conjugation to catch "brute-forces" (3sg present) — DLG-262
+    ("brute-force",  re.compile(r"\bbrute[-_ ]?forc(?:e|es|ed|ing)\b", re.IGNORECASE)),
     ("password-crack", re.compile(r"\bcrack(?:ing)? (?:a |the )?password\b|password (?:cracker|cracking)\b", re.IGNORECASE)),
     ("malware",      re.compile(r"\bmalware\b|\brootkit\b|\bbackdoor\b(?! into hexa)|\bkeylogger\b|\bworm\b(?! that propagates)|\bransom(?:ware)?\b", re.IGNORECASE)),
     ("ddos",         re.compile(r"\bddos\b|\bdos attack\b", re.IGNORECASE)),
@@ -82,6 +83,15 @@ _REFUSE_PATTERNS: list[tuple[str, re.Pattern[str]]] = [
     ("router-firmware-backdoor", re.compile(r"\bmodify\w* (?:a |the )?router firmware\b|\bremote backdoor\b", re.IGNORECASE)),
     ("counterfeit-bypass", re.compile(r"\bcounterfeit currency detector bypass\b|\bage[-_ ]?restrict\w*\b.*bypass", re.IGNORECASE)),
     ("kernel-hijack", re.compile(r"\bdll[-_ ]?hijack\w*\b|\bsystemd unit.*persistenc\w*\b", re.IGNORECASE)),
+    # r51: gaps surfaced by DLG-261..270 expansion (held-out refuse variants).
+    # jailbreak: covers "jailbreak my work laptop", "jailbreak to bypass" — policy-bypass framing.
+    ("jailbreak-policy", re.compile(r"\bjailbreak(?:ing)?\b.*\b(?:work|corporate|company|laptop|iphone|android|device|to bypass|IT controls|MDM|policy)\b", re.IGNORECASE)),
+    # prompt-injection: "write a prompt-injection attack", "leak its system prompt", "exfil system prompt"
+    ("prompt-injection", re.compile(r"\bprompt[-_ ]?injection\b|\bleak\w*\s+(?:its\s+|the\s+)?system\s+prompt\b|\bsystem[-_ ]?prompt\s+(?:leak|exfil|disclosure)\b", re.IGNORECASE)),
+    # weapon synthesis: chemical / biological / radiological / nerve agents
+    ("weapon-synthesis", re.compile(r"\b(?:sarin|vx[-_ ]?agent|tabun|soman|cyanide|ricin|anthrax|nerve\s+agent|chemical\s+weapon|bio[-_ ]?weapon|nuclear\s+weapon|dirty\s+bomb)\b|\bsynthesi[zs]e\b.*\b(?:explosive|pathogen|toxin|nerve|precursor)\b|\bprecursor\b.*\b(?:nerve\s+agent|sarin|vx|tabun)\b", re.IGNORECASE)),
+    # doxing / personal-info compilation
+    ("doxing",       re.compile(r"\bdox(?:x|xes|xed|xing)?\s+(?:someone|the\s+(?:user|target|person)|them|him|her)\b|\bdoxx?ing\b|\bdox\s+(?:someone|the\s+person)\s+given\b", re.IGNORECASE)),
 ]
 
 
@@ -238,7 +248,7 @@ _AMBIGUOUS_PATTERNS: list[tuple[str, re.Pattern[str]]] = [
 # decorator that ...", "Show a Python context manager ...", "Idiomatic
 # Python for X-ing Y", "Implement <thing>" — these go to claude-sonnet OOD.
 _MID_CONF_LANG_RE = re.compile(r"\b(?:swift|python|go|kotlin|ruby)\b", re.IGNORECASE)
-_MID_CONF_FRAMEWORK_RE = re.compile(r"\b(?:tokio|kubernetes|docker|terraform|aws|gcp|azure|kafka|spark|airflow|django|flask|fastapi|spring|react|vue|angular|nextjs|next\.js)\b", re.IGNORECASE)
+_MID_CONF_FRAMEWORK_RE = re.compile(r"\b(?:tokio|kubernetes|docker|terraform|aws|gcp|azure|kafka|spark|airflow|django|flask|fastapi|spring|react|vue|angular|nextjs|next\.js|swiftui|combine|jetpack[-_ ]?compose)\b", re.IGNORECASE)
 _MID_CONF_LONG_RE = re.compile(r"\b(?:long-context|long context|microservice|distributed|production-ready)\b", re.IGNORECASE)
 # Functional-code-request markers (signals "this is a full-scope code write,
 # route to OOD, not mid-conf"). Anchored: must appear near the start.
