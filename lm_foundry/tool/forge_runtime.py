@@ -198,13 +198,24 @@ class ForgeRuntimeConfig:
 
 
 def _load_key(cfg: ForgeRuntimeConfig, name: str) -> str | None:
-    """Load a secret via env var first, then fall back to the secret CLI."""
+    """Load a secret via env var first, then fall back to the secret CLI.
+
+    The secret CLI key convention is `<vendor>.api_key` (single underscore
+    inside `api_key`, dot between vendor and the rest). Env-var convention
+    is `<VENDOR>_API_KEY`. Map via the explicit table — naive replace("_",".")
+    produced `anthropic.api.key` which the secret store doesn't have.
+    """
     if (env := os.environ.get(name)):
         return env
-    if os.path.exists(cfg.secret_cli_path):
+    secret_key = {
+        "ANTHROPIC_API_KEY": "anthropic.api_key",
+        "OPENAI_API_KEY":    "openai.api_key",
+        "GEMINI_API_KEY":    "gemini.api_key",
+    }.get(name)
+    if secret_key and os.path.exists(cfg.secret_cli_path):
         try:
             r = subprocess.run(
-                [cfg.secret_cli_path, "get", name.lower().replace("_", ".")],
+                [cfg.secret_cli_path, "get", secret_key],
                 capture_output=True, text=True, timeout=5,
             )
             if r.returncode == 0 and r.stdout.strip():
@@ -341,22 +352,161 @@ def _anthropic_call(model: str, prompt: str, max_tokens: int,
     return True, text, usage, None
 
 
+# ============================================================================
+# OpenAI pricing per million tokens (per LEARNING_PROGRAMMING.md §13.A).
+# (input_per_M, cached_input_per_M, output_per_M). OpenAI's auto-cache discount
+# is ~50% on the input side; we collapse it into cached_input_per_M.
+# ============================================================================
+_OPENAI_PRICING_USD_PER_MTOK = {
+    "gpt-5":         (2.0, 1.0, 10.0),
+    "gpt-5-mini":    (0.50, 0.25, 2.0),
+    "gpt-5-nano":    (0.05, 0.025, 0.40),
+    "o4-mini":       (3.0, 1.5, 12.0),
+    "gpt-4o-mini":   (0.15, 0.075, 0.60),
+}
+
+
+def _openai_call(model: str, prompt: str, max_tokens: int,
+                 cfg: ForgeRuntimeConfig) -> tuple[bool, str, dict, str | None]:
+    """Real OpenAI API call via the `openai` SDK. Uses chat.completions for
+    broad compatibility (Responses API is preferred for new builds but
+    chat.completions is universally supported). Auto-cache fires when the
+    prompt prefix is ≥ 1024 tokens — surfaces in `usage.prompt_tokens_details.cached_tokens`.
+
+    Refusal handling: like Claude, OpenAI returns refusal text as normal
+    `message.content`. Returns ok=True with refusal text; 7B echoes honestly.
+    """
+    try:
+        import openai
+    except ImportError:
+        return False, "", {}, "auth_fail"  # SDK missing == effectively unauthed
+
+    try:
+        client = openai.OpenAI(api_key=cfg.openai_api_key, timeout=30.0)
+        resp = client.chat.completions.create(
+            model=model,
+            max_tokens=int(max_tokens),
+            messages=[
+                {"role": "system", "content": (
+                    "You are answering a question for a small hexa-canon code-LLM "
+                    "that delegated this. Be concise; return code in hexa idiom if applicable.")},
+                {"role": "user", "content": prompt},
+            ],
+        )
+    except openai.AuthenticationError:
+        return False, "", {}, "auth_fail"
+    except openai.APITimeoutError:
+        return False, "", {}, "upstream_timeout"
+    except openai.APIStatusError as e:
+        return False, "", {}, "upstream_5xx" if 500 <= int(getattr(e, "status_code", 0) or 0) < 600 else "upstream_5xx"
+    except Exception:
+        return False, "", {}, "upstream_5xx"
+
+    text = (resp.choices[0].message.content or "") if resp.choices else ""
+    u = resp.usage
+    in_tok  = int(getattr(u, "prompt_tokens", 0) or 0)
+    out_tok = int(getattr(u, "completion_tokens", 0) or 0)
+    # cached_tokens lives under prompt_tokens_details (newer SDK) or
+    # cached_tokens (older) — try both.
+    cached = 0
+    details = getattr(u, "prompt_tokens_details", None)
+    if details is not None:
+        cached = int(getattr(details, "cached_tokens", 0) or 0)
+    else:
+        cached = int(getattr(u, "cached_tokens", 0) or 0)
+    prc = _OPENAI_PRICING_USD_PER_MTOK.get(model, (0, 0, 0))
+    fresh_in = max(0, in_tok - cached)
+    cost_usd = (fresh_in * prc[0] + cached * prc[1] + out_tok * prc[2]) / 1_000_000.0
+    usage = {
+        "input_tokens":  in_tok,
+        "output_tokens": out_tok,
+        "cached_tokens": cached,
+        "cost_usd":      round(cost_usd, 6),
+    }
+    return True, text, usage, None
+
+
+# ============================================================================
+# Gemini pricing per million tokens (LEARNING_PROGRAMMING.md §13.B).
+# (input_per_M, cached_input_per_M, output_per_M). Gemini context caching is
+# explicit (not auto); cached_input_per_M is the dominant savings tier.
+# ============================================================================
+_GEMINI_PRICING_USD_PER_MTOK = {
+    "gemini-2.5-pro":         (1.25, 0.31, 10.0),
+    "gemini-2.5-flash":       (0.30, 0.075, 2.5),
+    "gemini-2.5-flash-lite":  (0.10, 0.025, 0.40),
+}
+
+
+def _gemini_call(model: str, prompt: str, max_tokens: int,
+                 cfg: ForgeRuntimeConfig) -> tuple[bool, str, dict, str | None]:
+    """Real Gemini API call via `google.genai`. Long-context (2M tokens on
+    gemini-2.5-pro) is the value-add tier; the runtime sends the full prompt
+    in a single request. v0.5.3 base ships without explicit context caching;
+    v0.6+ can add `cached_content` for repeated long-doc prompts.
+    """
+    try:
+        from google import genai
+        from google.genai import types as genai_types
+    except ImportError:
+        return False, "", {}, "auth_fail"  # SDK missing
+
+    try:
+        client = genai.Client(api_key=cfg.gemini_api_key)
+        cfg_obj = genai_types.GenerateContentConfig(
+            max_output_tokens=int(max_tokens),
+            system_instruction=(
+                "You are answering a question for a small hexa-canon code-LLM "
+                "that delegated this. Be concise; return code in hexa idiom if applicable."),
+        )
+        resp = client.models.generate_content(
+            model=model,
+            contents=prompt,
+            config=cfg_obj,
+        )
+    except Exception as e:
+        # google.genai errors are heterogeneous; coarse-classify by string.
+        msg = str(e).lower()
+        if "authentication" in msg or "api key" in msg or "invalid api key" in msg or "permission" in msg:
+            return False, "", {}, "auth_fail"
+        if "timeout" in msg or "deadline" in msg:
+            return False, "", {}, "upstream_timeout"
+        return False, "", {}, "upstream_5xx"
+
+    text = getattr(resp, "text", None) or ""
+    u = getattr(resp, "usage_metadata", None)
+    in_tok  = int(getattr(u, "prompt_token_count", 0) or 0) if u else 0
+    out_tok = int(getattr(u, "candidates_token_count", 0) or 0) if u else 0
+    cached  = int(getattr(u, "cached_content_token_count", 0) or 0) if u else 0
+    prc = _GEMINI_PRICING_USD_PER_MTOK.get(model, (0, 0, 0))
+    fresh_in = max(0, in_tok - cached)
+    cost_usd = (fresh_in * prc[0] + cached * prc[1] + out_tok * prc[2]) / 1_000_000.0
+    usage = {
+        "input_tokens":  in_tok,
+        "output_tokens": out_tok,
+        "cached_tokens": cached,
+        "cost_usd":      round(cost_usd, 6),
+    }
+    return True, text, usage, None
+
+
 def _vendor_call(tool: str, model: str, prompt: str, max_tokens: int,
                  cfg: ForgeRuntimeConfig) -> tuple[bool, str, dict, str | None]:
     """Dispatch a vendor call. Returns (ok, text, usage_dict, error|None).
 
-    v0.4.0 status:
-      - claude-api  → REAL via `anthropic` SDK with prompt-cache `cache_control`.
-      - openai-api  → STUB (deferred to v0.4.2 routing-RL deploy).
-      - gemini-api  → STUB (deferred).
+    v0.5.3 status (all three vendors REAL):
+      - claude-api  → `anthropic` SDK with prompt-cache `cache_control`.
+      - openai-api  → `openai` SDK (chat.completions; auto-cache ≥1024-tok prefix).
+      - gemini-api  → `google.genai` SDK (`generate_content`).
 
-    The Claude wire-up suffices for v0.4.0 routing-RL development since the
-    SFT block §10's 80% delegate targets are `claude-api` anyway.
+    SDK presence is gated: if the package isn't installed OR no API key is
+    configured, the call returns `auth_fail` cleanly. Stubs are removed —
+    the runtime degrades to auth_fail instead of returning fake success.
 
     Failure modes per spec §5:
       - timeout / 5xx → "upstream_timeout" / "upstream_5xx"
-      - auth fail    → "auth_fail"
-      - refusal      → (ok=True, text=<refusal>) — the 7B SFT echoes it.
+      - auth fail (SDK missing OR 401 OR no key) → "auth_fail"
+      - refusal       → (ok=True, text=<refusal>) — the 7B SFT echoes it.
     """
     key = {
         "claude-api": cfg.anthropic_api_key,
@@ -368,13 +518,14 @@ def _vendor_call(tool: str, model: str, prompt: str, max_tokens: int,
 
     if tool == "claude-api":
         return _anthropic_call(model, prompt, max_tokens, cfg)
+    if tool == "openai-api":
+        return _openai_call(model, prompt, max_tokens, cfg)
+    if tool == "gemini-api":
+        return _gemini_call(model, prompt, max_tokens, cfg)
 
-    # openai-api / gemini-api still stubbed in v0.4.0.
-    text = (f"[STUB v0.4.0] {tool}/{model} would answer:\n"
-            f"  (max_tokens={max_tokens}) {prompt[:100]}...")
-    usage = {"input_tokens": len(prompt) // 4, "output_tokens": 80,
-             "cached_tokens": 0, "cost_usd": 0.0}
-    return True, text, usage, None
+    # Unknown tool (shouldn't happen — _validate_delegate_obj guards in legacy
+    # path; tier selector only emits allowlisted tools in orchestration path).
+    return False, "", {}, "auth_fail"
 
 
 def _pick_filler(reason: str, cfg: ForgeRuntimeConfig) -> str:
@@ -861,11 +1012,11 @@ def _smoke_test() -> int:
     assert not r.delegations
     print(f"[1] LEGACY direct-answer: band={r.confidence_band!r} text={r.user_facing_text!r}")
 
-    # Case 2: well-formed delegate. Uses `openai-api` (still stubbed in v0.4.0)
-    # so this offline smoke test doesn't need a real Anthropic key. The
-    # claude-api path is now wired to the anthropic SDK — covered by the
-    # opt-in integration smoke `python3 tool/forge_runtime.py smoke-anthropic`
-    # (requires ANTHROPIC_API_KEY in env).
+    # Case 2: well-formed delegate. v0.5.3 removed the openai/gemini stubs,
+    # so a stub key now returns auth_fail (graceful). Test verifies the
+    # auth_fail path — the delegate IS valid (parses, redacts ok); only the
+    # vendor call fails because key=='stub'. Real vendor calls live in the
+    # opt-in `smoke-anthropic` / `smoke-openai` / `smoke-gemini` integrations.
     calls = [0]
     def gen2(prompt):
         calls[0] += 1
@@ -876,9 +1027,10 @@ def _smoke_test() -> int:
         return "Here is the answer from the larger model summarised."
     r = rt.run_turn("write rust async server", gen2)
     assert len(r.delegations) == 1
-    assert r.delegations[0].ok is True, f"delegation failed: {r.delegations[0].error}"
+    assert r.delegations[0].ok is False, "expected stub key → auth_fail"
+    assert r.delegations[0].error == "auth_fail"
     assert r.delegations[0].tool == "openai-api"
-    print(f"[2] one-delegate (stub): ok={r.delegations[0].ok} text={r.user_facing_text[:80]!r}")
+    print(f"[2] LEGACY one-delegate (stub→auth_fail): tool={r.delegations[0].tool} error={r.delegations[0].error!r}")
 
     # Case 3: malformed JSON (schema_violation never-event).
     def gen3(_): return '<|delegate|>{tool:"claude-api"}<|/delegate|>'
@@ -927,10 +1079,11 @@ def _smoke_test() -> int:
         assert not r.delegations
         print(f"[6] ORCH hexa-route: label={r.classifier_label!r} reason={r.classifier_reason[:50]!r}")
 
-        # Case 7: OOD prompt → classifier=ood → tier selector → openai-api stub.
-        # Use a structured-output prompt so the v0.5.2 tier selector routes to
-        # openai-api gpt-5-mini (which is still STUB in _vendor_call); claude-api
-        # is wired to real SDK and would attempt a network call with stub key.
+        # Case 7: OOD prompt → classifier=ood → tier selector → openai-api.
+        # v0.5.3: stubs removed; stub key gracefully returns auth_fail.
+        # Verifies tier routing + auth-fail handling in the orchestrated path.
+        # The user_facing_text should be the graceful fallback ("Delegation auth
+        # is not configured..."), NOT a stub success.
         def gen7(_): raise AssertionError("gen_fn must NOT be called for ood path")
         r = rt_orch.run_turn(
             "Parse 'Alice, 32, alice@example.com' into JSON {name, age, email}.",
@@ -938,10 +1091,11 @@ def _smoke_test() -> int:
         )
         assert r.classifier_label == "ood", f"expected ood, got {r.classifier_label}"
         assert len(r.delegations) == 1
-        assert r.delegations[0].ok is True, f"delegation failed: {r.delegations[0].error}"
         assert r.delegations[0].tool == "openai-api", f"expected openai-api (struct tier), got {r.delegations[0].tool}"
         assert r.delegations[0].model == "gpt-5-mini"
-        print(f"[7] ORCH ood→struct→openai-mini (stub): label={r.classifier_label!r} text={r.user_facing_text[:80]!r}")
+        assert r.delegations[0].ok is False, "expected stub key → auth_fail"
+        assert r.final_error == "auth_fail"
+        print(f"[7] ORCH ood→struct→openai-mini (stub→auth_fail): tool={r.delegations[0].tool} model={r.delegations[0].model} error={r.final_error!r}")
 
         # Case 8: refuse prompt → classifier=refuse → direct refusal. No 7B, no vendor.
         def gen8(_): raise AssertionError("gen_fn must NOT be called for refuse path")
@@ -1001,13 +1155,73 @@ def _smoke_anthropic() -> int:
     return 0
 
 
+def _smoke_openai() -> int:
+    """Opt-in integration smoke: makes ONE real call to gpt-5-nano (or
+    gpt-4o-mini fallback) to verify the OpenAI wire-up. Requires
+    OPENAI_API_KEY in env or `openai.api_key` in the secret store. Cost ~$0.0001.
+    """
+    cfg = ForgeRuntimeConfig.from_env(
+        telemetry_path=Path("/tmp/forge_runtime_openai_smoke.jsonl"),
+    )
+    if not cfg.openai_api_key:
+        print("SKIP: no OPENAI_API_KEY available (env or secret CLI)")
+        return 0
+    # Try gpt-5-nano first (cheapest); fall back to gpt-4o-mini if quota issue.
+    for model in ("gpt-5-nano", "gpt-4o-mini"):
+        print(f"calling {model} …")
+        ok, text, usage, err = _openai_call(
+            model=model,
+            prompt="Reply with the single word OK.",
+            max_tokens=10,
+            cfg=cfg,
+        )
+        print(f"  ok={ok} err={err!r} text={text!r} usage={usage}")
+        if ok:
+            print("=== OPENAI INTEGRATION SMOKE PASSED ===")
+            return 0
+    print(f"FAILED: both gpt-5-nano and gpt-4o-mini calls returned errors")
+    return 1
+
+
+def _smoke_gemini() -> int:
+    """Opt-in integration smoke: makes ONE real call to gemini-2.5-flash-lite
+    (cheapest tier) to verify the Gemini wire-up. Requires GEMINI_API_KEY in
+    env or `gemini.api_key` in the secret store. Cost ~$0.00005.
+    """
+    cfg = ForgeRuntimeConfig.from_env(
+        telemetry_path=Path("/tmp/forge_runtime_gemini_smoke.jsonl"),
+    )
+    if not cfg.gemini_api_key:
+        print("SKIP: no GEMINI_API_KEY available (env or secret CLI)")
+        return 0
+    model = "gemini-2.5-flash-lite"
+    print(f"calling {model} (cheapest gemini tier) …")
+    ok, text, usage, err = _gemini_call(
+        model=model,
+        prompt="Reply with the single word OK.",
+        max_tokens=10,
+        cfg=cfg,
+    )
+    print(f"  ok={ok} err={err!r} text={text!r} usage={usage}")
+    assert ok, f"call failed: {err}"
+    assert text.strip(), "empty response"
+    print("=== GEMINI INTEGRATION SMOKE PASSED ===")
+    return 0
+
+
 if __name__ == "__main__":
     import sys
     if len(sys.argv) > 1 and sys.argv[1] == "smoke":
         sys.exit(_smoke_test())
     if len(sys.argv) > 1 and sys.argv[1] == "smoke-anthropic":
         sys.exit(_smoke_anthropic())
+    if len(sys.argv) > 1 and sys.argv[1] == "smoke-openai":
+        sys.exit(_smoke_openai())
+    if len(sys.argv) > 1 and sys.argv[1] == "smoke-gemini":
+        sys.exit(_smoke_gemini())
     print(__doc__)
     print("\nSmoke tests:")
     print("  python3 tool/forge_runtime.py smoke              # offline contract test")
     print("  python3 tool/forge_runtime.py smoke-anthropic    # +1 real claude-haiku call")
+    print("  python3 tool/forge_runtime.py smoke-openai       # +1 real gpt-5-nano call")
+    print("  python3 tool/forge_runtime.py smoke-gemini       # +1 real gemini-2.5-flash-lite call")

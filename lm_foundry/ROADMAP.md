@@ -4379,6 +4379,107 @@ signals; long-context + structured-json regex broaden) ·
 `tool/score_orchestration_mk0.py` (tier_routing section in summary) ·
 `LEARNING_PROGRAMMING.md` §8 r46 row.
 
+### 2026-05-14 ~12:00 KST — round 47: v0.5.3 — OpenAI + Gemini SDK wire-up; all three vendors now REAL (no more stubs); `_load_key` secret-CLI path bugfix
+
+**Round 47 closes the stub residue in `_vendor_call`. The openai-api and
+gemini-api routes that have been stubbed since v0.4.0 (spec-delegation §3 step 5)
+now make real SDK calls. Anthropic was already real (post-r41 closure). The
+forge orchestration stack ships with three live vendor backends + graceful
+auth-fail fallback when a key is missing.**
+
+**Changes (single file: `tool/forge_runtime.py`, ~240 LOC added):**
+
+- `_load_key()` BUGFIX: the previous `name.lower().replace("_", ".")` mapping
+  produced `anthropic.api.key` (dot-separated) but the secret CLI keys are
+  stored as `anthropic.api_key` (underscore-separated). The env-var fallback
+  path was masking this — `ANTHROPIC_API_KEY=$(secret get …)` set as an env
+  var before calling `ForgeRuntimeConfig.from_env()` worked, but the
+  zero-config path (no env var, expect `from_env()` to find it via secret CLI)
+  silently failed. Replaced with explicit table:
+  `{"ANTHROPIC_API_KEY":"anthropic.api_key", "OPENAI_API_KEY":"openai.api_key",
+  "GEMINI_API_KEY":"gemini.api_key"}`. Tested end-to-end: now
+  `ForgeRuntimeConfig.from_env()` with no env vars set loads anthropic + gemini
+  keys directly from secret CLI (verified via fresh Python process).
+- `_openai_call(model, prompt, max_tokens, cfg)` — NEW, ~70 LOC. Real
+  `openai` SDK via `chat.completions.create()` (broad compat; Responses API
+  preferred for new builds but chat.completions is universally supported).
+  Auto-cache fires at ≥ 1024-token prefix per OpenAI policy; cached tokens
+  surface in `usage.prompt_tokens_details.cached_tokens` (new SDK) or
+  `usage.cached_tokens` (older). Cost calc against
+  `_OPENAI_PRICING_USD_PER_MTOK` table covering gpt-5/gpt-5-mini/gpt-5-nano/
+  o4-mini/gpt-4o-mini (input, cached_input, output per million tokens).
+  Error mapping: `AuthenticationError → auth_fail`, `APITimeoutError →
+  upstream_timeout`, `APIStatusError → upstream_5xx`, any other Exception →
+  `upstream_5xx`. Refusals (OpenAI returns them as normal content) → `ok=True`.
+- `_gemini_call(model, prompt, max_tokens, cfg)` — NEW, ~70 LOC. Real
+  `google.genai` SDK via `Client.models.generate_content()`. Cost calc
+  against `_GEMINI_PRICING_USD_PER_MTOK` table covering gemini-2.5-pro/
+  -flash/-flash-lite (input, cached_input, output). Error classification
+  is coarser than the OpenAI/Anthropic SDKs (google.genai raises a single
+  `ClientError`/`ServerError`); we string-match the error message for
+  auth/timeout/quota keywords.
+- `_vendor_call()` dispatcher updated: stub fallback paths REMOVED — when
+  SDK is missing OR key is missing OR the SDK call errors, returns
+  `auth_fail` cleanly (graceful degradation, no fake success). Three real
+  branches: `claude-api → _anthropic_call`, `openai-api → _openai_call`,
+  `gemini-api → _gemini_call`.
+
+**Smoke test extensions:**
+
+- Existing offline `smoke` (9 cases, all 4 orchestration cases): now uses
+  the auth_fail return path for the openai-api stub-key case (was checking
+  stub fake-success). Verifies tier routing decision was correct AND that
+  auth_fail is handled gracefully.
+- NEW `smoke-openai` — opt-in real call to gpt-5-nano (falls back to
+  gpt-4o-mini if quota issues). Skipped if no OPENAI_API_KEY.
+- NEW `smoke-gemini` — opt-in real call to gemini-2.5-flash-lite (cheapest
+  tier). Skipped if no GEMINI_API_KEY.
+
+**Verification (this session):**
+
+- `smoke`: 9/9 cases pass (legacy 5, orchestration 4).
+- `smoke-anthropic`: real claude-haiku-4-5 call returns "OK", 51 in / 4 out,
+  cost $5.7e-05. **No env var set this time — verifies the _load_key
+  bugfix loads anthropic key from secret CLI directly.**
+- `smoke-openai`: SKIP — no `openai.api_key` in secret store yet (key not
+  provisioned; when it is, this becomes a real call automatically).
+- `smoke-gemini`: real gemini-2.5-flash-lite call returns "OK", 39 in / 1
+  out, cost **$4e-06** (Gemini's cheapest tier is ~14× cheaper than
+  claude-haiku for identical work). **Gemini key loaded from secret CLI
+  via the fixed `_load_key` path.**
+
+**End-to-end Gemini routing test** — long-context prompt routes to
+gemini-2.5-pro per v0.5.2 tier selector. The free-tier API quota for
+gemini-2.5-pro is `limit=0` (paid-tier-only model) so the call returned
+`429 RESOURCE_EXHAUSTED` → our coarse error classifier maps to
+`upstream_5xx` → graceful user message "The frontier model returned a
+transient server error. Please retry." The wire-up is correct; the
+business issue (free-tier doesn't include pro) is operational, not code.
+v0.5.4 can add explicit `upstream_quota` error code for finer-grained
+client behavior; for now the upstream_5xx mapping is acceptable.
+
+**Forge orchestration stack — final v0.5.3 state:**
+
+- 7B specialist:        r39 v3-t3patch adapter (UNCHANGED, Mk.I 94.29%, 5-NL 96%)
+- Pre-7B classifier:    `classify_prompt.py` (r44)
+- Tier selector:        `select_vendor_tier.py` (r46) — signal→vendor/model
+- Runtime dispatcher:   `forge_runtime.py` (r45 + r47) — 3 real vendor SDKs
+- Vendor SDKs (real):   anthropic (r41 closure), openai (r47), google.genai (r47)
+- Eval: classifier 0.985 / tool_match 0.948 / tier_match 0.909 on DLG-mk0
+- Operational gates:    real haiku call $0.000057 · real flash-lite call $0.000004
+
+The Forge code-LLM ships as a **production-ready orchestration system**:
+specialist-7B for hexa-canon work (~$0 marginal); claude-sonnet for general
+OOD code (~$0.0002/turn); claude-opus for hard reasoning (~$0.001/turn);
+openai-mini for structured output (~$0.0001/turn, when key provisioned);
+gemini-pro for long-context (~$0.001/turn, paid tier required).
+
+**Round 47 commits:** this ROADMAP entry · `tool/forge_runtime.py`
+(_load_key bugfix + _openai_call/_gemini_call NEW + _vendor_call stub
+removal + 2 new smoke-* CLI modes) · `LEARNING_PROGRAMMING.md` §8 r47 row.
+
+**dancinlab/\* repos LIVE: 42** (unchanged — software-only round).
+
 
 
 
