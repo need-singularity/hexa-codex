@@ -45,9 +45,11 @@ forge_audit                      forge_vacuum
 **Read-only paths**: `eval/delegation-mk0/manifest.jsonl` (300-task
 held-out manifest — never modified post-r51).
 
-**Append-only paths**: `state/delegation_log.jsonl`. Should be
-log-rotated by external tooling (e.g. `logrotate`) — runtime does not
-self-rotate.
+**Append-only paths**: `state/delegation_log.jsonl`. **Built-in
+size-based rotation as of r71** when
+`telemetry_max_size_bytes > 0` is set (default 0 = OFF for backward-compat).
+External `/etc/logrotate.d/forge` is still supported and may be used
+alongside — pick one mechanism per deployment.
 
 **Read + write paths**: `vendor_cache_path` JSONL or `forge_db_path`
 SQLite — compacted on eviction (JSONL) or on `forge_vacuum` (SQLite).
