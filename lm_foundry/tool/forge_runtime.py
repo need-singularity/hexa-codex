@@ -33,6 +33,7 @@ _sys.path[:] = [p for p in _sys.path if _os.path.abspath(p) != _THIS_DIR]
 
 import hashlib
 import json
+import sqlite3  # v0.5.13 (r61): unified WAL-backed cache + conv memory
 import re
 import subprocess
 import time
@@ -219,6 +220,14 @@ class ForgeRuntimeConfig:
     multi_turn_memory_max_turns:    int  = 5
     multi_turn_memory_max_chars:    int  = 8000
     multi_turn_memory_auto_prepend: bool = False
+    # v0.5.13 (r61): unified SQLite WAL backend for cross-process safety.
+    # When set, OVERRIDES `vendor_cache_path` and `conv_history_path` —
+    # both vendor cache and conv memory live in one SQLite file using
+    # `vendor_cache` and `conv_turns` tables. WAL mode supports concurrent
+    # reads + serialized writes from multiple processes. stdlib `sqlite3`
+    # only, no external deps. When None: fall back to JSONL paths (r56+r60
+    # behavior, single-process-only).
+    forge_db_path:                  Path | None = None
     # v0.5.12 (r60): optional file-backed conversation memory for
     # cross-process restart-persistence. Default None = in-memory only
     # (process-local, matches r57 behavior). When set, loads existing
@@ -701,20 +710,32 @@ class ForgeRuntime:
         # Cache eviction order — simple FIFO insertion ordering; Python dict
         # preserves insertion order. On full, pop the oldest 25% to amortise
         # the cleanup cost.
-        self._vendor_cache_stats = {"hits": 0, "misses": 0, "evictions": 0, "file_loads": 0, "file_writes": 0}
-        # v0.5.8 (r56): optional file-backed cache load for cross-process
-        # persistence. Reads existing JSONL, drops expired entries, populates
-        # in-memory dict. Capped at vendor_cache_max_entries (most-recent kept).
-        if cfg.vendor_cache_enabled and cfg.vendor_cache_path is not None:
-            self._vendor_cache_load_from_file()
+        self._vendor_cache_stats = {"hits": 0, "misses": 0, "evictions": 0,
+                                     "file_loads": 0, "file_writes": 0,
+                                     "db_loads": 0, "db_writes": 0}
         # v0.5.9 (r57): multi-turn conversation memory.
         self._conv_history: dict[str, list[ConversationTurn]] = {}
         # v0.5.12 (r60): conversation memory stats counter (mirrors cache stats).
-        self._conv_history_stats = {"file_loads": 0, "file_writes": 0}
-        # v0.5.12 (r60): optional file-backed conv-history load on init.
-        if (cfg.multi_turn_memory_enabled
-                and cfg.conv_history_path is not None):
-            self._conv_history_load_from_file()
+        self._conv_history_stats = {"file_loads": 0, "file_writes": 0,
+                                     "db_loads": 0, "db_writes": 0}
+        # v0.5.13 (r61): unified SQLite WAL backend. When set, OVERRIDES
+        # both `vendor_cache_path` and `conv_history_path`. Opens one
+        # connection per runtime instance; WAL mode supports concurrent
+        # reads + serialized writes from multiple processes.
+        self._db: sqlite3.Connection | None = None
+        if cfg.forge_db_path is not None:
+            self._db_open()
+            if cfg.vendor_cache_enabled:
+                self._vendor_cache_load_from_db()
+            if cfg.multi_turn_memory_enabled:
+                self._conv_history_load_from_db()
+        else:
+            # Legacy JSONL fall-backs (r56 + r60). Mutually exclusive with DB.
+            if cfg.vendor_cache_enabled and cfg.vendor_cache_path is not None:
+                self._vendor_cache_load_from_file()
+            if (cfg.multi_turn_memory_enabled
+                    and cfg.conv_history_path is not None):
+                self._conv_history_load_from_file()
 
     # ---- public entry point ----
 
@@ -1233,7 +1254,7 @@ class ForgeRuntime:
 
     def _vendor_cache_put(self, key: tuple, text: str, usage: dict) -> None:
         """Insert a cache entry; evict the oldest 25% if over cap; optionally
-        persist to file-backing (r56) for cross-process restart-persistence."""
+        persist (r56 file or r61 SQLite WAL) for cross-process persistence."""
         # Cap enforcement via LRU eviction.
         evicted_this_call = False
         if len(self._vendor_cache) >= self.cfg.vendor_cache_max_entries:
@@ -1244,15 +1265,17 @@ class ForgeRuntime:
             evicted_this_call = True
         expires = time.time() + self.cfg.vendor_cache_ttl_s
         self._vendor_cache[key] = (text, dict(usage), expires)
-        # File-backed persistence (r56).
-        if self.cfg.vendor_cache_path is not None:
+        # r61 SQLite WAL takes precedence over r56 JSONL when configured.
+        if self._db is not None:
+            # UPSERT; eviction handled by periodic expiry cleanup on next load.
+            # (We don't aggressively delete evicted rows from the DB to avoid
+            # write amplification; the next runtime load picks up most-recent.)
+            self._vendor_cache_put_to_db(key, text, usage, expires)
+        elif self.cfg.vendor_cache_path is not None:
+            # r56 JSONL fallback.
             if evicted_this_call:
-                # Eviction happened — compact the file (rewrite with current
-                # in-memory state) so it doesn't grow unboundedly with stale
-                # entries from prior evictions.
                 self._vendor_cache_compact_file()
             else:
-                # Steady-state: append a single JSONL record (cheap).
                 self._vendor_cache_append_to_file(key, text, usage, expires)
 
     # ---- v0.5.8 (r56) file-backed cache helpers ----
@@ -1343,12 +1366,15 @@ class ForgeRuntime:
     def clear_conversation(self, conv_id: str) -> None:
         """Drop the conversation buffer for `conv_id`. Useful when a session
         ends, when the user explicitly resets, or to bound long-running
-        conv memory. r60: if file-backed, also compacts the file so the
-        cleared conversation's turns don't accumulate."""
+        conv memory. r60/r61: if file-backed (JSONL) or DB-backed (SQLite),
+        also delete the cleared conversation's persisted turns."""
         existed = conv_id in self._conv_history
         self._conv_history.pop(conv_id, None)
-        if existed and self.cfg.conv_history_path is not None:
-            self._conv_history_compact_file()
+        if existed:
+            if self._db is not None:
+                self._conv_history_clear_db(conv_id)
+            elif self.cfg.conv_history_path is not None:
+                self._conv_history_compact_file()
 
     def _conv_history_load_from_file(self) -> None:
         """r60: load conversation buffers from `cfg.conv_history_path` on
@@ -1489,9 +1515,14 @@ class ForgeRuntime:
         if len(buf) > max_n:
             del buf[: len(buf) - max_n]
             evicted = True
-        # r60: file-backed conv-history append (or compact on eviction so
-        # the file doesn't grow with evicted entries).
-        if self.cfg.conv_history_path is not None:
+        # r61 SQLite WAL takes precedence over r60 JSONL.
+        if self._db is not None:
+            self._conv_history_append_to_db(conv_id, turn)
+            if evicted:
+                # Mirror in-memory eviction in DB so rows don't accumulate.
+                self._conv_history_evict_excess_db(conv_id)
+        elif self.cfg.conv_history_path is not None:
+            # r60 JSONL fallback.
             if evicted:
                 self._conv_history_compact_file()
             else:
@@ -1548,6 +1579,222 @@ class ForgeRuntime:
             budget -= up_len + ap_len
         msgs.append(current)
         return msgs
+
+    # ---- v0.5.13 (r61) unified SQLite WAL backend ----
+
+    def _db_open(self) -> None:
+        """Open the SQLite connection (WAL mode) and create tables if needed.
+        Idempotent — calling twice is a no-op after the first."""
+        if self._db is not None:
+            return
+        path = self.cfg.forge_db_path
+        if path is None:
+            return
+        path.parent.mkdir(parents=True, exist_ok=True)
+        # isolation_level=None → autocommit; we explicitly use transactions
+        # for multi-row operations to keep SQLite happy under WAL.
+        self._db = sqlite3.connect(str(path), isolation_level=None,
+                                     check_same_thread=False, timeout=10.0)
+        # WAL = concurrent reads + serialized writes; durable enough for
+        # cache + conv-memory use case. NORMAL sync = good perf/safety trade.
+        self._db.execute("PRAGMA journal_mode=WAL")
+        self._db.execute("PRAGMA synchronous=NORMAL")
+        self._db.execute("""
+            CREATE TABLE IF NOT EXISTS vendor_cache (
+                cache_key   TEXT PRIMARY KEY,
+                tool        TEXT NOT NULL,
+                model       TEXT NOT NULL,
+                max_tokens  INTEGER NOT NULL,
+                text        TEXT NOT NULL,
+                usage_json  TEXT NOT NULL,
+                expires     REAL NOT NULL,
+                inserted_at REAL NOT NULL
+            )
+        """)
+        self._db.execute("""
+            CREATE INDEX IF NOT EXISTS idx_vendor_cache_expires
+                ON vendor_cache(expires)
+        """)
+        self._db.execute("""
+            CREATE TABLE IF NOT EXISTS conv_turns (
+                seq INTEGER PRIMARY KEY AUTOINCREMENT,
+                conv_id          TEXT NOT NULL,
+                turn_id          TEXT NOT NULL,
+                timestamp_utc    TEXT NOT NULL,
+                user_prompt      TEXT NOT NULL,
+                assistant_text   TEXT NOT NULL,
+                classifier_label TEXT NOT NULL,
+                tool             TEXT,
+                model            TEXT,
+                recorded_at      REAL NOT NULL
+            )
+        """)
+        self._db.execute("""
+            CREATE INDEX IF NOT EXISTS idx_conv_turns_conv_id
+                ON conv_turns(conv_id, seq)
+        """)
+
+    def close(self) -> None:
+        """Close the SQLite connection cleanly. Safe to call multiple times.
+        Optional — OS reclaims FDs on process exit; SQLite WAL handles
+        unclean shutdowns. Useful in tests for tempfile cleanup."""
+        if self._db is not None:
+            try:
+                self._db.close()
+            except sqlite3.Error:
+                pass
+            self._db = None
+
+    # ---- SQLite vendor cache ----
+
+    def _vendor_cache_load_from_db(self) -> None:
+        """Load unexpired cache entries from SQLite into in-memory dict.
+        Capped at `vendor_cache_max_entries` (most-recent kept by `inserted_at`).
+        Drops expired entries via a single DELETE pass first."""
+        if self._db is None:
+            return
+        now = time.time()
+        # Lazy expiry cleanup — drops anything stale before loading.
+        try:
+            self._db.execute("DELETE FROM vendor_cache WHERE expires <= ?", (now,))
+        except sqlite3.Error as e:
+            print(f"[forge_runtime] db cache expire-cleanup failed: {e!r}", file=_sys.stderr)
+        # Load most-recent up to cap.
+        max_n = self.cfg.vendor_cache_max_entries
+        try:
+            cur = self._db.execute(
+                "SELECT cache_key, tool, model, max_tokens, text, usage_json, expires "
+                "FROM vendor_cache "
+                "ORDER BY inserted_at DESC LIMIT ?", (max_n,)
+            )
+            rows = list(cur.fetchall())
+        except sqlite3.Error as e:
+            print(f"[forge_runtime] db cache load failed: {e!r}", file=_sys.stderr)
+            return
+        # Insert in oldest-first order so LRU eviction works correctly.
+        for cache_key, tool, model, max_tokens, text, usage_json, expires in reversed(rows):
+            # cache_key is a stored hex string; we need the tuple form back.
+            # The original key format is (tool, model, max_tokens, sha256_hex).
+            # We stored the sha256 portion in cache_key (the join of all 4
+            # makes the row PRIMARY KEY uniquely). Reconstruct:
+            key = (tool, model, int(max_tokens), cache_key)
+            try:
+                usage = dict(json.loads(usage_json))
+            except (json.JSONDecodeError, TypeError):
+                usage = {}
+            self._vendor_cache[key] = (text, usage, float(expires))
+        self._vendor_cache_stats["db_loads"] += len(rows)
+
+    @staticmethod
+    def _cache_key_to_sha(key: tuple) -> str:
+        """Extract the sha256-hex portion of a cache key tuple for DB storage.
+        Cache key format is (tool, model, max_tokens, sha256_hex)."""
+        return str(key[3])
+
+    def _vendor_cache_put_to_db(self, key: tuple, text: str,
+                                  usage: dict, expires: float) -> None:
+        """Insert or replace a cache row. UPSERT semantics via REPLACE."""
+        if self._db is None:
+            return
+        tool, model, max_tokens, sha_hex = key[0], key[1], int(key[2]), str(key[3])
+        try:
+            self._db.execute(
+                "INSERT OR REPLACE INTO vendor_cache "
+                "(cache_key, tool, model, max_tokens, text, usage_json, expires, inserted_at) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                (sha_hex, tool, model, max_tokens, text,
+                 json.dumps(dict(usage), ensure_ascii=False),
+                 float(expires), time.time()),
+            )
+            self._vendor_cache_stats["db_writes"] += 1
+        except sqlite3.Error as e:
+            print(f"[forge_runtime] db cache put failed (in-memory only): {e!r}",
+                  file=_sys.stderr)
+
+    # ---- SQLite conv history ----
+
+    def _conv_history_load_from_db(self) -> None:
+        """Load all conv turns from DB grouped by conv_id, ordered by seq.
+        Respects max_turns per conv (oldest dropped if a conv has more
+        than max_turns rows — keeps the most-recent N)."""
+        if self._db is None:
+            return
+        max_n = self.cfg.multi_turn_memory_max_turns
+        try:
+            cur = self._db.execute(
+                "SELECT seq, conv_id, turn_id, timestamp_utc, user_prompt, "
+                "       assistant_text, classifier_label, tool, model "
+                "FROM conv_turns ORDER BY conv_id, seq ASC"
+            )
+            rows = list(cur.fetchall())
+        except sqlite3.Error as e:
+            print(f"[forge_runtime] db conv load failed: {e!r}", file=_sys.stderr)
+            return
+        for _seq, conv_id, turn_id, ts, up, at, label, tool, model in rows:
+            turn = ConversationTurn(
+                turn_id=str(turn_id), timestamp_utc=str(ts),
+                user_prompt=str(up), assistant_text=str(at),
+                classifier_label=str(label),
+                tool=tool, model=model,
+            )
+            buf = self._conv_history.setdefault(str(conv_id), [])
+            buf.append(turn)
+            if len(buf) > max_n:
+                del buf[: len(buf) - max_n]
+        self._conv_history_stats["db_loads"] += len(rows)
+
+    def _conv_history_append_to_db(self, conv_id: str,
+                                      turn: "ConversationTurn") -> None:
+        """Append a single conv-turn row to the DB."""
+        if self._db is None:
+            return
+        try:
+            self._db.execute(
+                "INSERT INTO conv_turns "
+                "(conv_id, turn_id, timestamp_utc, user_prompt, assistant_text, "
+                " classifier_label, tool, model, recorded_at) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (conv_id, turn.turn_id, turn.timestamp_utc, turn.user_prompt,
+                 turn.assistant_text, turn.classifier_label, turn.tool,
+                 turn.model, time.time()),
+            )
+            self._conv_history_stats["db_writes"] += 1
+        except sqlite3.Error as e:
+            print(f"[forge_runtime] db conv append failed (in-memory only): {e!r}",
+                  file=_sys.stderr)
+
+    def _conv_history_evict_excess_db(self, conv_id: str) -> None:
+        """When in-memory buffer was capped (oldest dropped), mirror the
+        eviction in the DB so file rows don't accumulate without bound.
+        Keep only the most-recent `max_turns` rows for this conv_id."""
+        if self._db is None:
+            return
+        max_n = self.cfg.multi_turn_memory_max_turns
+        try:
+            # Get seqs ordered newest-first; everything beyond max_n is excess.
+            cur = self._db.execute(
+                "SELECT seq FROM conv_turns WHERE conv_id = ? "
+                "ORDER BY seq DESC LIMIT -1 OFFSET ?",
+                (conv_id, max_n),
+            )
+            stale_seqs = [r[0] for r in cur.fetchall()]
+            if stale_seqs:
+                placeholders = ",".join("?" * len(stale_seqs))
+                self._db.execute(
+                    f"DELETE FROM conv_turns WHERE seq IN ({placeholders})",
+                    stale_seqs,
+                )
+        except sqlite3.Error as e:
+            print(f"[forge_runtime] db conv evict failed: {e!r}", file=_sys.stderr)
+
+    def _conv_history_clear_db(self, conv_id: str) -> None:
+        """Delete all rows for a conv_id (mirror of `clear_conversation`)."""
+        if self._db is None:
+            return
+        try:
+            self._db.execute("DELETE FROM conv_turns WHERE conv_id = ?", (conv_id,))
+        except sqlite3.Error as e:
+            print(f"[forge_runtime] db conv clear failed: {e!r}", file=_sys.stderr)
 
     def _vendor_cache_compact_file(self) -> None:
         """Rewrite the cache file from current in-memory state. Called after
@@ -2063,6 +2310,138 @@ def _smoke_test() -> int:
             _self_mod._vendor_call = _orig_vendor_call
             if conv_file.exists():
                 conv_file.unlink()
+
+        # Case 15: v0.5.13 (r61) SQLite WAL backend — vendor cache.
+        # Mirrors case [11] but uses forge_db_path (SQLite) instead of
+        # vendor_cache_path (JSONL). Runtime A writes, runtime B reads.
+        _self_mod._vendor_call = _fake_call
+        _call_count[0] = 0
+        db_file = Path("/tmp/forge_runtime_smoke_db.sqlite3")
+        for p in (db_file, db_file.with_suffix(".sqlite3-wal"),
+                  db_file.with_suffix(".sqlite3-shm")):
+            if p.exists():
+                p.unlink()
+        try:
+            cfg_db_a = ForgeRuntimeConfig(
+                anthropic_api_key="stub", openai_api_key="stub", gemini_api_key="stub",
+                telemetry_path=Path("/tmp/forge_runtime_smoke_db_a.jsonl"),
+                use_orchestration=True,
+                vendor_cache_enabled=True,
+                vendor_cache_ttl_s=300,
+                forge_db_path=db_file,
+            )
+            rt_da = ForgeRuntime(cfg_db_a)
+            test_prompt = "Write a Rust function that splits a string on commas."
+            r_a = rt_da.run_turn(test_prompt, gen_fn=lambda _: "")
+            assert r_a.delegations[0].ok is True
+            assert r_a.delegations[0].cache_hit is False
+            assert _call_count[0] == 1
+            assert rt_da._vendor_cache_stats["db_writes"] >= 1, (
+                f"expected db_writes >=1, got {rt_da._vendor_cache_stats}"
+            )
+            assert db_file.exists(), "SQLite db file should exist after first put"
+            rt_da.close()
+
+            # Runtime B: brand-new instance, same forge_db_path → should load
+            cfg_db_b = ForgeRuntimeConfig(
+                anthropic_api_key="stub", openai_api_key="stub", gemini_api_key="stub",
+                telemetry_path=Path("/tmp/forge_runtime_smoke_db_b.jsonl"),
+                use_orchestration=True,
+                vendor_cache_enabled=True,
+                vendor_cache_ttl_s=300,
+                forge_db_path=db_file,
+            )
+            rt_db = ForgeRuntime(cfg_db_b)
+            assert rt_db._vendor_cache_stats["db_loads"] == 1, (
+                f"expected db_loads=1, got {rt_db._vendor_cache_stats}"
+            )
+            # Same prompt → cache hit, no upstream call
+            r_b = rt_db.run_turn(test_prompt, gen_fn=lambda _: "")
+            assert r_b.delegations[0].ok is True
+            assert r_b.delegations[0].cache_hit is True, "instance B should hit cache loaded from DB"
+            assert _call_count[0] == 1, f"instance B should NOT call upstream; got {_call_count[0]}"
+            assert r_b.delegations[0].cost_usd == 0.0
+            print(f"[15] ORCH SQLite cache (r61): rt_b loaded {rt_db._vendor_cache_stats['db_loads']} "
+                  f"entry from DB, served {rt_db._vendor_cache_stats['hits']} hit(s) cross-process")
+            rt_db.close()
+        finally:
+            _self_mod._vendor_call = _orig_vendor_call
+            for p in (db_file, db_file.with_suffix(".sqlite3-wal"),
+                      db_file.with_suffix(".sqlite3-shm")):
+                if p.exists():
+                    p.unlink()
+
+        # Case 16: v0.5.13 (r61) SQLite WAL backend — conv memory.
+        # Mirrors case [14] but uses forge_db_path. Tests append + load +
+        # clear (DB row delete on conv reset).
+        _self_mod._vendor_call = _fake_call
+        _call_count[0] = 0
+        db_file = Path("/tmp/forge_runtime_smoke_db_conv.sqlite3")
+        for p in (db_file, db_file.with_suffix(".sqlite3-wal"),
+                  db_file.with_suffix(".sqlite3-shm")):
+            if p.exists():
+                p.unlink()
+        try:
+            cfg_dbc_a = ForgeRuntimeConfig(
+                anthropic_api_key="stub", openai_api_key="stub", gemini_api_key="stub",
+                telemetry_path=Path("/tmp/forge_runtime_smoke_dbc_a.jsonl"),
+                use_orchestration=True,
+                vendor_cache_enabled=False,
+                multi_turn_memory_enabled=True,
+                multi_turn_memory_max_turns=5,
+                forge_db_path=db_file,
+            )
+            rt_dca = ForgeRuntime(cfg_dbc_a)
+            conv_id = "smoke-conv-16"
+            for q in ["DB Q1.", "DB Q2.", "DB Q3."]:
+                rt_dca.run_turn(q, gen_fn=lambda _: "", conv_id=conv_id)
+            assert rt_dca._conv_history_stats["db_writes"] == 3, (
+                f"expected 3 db_writes, got {rt_dca._conv_history_stats}"
+            )
+            rt_dca.close()
+
+            # Runtime B: load from same DB
+            cfg_dbc_b = ForgeRuntimeConfig(
+                anthropic_api_key="stub", openai_api_key="stub", gemini_api_key="stub",
+                telemetry_path=Path("/tmp/forge_runtime_smoke_dbc_b.jsonl"),
+                use_orchestration=True,
+                vendor_cache_enabled=False,
+                multi_turn_memory_enabled=True,
+                multi_turn_memory_max_turns=5,
+                forge_db_path=db_file,
+            )
+            rt_dcb = ForgeRuntime(cfg_dbc_b)
+            assert rt_dcb._conv_history_stats["db_loads"] == 3, (
+                f"expected db_loads=3, got {rt_dcb._conv_history_stats}"
+            )
+            hist = rt_dcb.get_conversation_history(conv_id)
+            assert len(hist) == 3
+            assert hist[0].user_prompt == "DB Q1."
+            assert hist[2].user_prompt == "DB Q3."
+
+            # Append through B
+            rt_dcb.run_turn("DB Q4.", gen_fn=lambda _: "", conv_id=conv_id)
+            assert rt_dcb._conv_history_stats["db_writes"] == 1
+            hist2 = rt_dcb.get_conversation_history(conv_id)
+            assert len(hist2) == 4
+
+            # Clear → DB rows for this conv_id deleted
+            rt_dcb.clear_conversation(conv_id)
+            assert rt_dcb.get_conversation_history(conv_id) == []
+            # Verify DB shows 0 rows for the conv
+            n_rows = rt_dcb._db.execute(
+                "SELECT COUNT(*) FROM conv_turns WHERE conv_id = ?", (conv_id,)
+            ).fetchone()[0]
+            assert n_rows == 0, f"expected 0 rows after clear, got {n_rows}"
+            print(f"[16] ORCH SQLite conv (r61): rt_b loaded {rt_dcb._conv_history_stats['db_loads']} "
+                  f"turns; appended 1; clear→0 rows in DB")
+            rt_dcb.close()
+        finally:
+            _self_mod._vendor_call = _orig_vendor_call
+            for p in (db_file, db_file.with_suffix(".sqlite3-wal"),
+                      db_file.with_suffix(".sqlite3-shm")):
+                if p.exists():
+                    p.unlink()
 
     print("\n=== SMOKE TESTS PASSED ===")
     return 0

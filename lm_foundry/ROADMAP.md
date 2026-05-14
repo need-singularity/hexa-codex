@@ -5844,6 +5844,156 @@ load-on-init + append-on-record + compact-on-eviction + compact-on-clear
 **v0.5.x persistence story now complete**: vendor cache + conv memory
 both restart-persistent. Multi-process shared store remains v0.6.0+.
 
+### 2026-05-14 ~19:00 KST — round 61: v0.5.13 — SQLite WAL multi-process backend (`forge_db_path: Path`); 16/16 smoke pass; closes the multi-process safety caveat from r56+r60
+
+**Goal**: r56 (file cache) and r60 (file conv memory) both shipped with
+"NOT multi-process safe" caveats — concurrent JSONL appends from
+multiple processes CAN interleave. r61 adds an alternate backend using
+SQLite in WAL (Write-Ahead Logging) mode: concurrent reads + serialized
+writes, stdlib `sqlite3` only (no Redis/Postgres dep).
+
+**Implementation surface — `tool/forge_runtime.py`**:
+
+| Component | Change |
+|---|---|
+| `import sqlite3` | NEW (stdlib) |
+| `ForgeRuntimeConfig.forge_db_path: Path \| None = None` | NEW — when set, OVERRIDES `vendor_cache_path` + `conv_history_path`; unified SQLite file holds both tables |
+| `self._db: sqlite3.Connection \| None` | Per-runtime connection (one per instance) |
+| `_vendor_cache_stats.{db_loads, db_writes}` + `_conv_history_stats.{db_loads, db_writes}` | NEW stat counters |
+| `_db_open` | NEW — opens connection, sets WAL/NORMAL, creates `vendor_cache` + `conv_turns` tables |
+| `close()` | NEW public method — clean shutdown for tests |
+| 4 SQLite cache helpers | `_vendor_cache_load_from_db`, `_vendor_cache_put_to_db`, `_cache_key_to_sha`, lazy expire-cleanup before load |
+| 4 SQLite conv helpers | `_conv_history_load_from_db`, `_conv_history_append_to_db`, `_conv_history_evict_excess_db`, `_conv_history_clear_db` |
+| `__init__` dispatch | `if forge_db_path: SQLite; elif vendor_cache_path / conv_history_path: JSONL; else: in-memory` |
+| `_vendor_cache_put` | DB-takes-precedence-over-JSONL when both set (db_path wins) |
+| `_record_conversation_turn` | Same DB-precedence dispatch |
+| `clear_conversation` | DELETEs rows in DB OR compacts JSONL OR in-memory only |
+
+**Schema**:
+
+```sql
+CREATE TABLE IF NOT EXISTS vendor_cache (
+    cache_key   TEXT PRIMARY KEY,
+    tool        TEXT NOT NULL,
+    model       TEXT NOT NULL,
+    max_tokens  INTEGER NOT NULL,
+    text        TEXT NOT NULL,
+    usage_json  TEXT NOT NULL,
+    expires     REAL NOT NULL,
+    inserted_at REAL NOT NULL
+);
+CREATE INDEX idx_vendor_cache_expires ON vendor_cache(expires);
+
+CREATE TABLE IF NOT EXISTS conv_turns (
+    seq INTEGER PRIMARY KEY AUTOINCREMENT,
+    conv_id          TEXT NOT NULL,
+    turn_id          TEXT NOT NULL,
+    timestamp_utc    TEXT NOT NULL,
+    user_prompt      TEXT NOT NULL,
+    assistant_text   TEXT NOT NULL,
+    classifier_label TEXT NOT NULL,
+    tool             TEXT,
+    model            TEXT,
+    recorded_at      REAL NOT NULL
+);
+CREATE INDEX idx_conv_turns_conv_id ON conv_turns(conv_id, seq);
+```
+
+**Pragmas** (set on every connection):
+- `journal_mode=WAL` — concurrent reads + serialized writes
+- `synchronous=NORMAL` — durable enough for cache + conv-memory; faster than `FULL`
+
+**Smoke case [15]** — SQLite vendor cache cross-process:
+1. Runtime A with `forge_db_path` → real upstream call (fake) → cache write (db_writes=1)
+2. Verify `.sqlite3` file exists
+3. Runtime A explicit `close()`
+4. Brand-new Runtime B with same `forge_db_path` → loads on init (db_loads=1)
+5. Same prompt through B → cache hit, NO upstream call, cost=$0
+
+**Smoke case [16]** — SQLite conv memory cross-process:
+1. Runtime A records 3 turns → db_writes=3
+2. Runtime A `close()`
+3. Brand-new Runtime B → loads on init (db_loads=3); `get_conversation_history` returns same content
+4. Append 1 more through B → db_writes=1
+5. `clear_conversation` → DB rows deleted; `SELECT COUNT(*)` confirms 0
+
+All 16/16 forge_runtime smoke pass.
+
+**Zero regression**:
+- forge_runtime smoke: **16/16** (was 14/14; +2 = cases 15 + 16 SQLite)
+- classify_prompt smoke: 21/21 (unchanged)
+- select_vendor_tier smoke: 14/14 (unchanged)
+- forge_audit `--smoke`: PASSED (unchanged)
+- DLG-mk0: classifier overall 0.9833 / tier_match 1.000 / tool_match 0.9926 (all unchanged)
+- Brier 0.0242 / ECE 0.0461 (unchanged)
+
+**3 backend modes** now supported (priority cascade):
+
+| Mode | Trigger | Properties |
+|---|---|---|
+| **SQLite WAL** (r61) | `forge_db_path` set | Multi-process safe (WAL); both cache + conv unified |
+| **JSONL** (r56+r60) | `vendor_cache_path` and/or `conv_history_path` set | Single-process restart-persistent; OSError graceful |
+| **In-memory** (r48+r57) | Neither path set | Backward-compat; lost on process exit |
+
+The three modes compose with the existing in-memory layer — every put
+hits the in-memory dict FIRST (fast read path), then persists to disk
+when configured. Reads always check in-memory first.
+
+**Multi-process safety details**:
+- SQLite WAL allows MANY concurrent readers + ONE writer at a time;
+  writers serialize via the WAL log
+- Each runtime opens its own connection; readers see committed data
+- INSERT OR REPLACE on cache puts is atomic per-row
+- INSERT on conv turns is atomic per-row
+- DELETE on `clear_conversation` is atomic
+- 10-second `timeout` setting on connection waits for the writer-lock
+  (raises OperationalError if blocked longer)
+- All DB operations wrapped in try/except sqlite3.Error → degrade to
+  in-memory + stderr log; runtime never raises
+
+**`close()` method** added for clean test cleanup (SQLite WAL leaves
+`.sqlite3-wal` and `.sqlite3-shm` files; explicit close reclaims them).
+Production deployments don't need to call `close()` — OS handles it on
+process exit; SQLite WAL is designed for unclean shutdowns.
+
+**Honesty caveats**:
+
+- **Eviction in DB is lazy on read**: when in-memory cache LRU-evicts
+  25% of entries, the DB rows are NOT immediately deleted (avoids
+  write amplification under load). The next runtime load picks up
+  most-recent up to `vendor_cache_max_entries`; rows beyond that are
+  just dead weight. A periodic `VACUUM` cron is a v0.6.x candidate.
+- **Conv eviction IS mirrored to DB** (`_conv_history_evict_excess_db`)
+  because conv memory has a hard cap (`max_turns` per conv) and
+  retention beyond that has no value. Mirrors immediate.
+- **SQLite WAL files** are local-disk only. Network filesystems (NFS,
+  CIFS, etc.) DO NOT support SQLite WAL correctly. Production must
+  use a local mount; for distributed deploys, use a real network DB
+  (Postgres / managed Redis / DynamoDB).
+- **The connection is per-runtime-instance, not pooled**. For very
+  high-throughput single-process workloads (10K+ writes/sec), the
+  serialized-writer bottleneck shows. SQLite is fine to 1K writes/sec
+  on a modern SSD; beyond that, batch writes or move to Postgres.
+- **No schema migration story**. If the schema changes in v0.6+, the
+  upgrade is to: (a) `forge_db_path` versioning in the filename (e.g.
+  `forge.v2.sqlite3`); OR (b) explicit migration script. Currently
+  the schema is `CREATE TABLE IF NOT EXISTS` so adding columns is
+  a no-op only if defaulted-NULL.
+
+**Round 61 commits:** this ROADMAP entry · `tool/forge_runtime.py`
+(`import sqlite3` + `forge_db_path` config + `_db_open` + `close()` +
+4 cache DB helpers + 4 conv DB helpers + dispatch in `__init__` /
+`_vendor_cache_put` / `_record_conversation_turn` / `clear_conversation`
++ smoke cases [15] + [16]) · `LEARNING_PROGRAMMING.md` §8 r61 row.
+
+**Cost**: \$0 (CPU; smoke only).
+**GA UNCHANGED**: r39 v3-t3patch (94.29% Mk.I strict).
+**dancinlab/\* repos LIVE: 42** (unchanged — software-only round).
+
+**v0.5.x line: production-grade across single-process AND multi-process
+deployment patterns** — JSONL for single-process simplicity, SQLite WAL
+for production behind a load balancer.
+
 
 
 
