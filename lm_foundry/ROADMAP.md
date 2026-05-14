@@ -6424,6 +6424,48 @@ measurement spend).
   identical prompts) is normal for any LLM call; 1-2% noise should be
   expected baseline when comparing A/B configs.
 
+### 2026-05-14 ~21:00 KST — round 65: v0.5.17 — `forge_keys` CLI for vendor key management
+
+**Goal**: r53/r62/r64 measurements + OPERATIONS.md §3 troubleshooting all
+depend on operator knowing the `security add-generic-password -s ...` or
+`secret set ...` invocation. r65 ships a friendlier CLI that wraps the
+dancinlab `~/core/secret/bin/secret` store and exposes only the 3 vendor
+keys forge runtime cares about.
+
+**`tool/forge_keys.py` NEW (~290 LOC)** — 4 subcommands:
+
+| Command | What |
+|---|---|
+| `forge_keys status` | Show env-var / secret-store / runtime-resolve state for all 3 vendors |
+| `forge_keys add <vendor>` | Read key from stdin (getpass-hidden in TTY; piped in non-TTY), store via `secret set vendor.api_key`. Sanity-checks prefix (sk-ant- / sk- / AIza). |
+| `forge_keys remove <vendor>` | Delete from secret store |
+| `forge_keys test <vendor\|all>` | Real API call (tiny, ~\$0.0001 ea): anthropic→haiku, openai→gpt-5-nano, gemini→flash-lite |
+
+Key NEVER appears in argv (avoid shell history + `ps` leak); stdin-only
+input via `getpass` for interactive, plain read for piped.
+
+**Status at the time of writing (Mac dev box)**:
+```
+anthropic    anthropic.api_key (✓ set)   ✓ YES
+gemini       gemini.api_key (✓ set)      ✓ YES
+openai       openai.api_key (—)          ✗ MISSING
+
+Resolved: 2/3. Missing: openai
+```
+
+Anthropic + Gemini both verified live via `forge_keys test`:
+- anthropic: claude-haiku-4-5 returns "OK" (11 in, 4 out)
+- gemini: gemini-2.5-flash-lite returns "OK" (5 in, 1 out)
+
+OpenAI remains to add via `forge_keys add openai` once user provides key.
+
+**Round 65 commits:** this ROADMAP entry · `tool/forge_keys.py` NEW ·
+`LEARNING_PROGRAMMING.md` §8 r65 row.
+
+**Cost**: \$0.0002 (4 test API calls × ~\$0.00005 each).
+**GA UNCHANGED**: r39 v3-t3patch (94.29% Mk.I strict).
+**dancinlab/\* repos LIVE: 42** (unchanged — tooling-only round).
+
 
 
 
