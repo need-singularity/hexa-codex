@@ -1,8 +1,13 @@
-# Orchestration v0.5.5 — consolidated spec
+# ORCHESTRATION — forge runtime layer (pre-7B classifier + tier router + vendor SDKs + cache)
+
+> **Domain doc** (per dancinlab-wide `domain-meta-domain` principle: per-topic
+> roadmap as root `UPPERCASE.md`). Current state lives in the spec sections
+> below; chronological build history at `## Log` (bottom) cross-references
+> ROADMAP §CHANGELOG entries.
 
 **Status:** SPEC · v0.5.5 · 2026-05-14 · supersedes
-`spec-orchestration-v0.5.0.md` (the v0.5.0 base) AND obsoletes §4 / §10 of
-`spec-delegation-v0.4.0.md` (the in-weight routing thesis disproved by
+`papers/spec-orchestration-v0.5.0.md` (the v0.5.0 base) AND obsoletes §4 / §10 of
+`papers/spec-delegation-v0.4.0.md` (the in-weight routing thesis disproved by
 rounds r40-r43.1). **The r39 GA (v3-t3patch) adapter ships as the
 permanent pure-specialist weight artifact**; this document defines the
 runtime orchestration system that wraps it into a production-ready
@@ -617,7 +622,7 @@ The v0.5.x line is **features-complete** as of r49. Future work:
 | `eval/delegation-mk0/manifest.jsonl` | 200 rows | Routing eval surface |
 | `papers/spec-orchestration-v0.5.0.md` | 342 | OBSOLETE — superseded by this doc |
 | `papers/spec-delegation-v0.4.0.md` | 482 | OBSOLETE §4/§10; §1-3, §5-9 still valid |
-| `papers/spec-orchestration-v0.5.5.md` | this file | CONSOLIDATED spec |
+| `ORCHESTRATION.md` | this file | CONSOLIDATED spec (root domain doc, per `domain-meta-domain` convention) |
 
 ---
 
@@ -657,3 +662,36 @@ The v0.5.x line is **features-complete** as of r49. Future work:
   automatically. The user-facing message says "retry in a moment"; the
   client (calling code) must implement the retry loop. Auto-retry with
   exponential backoff is a v0.5.x+ candidate.
+
+---
+
+## Log
+
+Chronological build history (cross-ref ROADMAP §CHANGELOG for full per-round narratives):
+
+- **2026-05-14 r44** — v0.5.0 architecture line OPENED. Pre-7B keyword
+  classifier `tool/classify_prompt.py` (~440 LOC). DLG-mk0 classifier
+  accuracy 0.985 / passes 0.92 GA gate by +6.5pp. v0.4.x in-weight thesis
+  closed after 5 disproof rounds (r40-r43.1).
+- **2026-05-14 r45** — `tool/forge_runtime.py` classifier wire-up
+  (`_run_turn_orchestrated`). End-to-end real Anthropic call verified.
+  v0.5.0 GA stack OPERATIONAL.
+- **2026-05-14 r46** — `tool/select_vendor_tier.py` NEW (~210 LOC) — per-
+  vendor tier routing (long-ctx→gemini-pro, math→opus, struct→openai-mini,
+  general→claude-sonnet). DLG-mk0 tool_match 0.948 / tier_match 0.909.
+- **2026-05-14 r47** — Real OpenAI + Gemini SDKs wired (no more stubs);
+  `_load_key` secret-CLI path bugfix. All 3 vendors verified end-to-end.
+  Forge orchestration stack production-ready.
+- **2026-05-14 r48** — `upstream_quota` error code + per-prompt vendor
+  cache (TTL 300s, LRU 1024). Production cost optimization. `DelegationCall.cache_hit`
+  telemetry. 10/10 offline smoke.
+- **2026-05-14 r49** — Reason-class split: `reason-deep` (opus) vs
+  `reason-algo` (o4-mini) + ml-comparison demotion to sonnet. tier_match
+  0.909 → 1.000, tool_match 0.948 → 0.987 — all 7 r48 misses closed.
+  21/21 classify + 14/14 tier + 10/10 forge smoke. ~80% per-call cost
+  reduction on reason-algo routes.
+- **2026-05-14 r50** — This consolidated spec doc, originally written
+  to `papers/spec-orchestration-v0.5.5.md`, then moved to root as
+  `ORCHESTRATION.md` per dancinlab `domain-meta-domain` convention
+  (per-topic roadmap as root UPPERCASE.md, one domain = one file).
+

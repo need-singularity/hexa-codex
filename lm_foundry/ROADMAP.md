@@ -4689,7 +4689,7 @@ formula derivations), r49 cuts the per-call cost on those routes by
 **v0.5.0 GA stack: production-ready with quota-aware errors + per-prompt
 cache + reason-class split for cost-optimal tier routing.**
 
-### 2026-05-14 ~13:30 KST — round 50: v0.5.5 — consolidated spec doc (papers/spec-orchestration-v0.5.5.md, 659 lines); v0.5.0 spec marked OBSOLETE; no code change
+### 2026-05-14 ~13:30 KST — round 50: v0.5.5 — consolidated `ORCHESTRATION.md` (root domain doc, 659 lines, per `domain-meta-domain` convention); v0.5.0 spec marked OBSOLETE; no code change
 
 **Why this round**: After 6 software-only rounds (r44-r49), the
 orchestration spec was scattered across:
@@ -4700,7 +4700,9 @@ orchestration spec was scattered across:
 New onboarding readers couldn't get the current v0.5.x picture without
 reading 5 ROADMAP entries + the v0.5.0 spec and mentally diffing them.
 
-**The fix**: `papers/spec-orchestration-v0.5.5.md` (659 lines) consolidates:
+**The fix**: `ORCHESTRATION.md` (659 lines, at repo root per `domain-meta-domain`
+convention — per-topic roadmap as root `UPPERCASE.md`, one domain = one
+file) consolidates:
 
 - §1 **Goal + non-goals** with the 12-row acceptance gates table (all met)
 - §2 **v0.4.x post-mortem** (kept verbatim — five failure modes)
@@ -4733,13 +4735,15 @@ reading 5 ROADMAP entries + the v0.5.0 spec and mentally diffing them.
   upstream_quota distinguishes 429 but doesn't auto-retry yet
 
 **`papers/spec-orchestration-v0.5.0.md` gets a SUPERSEDED banner** pointing
-to v0.5.5 — kept on disk for historical design-rationale lookup, not
-deleted.
+to `../ORCHESTRATION.md` — kept on disk for historical design-rationale
+lookup, not deleted.
 
 **No code change.** `git diff` is one new file + one banner edit.
 
-**Round 50 commits:** this ROADMAP entry · `papers/spec-orchestration-v0.5.5.md`
-NEW · `papers/spec-orchestration-v0.5.0.md` (banner).
+**Round 50 commits:** this ROADMAP entry · `ORCHESTRATION.md` NEW at
+root (was initially placed at `papers/spec-orchestration-v0.5.5.md`,
+relocated in a follow-up commit per `domain-meta-domain` convention) ·
+`papers/spec-orchestration-v0.5.0.md` (banner pointing to root).
 
 **dancinlab/\* repos LIVE: 42** (unchanged — doc-only).
 **GA UNCHANGED**: r39 v3-t3patch.
