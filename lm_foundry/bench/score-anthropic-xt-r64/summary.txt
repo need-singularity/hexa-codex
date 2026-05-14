@@ -1,0 +1,32 @@
+================================================================================================
+ANTHROPIC CROSS-TURN PROMPT-CACHE ROI (r64 v2) — model: claude-sonnet-4-6
+================================================================================================
+Config A = cache marker ON  (anthropic_cross_turn_cache_enabled=True, r62 default)
+Config B = cache marker OFF (anthropic_cross_turn_cache_enabled=False)
+Direct `_anthropic_call` (bypass classifier+selector) ensures uniform model namespace.
+
+turn  cfg    fresh    cr+    rd+   out    cost USD  lat ms
+------------------------------------------------------------------------------------------------
+1     A         97      0      0   512    0.007971   13743
+1     B         97      0      0   512    0.007971   10785
+
+2     A        630      0      0   512    0.009570   13018
+2     B        630      0      0   512    0.009570   12884
+
+3     A         25   1141      0   512    0.012034   11900
+3     B         25   1141      0   512    0.012034   12724
+
+4     A         20    537   1141   240    0.006016    8488
+4     B         20    538   1141   206    0.005510    6713
+================================================================================================
+AGGREGATES
+================================================================================================
+metric                                            config A        config B          delta     A vs B
+------------------------------------------------------------------------------------------------
+fresh input tokens                                     772             772             +0      +0.0%
+cache CREATE tokens (first write premium)             1678            1679             -1      -0.1%
+cache READ tokens (savings)                           1141            1141             +0      +0.0%
+output tokens                                         1776            1742            +34      +2.0%
+total cost USD                                   $0.035591       $0.035085     $+0.000506      +1.4%
+
+VERDICT: Mixed — Config A cost ($0.035591) vs Config B ($0.035085). Cache_create premium not yet recovered by cache_read savings.

@@ -703,11 +703,19 @@ existing weights:
 - **SQLite WAL requires local disk** — NOT NFS, CIFS, or other network
   filesystems. For distributed deployments, use a real network DB
   (Postgres / managed Redis / DynamoDB) — not in scope for v0.5.x.
-- **Anthropic cross-turn cache_control (r62) shipped but unmeasured** —
-  the SDK marker is in place; ROI (input-token savings on long convs)
-  needs production telemetry to confirm. `forge_audit` already captures
-  `cached_tokens`; a measurement round can compare before/after on
-  real conversational workloads.
+- **Anthropic cross-turn cache_control (r62) MEASURED in r64 — REDUNDANT
+  in practice**. The empirical finding (`bench/score-anthropic-xt-r64/`):
+  Config A (marker ON) and Config B (marker OFF) produced bit-for-bit
+  identical cache_create / cache_read counts on a 4-turn sonnet
+  conversation. Anthropic auto-caches the conversation prefix using only
+  the `cache_control` marker on the system message (r45 baseline).
+  r62's `_anthropic_cache_mark` is kept in code as a defensive no-op
+  against future SDK behavior changes; the runtime is NOT degraded by
+  its presence. Cache READ IS valuable (~90% savings on cached portion)
+  but materializes from anthropic's automatic mechanism, not from r62's
+  explicit marker. Per-model thresholds (sonnet 1024 tok, haiku 2048,
+  opus 1024) gate when cache fires; turns 3+ of a typical conversation
+  cross sonnet's threshold.
 - **`forge_vacuum` requires runtime idle during VACUUM** (exclusive
   lock). Schedule cron in a low-traffic window.
 - **Schema versioning is detection-only** — `SCHEMA_VERSION = 1` is

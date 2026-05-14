@@ -228,6 +228,13 @@ class ForgeRuntimeConfig:
     # only, no external deps. When None: fall back to JSONL paths (r56+r60
     # behavior, single-process-only).
     forge_db_path:                  Path | None = None
+    # v0.6.0 (r64): toggle for anthropic cross-turn prompt-cache marker
+    # (`_anthropic_cache_mark`). r62 introduced the marker as always-on
+    # when multi-turn native messages are dispatched. r64 adds the toggle
+    # so the marker can be A/B tested. Default True preserves r62 behavior.
+    # Effect when False: `_anthropic_call` skips the cache_control marker
+    # on the second-to-last message; only the system prefix is cached.
+    anthropic_cross_turn_cache_enabled: bool = True
     # v0.5.12 (r60): optional file-backed conversation memory for
     # cross-process restart-persistence. Default None = in-memory only
     # (process-local, matches r57 behavior). When set, loads existing
@@ -446,12 +453,15 @@ def _anthropic_call(model: str, prompt: str, max_tokens: int,
         # r59: use native messages list if provided; otherwise wrap prompt.
         msgs = messages if messages is not None else [{"role": "user", "content": prompt}]
         # r62 (v0.5.14): cross-turn upstream prompt-cache. When `messages` is
-        # set AND has ≥2 turns, mark the boundary BEFORE the latest user
-        # message with `cache_control` so anthropic caches the conversation
-        # prefix (system + earlier turns). The next turn in the same conv
-        # within the 5-min TTL hits anthropic's cache, saving input tokens.
-        # Single-turn calls keep the legacy behavior (only system cached).
-        if messages is not None and len(msgs) >= 2:
+        # set AND has ≥2 turns AND cfg.anthropic_cross_turn_cache_enabled,
+        # mark the boundary BEFORE the latest user message with `cache_control`
+        # so anthropic caches the conversation prefix (system + earlier turns).
+        # Next turn in same conv within 5-min TTL hits anthropic cache, saving
+        # input tokens. Single-turn calls keep legacy behavior (only system cached).
+        # r64 added the toggle so the marker can be A/B tested.
+        if (messages is not None
+                and len(msgs) >= 2
+                and getattr(cfg, "anthropic_cross_turn_cache_enabled", True)):
             msgs = _anthropic_cache_mark(msgs)
         resp = client.messages.create(
             model=model,
@@ -492,10 +502,15 @@ def _anthropic_call(model: str, prompt: str, max_tokens: int,
     prc = _ANTHROPIC_PRICING_USD_PER_MTOK.get(model, (0, 0, 0, 0))
     cost_usd = (in_tok * prc[0] + cache_create * prc[1] + cache_read * prc[2]
                 + out_tok * prc[3]) / 1_000_000.0
+    # r64 fix: surface cache_create separately from cache_read. r62's
+    # `cached_tokens` only captured cache_read (savings on subsequent
+    # calls) but cache_create (premium paid on first writes) was hidden
+    # from telemetry. Both matter for honest cross-turn cache ROI accounting.
     usage = {
         "input_tokens":  in_tok + cache_create + cache_read,
         "output_tokens": out_tok,
         "cached_tokens": cache_read,
+        "cache_create_tokens": cache_create,
         "cost_usd":      round(cost_usd, 6),
     }
     return True, text, usage, None

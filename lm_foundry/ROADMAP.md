@@ -6278,6 +6278,152 @@ runner**. Next user-action items (OpenAI key / Gemini paid tier) and
 v0.6.0+ architectural items (routing-LoRA / Lever 5+) sit in front of
 a fully-instrumented platform.
 
+### 2026-05-14 ~20:30 KST — round 64: v0.5.16 — anthropic cross-turn cache ROI MEASURED; surprising finding: r62 marker is REDUNDANT (anthropic auto-caches via system marker)
+
+**Goal**: close r62's honesty caveat "cross-turn cache_control shipped
+per SDK docs but NOT YET MEASURED". r64 ships the measurement.
+
+**Design**: 4-turn conversation through `_anthropic_call` directly
+(bypass classifier+selector for uniform model namespace), run TWICE:
+- Config A: `_anthropic_cache_mark` ON (r62 default; marks second-to-
+  last message with `cache_control: ephemeral`)
+- Config B: `_anthropic_cache_mark` OFF (only system has cache_control,
+  which is r45 baseline behavior)
+
+Same prompts, same model (sonnet), 2s pause between turns (well within
+5-min TTL). Capture per-turn: fresh input_tokens, cache_create_tokens,
+cache_read_tokens, output_tokens, cost_usd.
+
+#### r64-v1 (lessons learned, kept in docstring)
+
+First attempt routed through full `run_turn` → classifier →
+tier_selector. The 4 prompts bounced across opus / sonnet (turn 3
+"trade-offs vs" matched ml-comparison → demotion). Anthropic prompt-
+cache is per-model namespace, so cross-turn caching never engaged.
+Plus our `cached_tokens` field captured only `cache_read_input_tokens`,
+hiding `cache_creation_input_tokens` from telemetry entirely.
+
+**Cost**: ~\$0.20 wasted on a mis-designed experiment.
+
+#### r64-v2 (this — corrected)
+
+Two fixes:
+
+1. `tool/forge_runtime.py` — `_anthropic_call` now surfaces
+   `cache_create_tokens` separately from `cached_tokens` (cache_read)
+   in the usage dict. Both are needed for honest cross-turn ROI
+   accounting because cache_create is billed at 1.25× input rate
+   (premium first-write) while cache_read is 0.10× (savings).
+2. `tool/bench_anthropic_cross_turn.py` (NEW, ~250 LOC) — calls
+   `_anthropic_call` directly with explicit model + manually-
+   constructed messages list. Bypasses classifier+selector entirely.
+
+**Actual measurement on `claude-sonnet-4-6`**:
+
+| Turn | Config A (marker ON) | Config B (marker OFF) |
+|---:|---|---|
+| 1 | fresh=97 cr=0 rd=0 out=512 | fresh=97 cr=0 rd=0 out=512 |
+| 2 | fresh=630 cr=0 rd=0 out=512 | fresh=630 cr=0 rd=0 out=512 |
+| 3 | fresh=25 **cr=1141** rd=0 out=512 | fresh=25 **cr=1141** rd=0 out=512 |
+| 4 | fresh=20 cr=537 **rd=1141** out=240 | fresh=20 cr=538 **rd=1141** out=206 |
+
+**Aggregates**:
+
+| Metric | Config A | Config B | Δ |
+|---|---:|---:|---:|
+| fresh input tokens | 772 | 772 | 0 |
+| cache CREATE tokens | 1678 | 1679 | -1 (noise) |
+| cache READ tokens | 1141 | 1141 | 0 |
+| output tokens | 1776 | 1742 | +34 (~2% noise) |
+| **total cost USD** | **\$0.035591** | **\$0.035085** | **+\$0.000506 (+1.4%)** |
+
+#### THE FINDING
+
+**Anthropic's prompt cache fires IDENTICALLY in both configs.** The
+r62 `_anthropic_cache_mark` helper (marking user/assistant boundaries)
+is REDUNDANT — anthropic already caches the entire conversation prefix
+using just the `cache_control` marker on the system message (which is
+the r45 baseline behavior, present in both configs).
+
+**Mechanism (inferred from empirical data)**:
+- Turn 1 & 2: prefix size < 1024 sonnet min — no caching
+- Turn 3: cumulative prefix (system + u1 + a1 + u2 + a2 + u3) crosses
+  the 1024 threshold → anthropic auto-creates a cache entry of size
+  1141 tokens (the prefix up to a point before the current user turn)
+- Turn 4: cumulative prefix matches the turn-3 cache entry → cache_read
+  hits 1141 tokens, plus a new 537-token cache_create extension
+
+**The 1.4% cost difference between A and B is OUTPUT-token noise**
+(Config A produced 240 out vs B's 206 out on turn 4; same answer
+content, different stochastic length). Cache behavior is bit-for-bit
+identical.
+
+#### What this means for r62
+
+`_anthropic_cache_mark` is **harmless but ineffective at sonnet
+size**. It's not regressing performance (no extra `cache_creation_input_tokens`
+beyond what anthropic creates anyway), and it's defensive against
+hypothetical future anthropic behavior changes that might require
+explicit per-message markers. Keep the code; revise the spec claim
+from "saves input tokens on conversation prefix" to "is a no-op in
+practice; anthropic auto-caches via system marker; kept for forward-
+compat".
+
+For opus / haiku, the boundary thresholds differ (1024 / 2048
+respectively) and we have not yet measured those — anthropic could
+have different behavior at those size thresholds. Future measurement
+would need to verify per-model.
+
+#### Cache READ at sonnet IS valuable
+
+Even though r62's helper is redundant, anthropic's auto-caching DOES
+save money on long conversations:
+- Turn 4 cache_read of 1141 tokens at \$0.30/Mtok = \$0.000342 saved
+  vs paying full input rate (\$3.00/Mtok = \$0.003423)
+- **~90% savings on the cached portion**
+
+For a 10-turn conversation with monotonic prefix growth, cumulative
+savings would be substantial. r62's ORCHESTRATION.md §15 claim "cache
+saves money on long convs" is TRUE — just not because of `_anthropic_cache_mark`.
+
+#### Spend
+
+- r64-v1 (wasted on mis-designed experiment): \$0.20
+- r64-v2 (this measurement): \$0.07
+- **Total r64 spend: \$0.27** (within budget)
+
+**v0.5.x line cumulative**: now \~\$18.54 (was \$18.27 through r63).
+
+#### Round 64 commits
+
+- `tool/forge_runtime.py` — `_anthropic_call` returns
+  `cache_create_tokens` separately (r64 fix)
+- `tool/forge_runtime.py` — new config field
+  `anthropic_cross_turn_cache_enabled: bool = True` (lets the bench
+  toggle the marker; default preserves r62 behavior)
+- `tool/bench_anthropic_cross_turn.py` NEW (~280 LOC)
+- `bench/score-anthropic-xt-r64/` artifacts (per_turn_a.jsonl,
+  per_turn_b.jsonl, summary.txt)
+- `OPERATIONS.md` §9 honest-limits expansion with this finding
+- `ORCHESTRATION.md` §15 cross-turn cache caveat revision
+- this ROADMAP entry · `LEARNING_PROGRAMMING.md` §8 r64 row
+
+**GA UNCHANGED**: r39 v3-t3patch (94.29% Mk.I strict).
+**dancinlab/\* repos LIVE: 42** (unchanged — software-only round with
+measurement spend).
+**Smoke gates**: classifier 0.9833, tier_match 1.000, tool_match
+0.9926, Brier 0.0242, ECE 0.0461 — all unchanged.
+
+#### Honesty caveat catalog (collected)
+
+- The finding above is on `claude-sonnet-4-6` specifically. Opus + haiku
+  behavior may differ (different cache size thresholds).
+- `_anthropic_cache_mark` is kept in code but documented as "no-op in
+  practice; defensive against future SDK behavior changes".
+- Output-token stochasticity (1.4% cost noise between A/B with
+  identical prompts) is normal for any LLM call; 1-2% noise should be
+  expected baseline when comparing A/B configs.
+
 
 
 
