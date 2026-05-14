@@ -219,6 +219,17 @@ class ForgeRuntimeConfig:
     multi_turn_memory_max_turns:    int  = 5
     multi_turn_memory_max_chars:    int  = 8000
     multi_turn_memory_auto_prepend: bool = False
+    # v0.5.11 (r59): vendor-native message-list threading.
+    # When True (requires auto_prepend=True), instead of building a
+    # `Previous conversation:` string preamble, the runtime constructs a
+    # proper `messages=[{role: 'user'|'assistant', content: ...}]` list
+    # and sends it via the new `messages=` parameter to `_vendor_call`.
+    # Benefits: anthropic/openai/gemini all consume this natively (no
+    # string parsing), upstream prompt-cache aligns better with stable
+    # system+early-turn prefixes, and the conversation structure is
+    # legible to the vendor. CAVEAT: cache key shifts to messages-hash;
+    # different conversation states produce different keys (as expected).
+    multi_turn_memory_native_messages: bool = False
 
     @classmethod
     def from_env(cls, **overrides) -> "ForgeRuntimeConfig":
@@ -340,12 +351,19 @@ _ANTHROPIC_PRICING_USD_PER_MTOK = {
 
 
 def _anthropic_call(model: str, prompt: str, max_tokens: int,
-                    cfg: ForgeRuntimeConfig) -> tuple[bool, str, dict, str | None]:
+                    cfg: ForgeRuntimeConfig, *,
+                    messages: list[dict] | None = None) -> tuple[bool, str, dict, str | None]:
     """Real Anthropic API call via the `anthropic` SDK.
 
     System prefix is short and stable — marked with `cache_control` so
     repeated calls in the same 5-minute TTL window hit the cache. Returns
     (ok, text, usage_dict, error|None) per the _vendor_call contract.
+
+    r59 (v0.5.11): optional `messages` parameter for native message-list
+    threading. When provided, it's sent directly (bypass single-prompt
+    wrapping). Standard format: `[{role: 'user'|'assistant', content: str}, ...]`.
+    The anthropic SDK consumes this format directly. When None, falls
+    back to wrapping `prompt` as a single user turn (legacy behavior).
 
     Refusal handling: a Claude refusal comes back as normal content (text
     starts with "I can't…" / "I won't…"). Per spec §5 we return `ok=True`
@@ -362,12 +380,14 @@ def _anthropic_call(model: str, prompt: str, max_tokens: int,
             "You are answering a question for a small hexa-canon code-LLM that "
             "delegated this. Be concise; return code in hexa idiom if applicable."
         )
+        # r59: use native messages list if provided; otherwise wrap prompt.
+        msgs = messages if messages is not None else [{"role": "user", "content": prompt}]
         resp = client.messages.create(
             model=model,
             max_tokens=int(max_tokens),
             system=[{"type": "text", "text": system_prefix,
                      "cache_control": {"type": "ephemeral"}}],
-            messages=[{"role": "user", "content": prompt}],
+            messages=msgs,
         )
     except anthropic.AuthenticationError:
         return False, "", {}, "auth_fail"
@@ -425,11 +445,17 @@ _OPENAI_PRICING_USD_PER_MTOK = {
 
 
 def _openai_call(model: str, prompt: str, max_tokens: int,
-                 cfg: ForgeRuntimeConfig) -> tuple[bool, str, dict, str | None]:
+                 cfg: ForgeRuntimeConfig, *,
+                 messages: list[dict] | None = None) -> tuple[bool, str, dict, str | None]:
     """Real OpenAI API call via the `openai` SDK. Uses chat.completions for
     broad compatibility (Responses API is preferred for new builds but
     chat.completions is universally supported). Auto-cache fires when the
     prompt prefix is ≥ 1024 tokens — surfaces in `usage.prompt_tokens_details.cached_tokens`.
+
+    r59 (v0.5.11): optional `messages` parameter for native conversation
+    threading. The system prefix is always prepended; if `messages` is
+    supplied, user/assistant turns from the list follow it. Standard
+    format `[{role: 'user'|'assistant', content: str}, ...]` works directly.
 
     Refusal handling: like Claude, OpenAI returns refusal text as normal
     `message.content`. Returns ok=True with refusal text; 7B echoes honestly.
@@ -441,15 +467,15 @@ def _openai_call(model: str, prompt: str, max_tokens: int,
 
     try:
         client = openai.OpenAI(api_key=cfg.openai_api_key, timeout=30.0)
+        system_msg = {"role": "system", "content": (
+            "You are answering a question for a small hexa-canon code-LLM "
+            "that delegated this. Be concise; return code in hexa idiom if applicable.")}
+        # r59: native messages or wrap prompt.
+        user_msgs = messages if messages is not None else [{"role": "user", "content": prompt}]
         resp = client.chat.completions.create(
             model=model,
             max_tokens=int(max_tokens),
-            messages=[
-                {"role": "system", "content": (
-                    "You are answering a question for a small hexa-canon code-LLM "
-                    "that delegated this. Be concise; return code in hexa idiom if applicable.")},
-                {"role": "user", "content": prompt},
-            ],
+            messages=[system_msg, *user_msgs],
         )
     except openai.AuthenticationError:
         return False, "", {}, "auth_fail"
@@ -499,12 +525,40 @@ _GEMINI_PRICING_USD_PER_MTOK = {
 }
 
 
+def _messages_to_gemini_contents(messages: list[dict]) -> list[dict]:
+    """r59: translate standard `[{role: user|assistant, content: str}, ...]`
+    to Gemini's contents format. Gemini uses `model` role for assistant
+    turns and wraps text in a `parts` list of `{text: str}` entries."""
+    out: list[dict] = []
+    for m in messages:
+        role = m.get("role", "user")
+        # OpenAI/Anthropic-style "assistant" → Gemini "model"
+        if role == "assistant":
+            role = "model"
+        content = m.get("content", "")
+        if isinstance(content, str):
+            parts = [{"text": content}]
+        elif isinstance(content, list):
+            # Already a parts-like structure; pass through verbatim
+            parts = content
+        else:
+            parts = [{"text": str(content)}]
+        out.append({"role": role, "parts": parts})
+    return out
+
+
 def _gemini_call(model: str, prompt: str, max_tokens: int,
-                 cfg: ForgeRuntimeConfig) -> tuple[bool, str, dict, str | None]:
+                 cfg: ForgeRuntimeConfig, *,
+                 messages: list[dict] | None = None) -> tuple[bool, str, dict, str | None]:
     """Real Gemini API call via `google.genai`. Long-context (2M tokens on
     gemini-2.5-pro) is the value-add tier; the runtime sends the full prompt
     in a single request. v0.5.3 base ships without explicit context caching;
     v0.6+ can add `cached_content` for repeated long-doc prompts.
+
+    r59 (v0.5.11): optional `messages` parameter. When provided, translated
+    to Gemini's `contents=[{role: user|model, parts: [{text: ...}]}, ...]`
+    format via `_messages_to_gemini_contents`. When None, falls back to
+    single-prompt mode (legacy behavior).
     """
     try:
         from google import genai
@@ -520,9 +574,12 @@ def _gemini_call(model: str, prompt: str, max_tokens: int,
                 "You are answering a question for a small hexa-canon code-LLM "
                 "that delegated this. Be concise; return code in hexa idiom if applicable."),
         )
+        # r59: native messages → translate to Gemini contents; else single prompt.
+        contents_arg = (_messages_to_gemini_contents(messages)
+                        if messages is not None else prompt)
         resp = client.models.generate_content(
             model=model,
-            contents=prompt,
+            contents=contents_arg,
             config=cfg_obj,
         )
     except Exception as e:
@@ -556,7 +613,8 @@ def _gemini_call(model: str, prompt: str, max_tokens: int,
 
 
 def _vendor_call(tool: str, model: str, prompt: str, max_tokens: int,
-                 cfg: ForgeRuntimeConfig) -> tuple[bool, str, dict, str | None]:
+                 cfg: ForgeRuntimeConfig, *,
+                 messages: list[dict] | None = None) -> tuple[bool, str, dict, str | None]:
     """Dispatch a vendor call. Returns (ok, text, usage_dict, error|None).
 
     v0.5.3 status (all three vendors REAL):
@@ -567,6 +625,12 @@ def _vendor_call(tool: str, model: str, prompt: str, max_tokens: int,
     SDK presence is gated: if the package isn't installed OR no API key is
     configured, the call returns `auth_fail` cleanly. Stubs are removed —
     the runtime degrades to auth_fail instead of returning fake success.
+
+    r59 (v0.5.11): optional `messages` parameter threads a native message
+    list down to the adapter. When None, `prompt` is wrapped as a single
+    user turn (legacy behavior). The two paths produce IDENTICAL output
+    when `messages=[{role:'user', content: prompt}]` — the new param is
+    additive, not a replacement.
 
     Failure modes per spec §5:
       - timeout / 5xx → "upstream_timeout" / "upstream_5xx"
@@ -582,11 +646,11 @@ def _vendor_call(tool: str, model: str, prompt: str, max_tokens: int,
         return False, "", {}, "auth_fail"
 
     if tool == "claude-api":
-        return _anthropic_call(model, prompt, max_tokens, cfg)
+        return _anthropic_call(model, prompt, max_tokens, cfg, messages=messages)
     if tool == "openai-api":
-        return _openai_call(model, prompt, max_tokens, cfg)
+        return _openai_call(model, prompt, max_tokens, cfg, messages=messages)
     if tool == "gemini-api":
-        return _gemini_call(model, prompt, max_tokens, cfg)
+        return _gemini_call(model, prompt, max_tokens, cfg, messages=messages)
 
     # Unknown tool (shouldn't happen — _validate_delegate_obj guards in legacy
     # path; tier selector only emits allowlisted tools in orchestration path).
@@ -661,23 +725,30 @@ class ForgeRuntime:
         conv_id = conv_id or str(uuid.uuid4())
         turn_id = str(uuid.uuid4())
 
-        # v0.5.9 (r57): multi-turn memory auto-prepend. When enabled, prior
-        # conversation turns get prepended to the prompt as a 'Previous
-        # conversation:' preamble BEFORE classification + dispatch. This
-        # changes the cache key on every turn (different prompt hash each
-        # time), so caching is effectively single-turn for conversational
-        # flows. The original `user_prompt` is preserved for recording.
+        # v0.5.9 (r57) + v0.5.11 (r59): multi-turn memory auto-prepend.
+        # Two modes when `auto_prepend=True` and history exists:
+        #   (a) string-concat preamble (r57 default; native_messages=False)
+        #   (b) vendor-native messages list (r59; native_messages=True)
+        # The classifier still runs on the original `user_prompt` either
+        # way — only the dispatch surface to the vendor changes.
         effective_prompt = user_prompt
+        messages_for_vendor: list[dict] | None = None
         if (self.cfg.multi_turn_memory_enabled
                 and self.cfg.multi_turn_memory_auto_prepend
                 and self._conv_history.get(conv_id)):
-            effective_prompt = self._build_prompt_with_history(conv_id, user_prompt)
+            if self.cfg.multi_turn_memory_native_messages:
+                # r59: build messages list; classifier still sees plain user_prompt
+                messages_for_vendor = self._build_messages_with_history(conv_id, user_prompt)
+            else:
+                # r57 legacy: string preamble; classifier sees the assembled string
+                effective_prompt = self._build_prompt_with_history(conv_id, user_prompt)
 
         # v0.5.0 orchestration: classify BEFORE the 7B sees anything.
         if self.cfg.use_orchestration and _HAS_CLASSIFIER:
             result = self._run_turn_orchestrated(effective_prompt, gen_fn,
                                                   conv_id=conv_id, turn_id=turn_id,
-                                                  emit_filler_fn=emit_filler_fn)
+                                                  emit_filler_fn=emit_filler_fn,
+                                                  messages=messages_for_vendor)
             # r57: record this turn for future context (use ORIGINAL prompt,
             # NOT the auto-prepended one, so the buffer stays clean).
             if self.cfg.multi_turn_memory_enabled:
@@ -836,7 +907,8 @@ class ForgeRuntime:
 
     def _run_turn_orchestrated(self, user_prompt: str, gen_fn: Callable[[str], str], *,
                                  conv_id: str, turn_id: str,
-                                 emit_filler_fn: Callable[[str], None] | None) -> TurnResult:
+                                 emit_filler_fn: Callable[[str], None] | None,
+                                 messages: list[dict] | None = None) -> TurnResult:
         """Pre-7B-classifier dispatch per spec-orchestration-v0.5.0.md §5.
 
         Decision flow:
@@ -962,9 +1034,14 @@ class ForgeRuntime:
                 classifier_signals=list(d.matched_signals),
             )
 
-        # v0.5.4: per-prompt vendor cache lookup. Identical (tool, model,
-        # max_tokens, prompt) within TTL → return cached response, cost=$0.
-        cache_key = self._vendor_cache_key(tool, model, max_tokens, redacted_prompt)
+        # v0.5.4 + r59: per-prompt vendor cache lookup. When `messages` is
+        # provided (r59 native multi-turn), the cache key is keyed on the
+        # JSON-serialized messages list so different conversation states
+        # produce different keys. Otherwise it's keyed on the redacted prompt.
+        if messages is not None:
+            cache_key = self._vendor_cache_key_for_messages(tool, model, max_tokens, messages)
+        else:
+            cache_key = self._vendor_cache_key(tool, model, max_tokens, redacted_prompt)
         cache_hit = False
         cached = self._vendor_cache_get(cache_key) if self.cfg.vendor_cache_enabled else None
         if cached is not None:
@@ -981,8 +1058,11 @@ class ForgeRuntime:
             if emit_filler_fn:
                 emit_filler_fn(filler)
             t0 = time.monotonic()
+            # r59: pass `messages` if native threading was requested; else
+            # the legacy single-prompt path is used (identical results).
             ok, text, usage, err = _vendor_call(tool, model, redacted_prompt,
-                                                  max_tokens, self.cfg)
+                                                  max_tokens, self.cfg,
+                                                  messages=messages)
             latency_ms = int((time.monotonic() - t0) * 1000)
             # Cache successful responses only — failures should be retried.
             if ok and self.cfg.vendor_cache_enabled and self.cfg.vendor_cache_ttl_s > 0:
@@ -1105,6 +1185,18 @@ class ForgeRuntime:
         """SHA256 the prompt + include (tool, model, max_tokens) so a different
         target or generation cap doesn't serve a stale entry."""
         h = hashlib.sha256(prompt.encode("utf-8")).hexdigest()
+        return (tool, model, int(max_tokens), h)
+
+    @staticmethod
+    def _vendor_cache_key_for_messages(tool: str, model: str, max_tokens: int,
+                                        messages: list[dict]) -> tuple:
+        """r59: cache key for vendor-native messages path. JSON-serialize the
+        messages with sort_keys for deterministic hashing — different
+        conversation states (different prior turns, different ordering)
+        produce different keys, as expected."""
+        h = hashlib.sha256(
+            json.dumps(messages, sort_keys=True, ensure_ascii=False).encode("utf-8")
+        ).hexdigest()
         return (tool, model, int(max_tokens), h)
 
     def _vendor_cache_get(self, key: tuple) -> tuple | None:
@@ -1295,6 +1387,34 @@ class ForgeRuntime:
         return (f"Previous conversation:\n{preamble}\n\n"
                 f"Current question:\n{user_prompt}")
 
+    def _build_messages_with_history(self, conv_id: str, user_prompt: str) -> list[dict]:
+        """r59 (v0.5.11): construct a vendor-native messages list from prior
+        turns + current user prompt. Returns `[{role:'user', content:...},
+        {role:'assistant', content:...}, ..., {role:'user', content: <current>}]`.
+        Trimmed from OLDEST if total content chars exceed
+        `multi_turn_memory_max_chars`. The current turn is always included.
+        """
+        history = self._conv_history.get(conv_id, [])
+        # Always include current user message; budget tracks prior turns.
+        current = {"role": "user", "content": user_prompt}
+        if not history:
+            return [current]
+        # Walk newest-first, accumulating until budget hits zero.
+        max_chars = self.cfg.multi_turn_memory_max_chars
+        budget = max_chars - len(user_prompt)
+        msgs: list[dict] = []
+        for turn in reversed(history):
+            up_len = len(turn.user_prompt)
+            ap_len = len(turn.assistant_text)
+            if budget - up_len - ap_len < 0:
+                break
+            # Insert at front so chronological order is preserved (oldest first).
+            msgs.insert(0, {"role": "assistant", "content": turn.assistant_text})
+            msgs.insert(0, {"role": "user",      "content": turn.user_prompt})
+            budget -= up_len + ap_len
+        msgs.append(current)
+        return msgs
+
     def _vendor_cache_compact_file(self) -> None:
         """Rewrite the cache file from current in-memory state. Called after
         an LRU eviction so the file doesn't grow with stale records."""
@@ -1471,7 +1591,9 @@ def _smoke_test() -> int:
         _self_mod = _sys_mod.modules[__name__]
         _orig_vendor_call = _self_mod._vendor_call
         _call_count = [0]
-        def _fake_call(tool, model, prompt, max_tokens, cfg):
+        def _fake_call(tool, model, prompt, max_tokens, cfg, *, messages=None):
+            # r59: accept optional `messages` kwarg (ignored by stub — both
+            # prompt and messages produce the same fake response).
             _call_count[0] += 1
             return True, f"fake-vendor-response-{_call_count[0]}", {
                 "input_tokens": 100, "output_tokens": 50,
@@ -1578,8 +1700,10 @@ def _smoke_test() -> int:
         _self_mod._vendor_call = _fake_call
         _call_count[0] = 0  # reset
         captured_prompts: list[str] = []  # what the (fake) vendor saw
-        def _fake_call_capture(tool, model, prompt, max_tokens, cfg):
-            captured_prompts.append(prompt)
+        def _fake_call_capture(tool, model, prompt, max_tokens, cfg, *, messages=None):
+            # r59: capture both prompt + messages. When `messages` is set
+            # (native path), record it; otherwise record the wrapped prompt.
+            captured_prompts.append(messages if messages is not None else prompt)
             _call_count[0] += 1
             return True, f"answer-{_call_count[0]}", {
                 "input_tokens": 100, "output_tokens": 50,
@@ -1651,6 +1775,87 @@ def _smoke_test() -> int:
             assert rt_mem.get_conversation_history(conv_id) == []
             print(f"[12] ORCH multi-turn memory: stored {len(hist4)} turns (cap 3); "
                   f"auto-prepend verified in turn 2 prompt")
+        finally:
+            _self_mod._vendor_call = _orig_vendor_call
+
+        # Case 13: v0.5.11 (r59) vendor-native message-list threading.
+        # Multi-turn auto-prepend with native_messages=True should produce a
+        # proper `[{role:'user', content:...}, {role:'assistant', ...},
+        # {role:'user', content: <current>}]` list passed via the new
+        # `messages` kwarg — NOT a `Previous conversation:` string preamble.
+        _self_mod._vendor_call = _fake_call_capture
+        _call_count[0] = 0
+        captured_prompts.clear()
+        try:
+            cfg_nm = ForgeRuntimeConfig(
+                anthropic_api_key="stub", openai_api_key="stub", gemini_api_key="stub",
+                telemetry_path=Path("/tmp/forge_runtime_smoke_nm.jsonl"),
+                use_orchestration=True,
+                vendor_cache_enabled=False,
+                multi_turn_memory_enabled=True,
+                multi_turn_memory_max_turns=5,
+                multi_turn_memory_auto_prepend=True,
+                multi_turn_memory_native_messages=True,  # r59 ON
+                multi_turn_memory_max_chars=4000,
+            )
+            rt_nm = ForgeRuntime(cfg_nm)
+            conv_id = "smoke-conv-13"
+
+            # Turn 1 — no history; messages-mode still kicks in but only with current turn
+            r1 = rt_nm.run_turn(
+                "Write a Python decorator that retries on failure.",
+                gen_fn=lambda _: "", conv_id=conv_id,
+            )
+            assert r1.delegations[0].ok is True
+            # Turn 1 has NO history → run_turn doesn't trigger native messages
+            # path (history is empty), so captured_prompts[0] is the STRING.
+            assert isinstance(captured_prompts[0], str), \
+                f"turn 1 should be string (no history); got {type(captured_prompts[0])}"
+
+            # Turn 2 — history exists → native messages path fires
+            r2 = rt_nm.run_turn(
+                "Now show the same thing in TypeScript.",
+                gen_fn=lambda _: "", conv_id=conv_id,
+            )
+            assert r2.delegations[0].ok is True
+            # captured_prompts[1] should now be a LIST (messages format)
+            assert isinstance(captured_prompts[1], list), \
+                f"turn 2 should be messages list (native_messages=True); got {type(captured_prompts[1])}"
+            msgs = captured_prompts[1]
+            # Expected: [{u:t1}, {a:answer-1}, {u:t2-current}]
+            assert len(msgs) == 3, f"expected 3 messages, got {len(msgs)}: {msgs}"
+            assert msgs[0]["role"] == "user"
+            assert "Python decorator" in msgs[0]["content"]
+            assert msgs[1]["role"] == "assistant"
+            assert "answer-1" in msgs[1]["content"]
+            assert msgs[2]["role"] == "user"
+            assert "TypeScript" in msgs[2]["content"]
+            # CRITICAL: turn 2's content must NOT contain a string preamble —
+            # the native path bypasses _build_prompt_with_history entirely.
+            assert "Previous conversation:" not in msgs[2]["content"], (
+                "native_messages mode must NOT use string preamble"
+            )
+
+            # Turn 3 — full 3-turn history threaded
+            r3 = rt_nm.run_turn(
+                "And in Rust now.",
+                gen_fn=lambda _: "", conv_id=conv_id,
+            )
+            assert isinstance(captured_prompts[2], list)
+            msgs3 = captured_prompts[2]
+            # Expected: [u:t1, a:1, u:t2, a:2, u:t3-current]
+            assert len(msgs3) == 5
+            assert msgs3[-1]["content"] == "And in Rust now."
+            assert msgs3[-1]["role"] == "user"
+
+            # Verify gemini contents translation
+            gemini_contents = _messages_to_gemini_contents(msgs3)
+            assert all("role" in c and "parts" in c for c in gemini_contents)
+            assert gemini_contents[1]["role"] == "model"  # assistant → model
+            assert gemini_contents[1]["parts"][0]["text"] == "answer-1"
+
+            print(f"[13] ORCH native messages (r59): turn 2 sent {len(msgs)} msgs; "
+                  f"turn 3 sent {len(msgs3)} msgs; gemini-translate ✓")
         finally:
             _self_mod._vendor_call = _orig_vendor_call
 

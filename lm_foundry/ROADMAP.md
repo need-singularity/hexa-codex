@@ -5641,6 +5641,100 @@ runtime path.
 **GA UNCHANGED**: r39 v3-t3patch (94.29% Mk.I strict).
 **dancinlab/\* repos LIVE: 42** (unchanged — software-only round).
 
+### 2026-05-14 ~18:00 KST — round 59: v0.5.11 — vendor-native `messages=[...]` threading (replaces r57 string-concat workaround for multi-turn); 13/13 smoke pass; no regression
+
+**Goal**: r57 introduced multi-turn delegation memory via *string-concat
+preamble* (`Previous conversation:\nUser: ...\nAssistant: ...\n\nCurrent
+question:\n<X>`). That was a workaround — the actual vendor SDKs
+(anthropic / openai chat.completions / google.genai) all accept
+`messages=[{role: ..., content: ...}, ...]` natively. r59 wires up the
+native path: opt-in flag, vendor-native messages list, parallel cache
+key, Gemini role translation. r57's string-concat path is preserved
+as the default (backward-compat).
+
+**Why native messages matter**:
+1. **Anthropic upstream prompt-cache** aligns better with stable system+
+   early-turn prefixes. The string-preamble path was opaque to anthropic's
+   cache.
+2. **OpenAI chat.completions** is messages-native; concatenating into a
+   single user message loses the role structure.
+3. **Gemini** uses `model` role (not `assistant`); the native helper
+   translates correctly.
+4. **Future-proofs** for vendor features that depend on message-list
+   structure (function calling, tool use, structured streaming).
+
+**Implementation surface — `tool/forge_runtime.py`**:
+
+| Component | Change | Why |
+|---|---|---|
+| `_anthropic_call` | `def f(model, prompt, max_tokens, cfg, *, messages=None)` | When messages set: pass directly; else wrap prompt as single-user-turn (legacy) |
+| `_openai_call` | same | System message always prepended; user/assistant turns come from `messages` if set |
+| `_gemini_call` | same + NEW helper `_messages_to_gemini_contents` | Translates `[{role:'user/assistant', content:str}]` → `[{role:'user/model', parts:[{text:...}]}]` |
+| `_vendor_call` | propagates `messages` kwarg | Tool-agnostic dispatcher |
+| `_run_turn_orchestrated` | new `messages` kwarg | Threads to vendor call + cache key |
+| `_vendor_cache_key_for_messages` | NEW | `sha256(json.dumps(messages, sort_keys=True))` — different conv states → different cache keys |
+| `ForgeRuntimeConfig.multi_turn_memory_native_messages: bool = False` | NEW (requires `auto_prepend=True`) | Opt-in flag |
+| `_build_messages_with_history` | NEW | Returns `[{u:turn1}, {a:answer1}, ..., {u:current}]`; trimmed-from-oldest under `max_chars` budget |
+| `run_turn` | Branches on `native_messages` flag | Default = r57 string concat; opt-in = r59 native |
+
+**Smoke case [13]** verifies the native path end-to-end:
+- Turn 1 (no history): captured as STRING (no native messages fire)
+- Turn 2 (with history): captured as LIST — `[{u:t1}, {a:answer-1}, {u:current}]`
+  - Asserts message count (3), roles, content fragments
+  - **Asserts `"Previous conversation:"` NOT in turn 2 content** (verifies the native path bypasses the string-concat preamble)
+- Turn 3: full 5-message chain `[u, a, u, a, u]`
+- Verifies `_messages_to_gemini_contents` translation: `assistant` → `model`, content → `parts: [{text:...}]`
+
+**All 13/13 forge_runtime smoke pass.**
+
+**Zero regression**:
+- forge_runtime smoke: **13/13** (was 12/12; +1 = case 13 native messages)
+- classify_prompt smoke: 21/21 (unchanged)
+- select_vendor_tier smoke: 14/14 (unchanged)
+- forge_audit `--smoke`: PASSED (unchanged)
+- DLG-mk0: classifier overall 0.9833 / tier_match 1.000 / tool_match 0.9926
+- Brier 0.0242 / ECE 0.0461 (both unchanged)
+
+**Usage modes (3 cases now)**:
+
+| Mode | Config | Behavior |
+|---|---|---|
+| Single-turn (default) | `multi_turn_memory_enabled=False` | Each `run_turn` is independent. Cache key on prompt hash. Backward-compat. |
+| Multi-turn string-concat (r57) | `enabled=True, auto_prepend=True, native_messages=False` | Prior turns rendered as `Previous conversation:` string preamble. Classifier sees the assembled prompt. Compatible with cache fallback. |
+| Multi-turn native (r59) | `enabled=True, auto_prepend=True, native_messages=True` | Prior turns rendered as proper messages list. Classifier still sees plain `user_prompt` (latest turn only). Cache keyed on messages JSON. |
+
+**Honesty caveats**:
+
+- **Native messages does NOT enable upstream prompt-cache on conversation
+  prefix automatically**. Anthropic's cache_control is currently only on
+  the system prefix; making it work across turns requires moving the
+  marker to a stable prefix that grows monotonically. That's a v0.6.x
+  candidate when conversation-cache becomes a measured ROI.
+- **Cache key for messages mode is the SHA256 of the entire serialized
+  messages list**. So even adding one assistant turn produces a different
+  key — there's no overlap with single-turn cache, even on the SAME user
+  question. This is correct (different context = potentially different
+  optimal answer) but means caching in conversational flows is per-state,
+  not per-question.
+- **Gemini role translation** is one-way (user→user, assistant→model);
+  if the manifest someday includes function calls or tool roles, the
+  helper needs extension. Currently a 7-line static map suffices.
+- **The classifier always runs on the LATEST user prompt only** (not the
+  full conversation), so routing decisions are per-turn, not per-conversation.
+  This is intentional (mid-dialogue ml-internals turn should route to
+  reason-deep regardless of prior turns being hexa-canon), but means
+  per-conversation tier consistency is the calling code's responsibility.
+
+**Round 59 commits:** this ROADMAP entry · `tool/forge_runtime.py`
+(`messages` param added to 4 functions + NEW `_messages_to_gemini_contents`
+helper + NEW `_vendor_cache_key_for_messages` + NEW config field +
+NEW `_build_messages_with_history` + `run_turn` branch + smoke case [13]) ·
+`LEARNING_PROGRAMMING.md` §8 r59 row.
+
+**Cost**: \$0 (CPU; smoke only).
+**GA UNCHANGED**: r39 v3-t3patch (94.29% Mk.I strict).
+**dancinlab/\* repos LIVE: 42** (unchanged — software-only round).
+
 
 
 
