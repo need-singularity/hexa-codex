@@ -5509,6 +5509,138 @@ list threading, persistent conversation memory across restarts, real
 multi-process cache (Redis/SQLite), specialist ceiling (Lever 5+ full-FT
 or routing-LoRA architectural alternative).
 
+### 2026-05-14 ~17:30 KST — round 58: v0.5.10 — production audit CLI (`tool/forge_audit.py`) — closes the observability gap in v0.5.x stack; no GPU spend
+
+**Goal**: v0.5.x has writes-only telemetry. `state/delegation_log.jsonl`
+gets one JSON line per turn, but nothing reads or aggregates it. r58
+ships the missing READ side — a CLI tool that operators run to see
+production health at a glance, with optional alerting via non-zero exit.
+
+**`tool/forge_audit.py` NEW (~660 LOC, CPU-only)**:
+
+**Inputs**:
+- `--input PATH` (default `state/delegation_log.jsonl`)
+- `--since-hours N` or `--since ISO_TS` or `--until ISO_TS` (time window)
+- `--output {text, json, csv}` (default text)
+
+**Aggregations produced**:
+- **Overview**: n_turns, n_ok, n_err, error_rate, window_start/end/hours
+- **Cache metrics**: hits, misses, hit_rate, cost_saved_usd_estimate
+  (estimate = sum-over-hits of avg (tool, model) miss cost — gives "what
+  would have been spent without cache")
+- **Vendor distribution**: by_tool (count + cost), by_model (count + cost),
+  by_tier (count + cost — cost-band {nano, mini/haiku, sonnet, opus/flagship})
+- **Error breakdown**: per-error_code count and percentage
+- **Classifier label distribution** (forward-compat; current schema doesn't
+  emit `classifier_label` in DelegationCall — would land in a v0.5.x+ patch)
+- **Latency** (ms, REAL calls only — excludes cache hits which are 0ms):
+  median + p50 + p95 + p99 + sample_n
+- **Cost attribution**: total + by_tool + by_model + by_tier
+- **Top-10 most expensive turns**: timestamp, tool, model, cost, tokens
+
+**Output formats**:
+- `text` (default): human-readable bordered report (~50 lines), pipes well
+  to terminal or paginator. Section dividers, ASCII numerics.
+- `json`: full structured dump, suitable for `jq` filtering or dashboard ingestion
+- `csv`: single-row headline metrics (13 columns), suitable for time-
+  series scraping (one CSV row per audit invocation = one data point)
+
+**Health gate flags**:
+- `--alert-cache-hit-min FLOAT` (e.g. `0.20`): exit 2 if cache hit rate < threshold
+- `--alert-error-rate-max FLOAT` (e.g. `0.05`): exit 2 if error rate > threshold
+- `--alert-cost-day-max FLOAT` (USD): exit 2 if 24h-equivalent spend > threshold
+  (scales by window_hours when ≥24h; uses raw total otherwise)
+
+Health gates compose with each other (any breach → exit 2 + all breaches
+listed on stderr). Exit codes:
+- 0 = healthy or no gates configured
+- 1 = input file missing / invalid CLI args
+- 2 = health gate breach
+
+**Time-window filter implementation**:
+- `--since-hours N`: cutoff = `now - N hours`
+- `--since ISO_TS` / `--until ISO_TS`: ISO-8601 parsing with timezone aware
+- Rows with unparseable `timestamp_utc` are dropped from window scope
+- Malformed JSON lines skipped with stderr count
+- Rows missing required fields skipped with stderr count
+
+**Required schema fields** (from `DelegationCall`):
+`tool, model, ok, error, cost_usd, latency_ms, cache_hit, timestamp_utc`
+
+Optional fields used when present: `tokens_in, tokens_out, conv_id, turn_id, classifier_label`.
+
+**`--smoke` self-test mode**:
+- Writes 20 synthetic `DelegationCall` rows to a tempfile (10 sonnet
+  successes, 3 opus successes, 3 cache hits on the sonnet path, 2
+  auth_fail, 2 upstream_quota — varied timestamps over ~80min)
+- Runs `aggregate()` and verifies every metric matches hand-computed
+  expected value (n_turns=20, n_ok=16, n_err=4, error_rate=0.20,
+  cache_hit_rate=0.15, cost_saved_est = 3 × $0.0090 = $0.027,
+  total_cost = 10×$0.0090 + 3×$0.0195 = $0.1485, p50/p95 > 0)
+- Renders all 3 output formats (text/csv/json) and validates content
+- Tests health gates: 20%-cache-min threshold should breach (actual 15%);
+  10%-error threshold should breach (actual 20%) — expects exactly 2 breaches
+- Tests relaxed gates: 10%-cache + 30%-error should pass — expects 0 breaches
+- Tests time-window filter: cutoff at base+60min should yield 8 rows
+
+All checks pass on Python 3.9+ (uses `from __future__ import annotations`
++ `dict[str, X]` modern syntax via the future import).
+
+**Verified end-to-end on a small fixture set** (5 sonnet ok + 1 opus +
+1 cache hit + 1 auth_fail = 8 turns):
+- text report renders cleanly with all 7 sections
+- exit 2 with stderr breach when `--alert-cache-hit-min 0.20 --alert-error-rate-max 0.05` against actual 0.125 / 0.125
+- json output parses round-trip
+- csv output is a valid single-row dump for time-series scraping
+
+**Production deployment pattern** (documented in tool docstring):
+```bash
+# Daily cron — alert if last-24h health degraded
+python3 tool/forge_audit.py \
+    --input /var/lib/forge/state/delegation_log.jsonl \
+    --since-hours 24 \
+    --alert-cache-hit-min 0.20 \
+    --alert-error-rate-max 0.05 \
+    --alert-cost-day-max 50.00 \
+    --output text || mail -s "forge degraded" oncall@example.com
+```
+
+**No code-path regression**: r58 is a NEW file; doesn't touch any existing
+runtime path.
+- forge_runtime smoke: 12/12 (unchanged)
+- classify_prompt smoke: 21/21 (unchanged)
+- select_vendor_tier smoke: 14/14 (unchanged)
+- DLG-mk0: classifier overall 0.9833 / tier_match 1.000 / tool_match 0.9926
+  / Brier 0.0242 / ECE 0.0461 (all unchanged)
+
+**Honesty caveats**:
+
+- Cost-saved estimate is a HEURISTIC: it assumes the cache hit would
+  have cost the *average* miss cost on the same (tool, model). If your
+  workload has high cost variance per call, the estimate is noisier.
+  Production should track this metric over time to gauge cache ROI.
+- Latency percentiles include only REAL calls (`not cache_hit and ok`).
+  This is the right denominator for "how fast is upstream", NOT "what
+  does the user feel" (which includes cache hits at ~0ms making the
+  user-perceived p95 much better).
+- The `classifier_label` distribution section is forward-compat: current
+  `DelegationCall` schema doesn't store the classifier label in
+  telemetry (it's a `TurnResult` field, not `DelegationCall`). To
+  populate this section, a future patch would add `classifier_label`
+  to DelegationCall (5-line change).
+- No SQL/time-series database integration. r58 is a one-shot CLI for
+  cron + manual ops. Continuous dashboards = v0.6.0+ scope.
+- No PII / secret detection in the report. The tool reads the redacted
+  prompt classes (`prompt_redacted_classes` field) but doesn't surface
+  text. Safe to share/grep reports without exposing user data.
+
+**Round 58 commits:** this ROADMAP entry · `tool/forge_audit.py` NEW
+(~660 LOC) · `LEARNING_PROGRAMMING.md` §8 r58 row.
+
+**Cost**: \$0 (CPU; smoke only).
+**GA UNCHANGED**: r39 v3-t3patch (94.29% Mk.I strict).
+**dancinlab/\* repos LIVE: 42** (unchanged — software-only round).
+
 
 
 
