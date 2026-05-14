@@ -1,0 +1,40 @@
+==============================================================================
+CLASSIFIER CALIBRATION (Brier + ECE)
+==============================================================================
+input:      bench/score-orchestration-mk0-r51/per_task_orchestration.jsonl
+n_tasks:    300  (correct: 295, accuracy: 0.9833)
+avg conf:   0.8272
+overall gap (conf - acc): -0.1561  (underconfident)
+
+BRIER SCORE: 0.0920  (lower is better; perfect=0.0, uniform-random=0.25)
+ECE (10 bins): 0.1650  (lower is better; perfect=0.0)
+
+==============================================================================
+RELIABILITY TABLE (per equal-width confidence bin)
+==============================================================================
+bin                n   avg conf    avg acc      gap  reliability
+[0.30, 0.40)     19     0.3035     1.0000 -0.6965-  conf#######                   acc*************************
+[0.50, 0.60)     51     0.5000     1.0000 -0.5000-  conf############              acc*************************
+[0.60, 0.70)      2     0.6667     0.0000 +0.6667+  conf################          acc                         
+[0.70, 0.80)     37     0.7000     0.9189 -0.2189-  conf#################         acc**********************   
+[0.80, 0.90)      8     0.8333     1.0000 -0.1667-  conf####################      acc*************************
+[0.90, 1.00)    183     1.0000     1.0000 +0.0000   conf######################### acc*************************
+
+==============================================================================
+PER-LABEL BREAKDOWN
+==============================================================================
+label          n   accuracy   avg conf      brier
+hexa         139     0.9640     0.9153     0.0390
+ood          136     1.0000     0.7054     0.1632
+refuse        25     1.0000     1.0000     0.0000
+
+==============================================================================
+INTERPRETATION
+==============================================================================
+  Brier 0.0920: GOOD calibration — confidence is predictive.
+  ECE 0.1650: classifier confidence is poorly calibrated; avoid using it as a probability in downstream logic.
+  Overall gap -0.1561: classifier is UNDERCONFIDENT (hedges more than needed).
+  
+  PRACTICAL USE: production code SHOULD NOT use confidence as a true probability
+  (e.g. for cost-sensitive cutoffs or expected-utility decisions) unless ECE < 0.05.
+  For routing decisions, the label is what matters; confidence is a tier-band signal.

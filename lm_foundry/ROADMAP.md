@@ -4824,6 +4824,109 @@ framework regex) · `bench/score-orchestration-mk0-r51/` artifacts ·
 **GA UNCHANGED**: r39 v3-t3patch (94.29% Mk.I strict).
 **Cost**: \$0 GPU (CPU-only round 8 in a row: r44+r45+r46+r47+r48+r49+r50+r51).
 
+### 2026-05-14 ~14:30 KST — round 52: classifier confidence calibration eval — Brier 0.0920 (GOOD) / ECE 0.1650 (poor) / -15.61pp underconfident; honest finding documented; no code change to classifier
+
+**Goal**: measure whether `ClassifierDecision.confidence` actually
+predicts accuracy. The classifier's `confidence` field has been
+present since r44 but never validated — `ORCHESTRATION.md §4` already
+notes "confidence is heuristic (0.55-1.00 based on match weight totals)
+... not calibrated against ground-truth accuracy. Brier-score
+calibration is a v0.5.x+ candidate." This round delivers that
+calibration measurement.
+
+**`tool/score_brier_mk0.py` NEW (~220 LOC, CPU)**:
+- Loads `per_task_orchestration.jsonl` from any DLG-mk0 scoring run.
+- Computes **Brier score**: mean((confidence - outcome)²). Range [0,1];
+  lower = better; perfect = 0.0; uniform-random = 0.25.
+- Computes **ECE** (Expected Calibration Error): weighted per-bin gap
+  between avg confidence and avg accuracy. 10-bin equal-width
+  discretization (configurable).
+- Emits a **reliability table** (text-based) showing per-bin
+  (avg_conf, avg_acc, gap, ASCII bar) — no plotting library dependency.
+- Per-label breakdown (refuse / hexa / ood) — surfaces which branch's
+  confidence is the calibration weak spot.
+- Interpretation guidance: when to trust the value as a probability,
+  when not to.
+
+**Run on r51's 300-task DLG-mk0 score artifacts:**
+
+| Metric | Value | Verdict |
+|---|---:|---|
+| n_tasks | 300 (295 correct, acc 0.9833) | |
+| avg confidence | 0.8272 | |
+| **overall gap (conf - acc)** | **-0.1561** | UNDERCONFIDENT |
+| **Brier score** | **0.0920** | GOOD (< 0.10, confidence is predictive) |
+| **ECE (10 bins)** | **0.1650** | POOR (≥ 0.10, do NOT use as probability) |
+
+**Per-label breakdown**:
+
+| Label | n | accuracy | avg conf | Brier | verdict |
+|---|---:|---:|---:|---:|---|
+| `refuse` | 25 | 1.000 | 1.000 | **0.000** | PERFECT (single-pattern matches emit conf 1.0; security gate is uniformly certain) |
+| `hexa` | 139 | 0.964 | 0.915 | **0.039** | well-calibrated |
+| `ood` | 136 | 1.000 | 0.705 | **0.163** | heavily UNDERCONFIDENT (the calibration weak spot) |
+
+**Reliability hot-spots (10-bin)**:
+
+| Bin | n | avg_conf | avg_acc | gap |
+|---|---:|---:|---:|---:|
+| `[0.30, 0.40)` | 19 | 0.30 | **1.00** | **-0.70** ← extreme underconf |
+| `[0.50, 0.60)` | 51 | 0.50 | **1.00** | **-0.50** ← extreme underconf |
+| `[0.60, 0.70)` | 2 | 0.67 | 0.00 | +0.67 (n=2 noise) |
+| `[0.70, 0.80)` | 37 | 0.70 | 0.92 | -0.22 (moderate underconf) |
+| `[0.80, 0.90)` | 8 | 0.83 | 1.00 | -0.17 (mild underconf) |
+| `[0.90, 1.00)` | 183 | 1.00 | 1.00 | **0.00** ← PERFECT |
+
+**Root cause analysis**: the underconfidence comes from the OOD branch's
+confidence formula `confidence = min(1.0, ood_total / 2.0)`. A
+single-signal match (e.g. "Rust" alone) yields conf=0.5, but the
+classifier is empirically 100% accurate on most of those rows. The
+formula is too pessimistic for low-weight single-signal cases. Similar
+on the weak-hexa branch (`/4.0` divisor produces 0.25 single-signal,
+showing up in the `[0.30, 0.40)` bin after rounding).
+
+**What this means for production:**
+
+- **The label dispatch is rock-solid** — refuse and ood branches both
+  show 100% accuracy when labeled. Operationally, the runtime should
+  trust the LABEL completely (it's already what `_run_turn_orchestrated`
+  uses; we don't gate on confidence).
+- **DO NOT use `confidence` as a true probability** in downstream logic:
+  no cost-sensitive cutoffs, no automatic escalation to higher-tier
+  models based on conf < threshold, no expected-utility decisions. The
+  field is a tier-band signal at best.
+- **The hexa branch's `confidence` (Brier 0.039)** is the one usable
+  band — it tracks empirical accuracy. The 7B's `<|confidence:medium|>`
+  banding (mid-conf rows) is also reliable because that's a *label*
+  ("mid-conf"), not a probability.
+
+**No code change in r52.** The classifier's `confidence` field stays as
+documented — heuristic, not calibrated. Recalibration is deferred to
+v0.5.7+ candidate:
+
+- **Option A**: replace pessimistic divisors with a confidence-shifted
+  formula (e.g. `min(1.0, 0.7 + 0.3 * (ood_total / 3.0))`) — quick,
+  empirical from r52's bins.
+- **Option B**: Platt scaling or isotonic regression on a held-out
+  calibration set — requires a calibration-only manifest (further
+  deferred until production telemetry is available).
+- **Option C**: deprecate `confidence` entirely — it's not used by
+  routing (label is) and is documented as unreliable; removing it
+  prevents misuse. Currently kept for telemetry filter granularity.
+
+**Smoke regressions: zero** (this round has no classifier code change).
+
+**ORCHESTRATION.md §4 honesty caveat already covered this** — r52 just
+gives the field a hard number to attach to that caveat.
+
+**Round 52 commits:** this ROADMAP entry · `tool/score_brier_mk0.py` NEW ·
+`bench/score-brier-mk0/{brier.json, reliability_table.txt}` artifacts ·
+`LEARNING_PROGRAMMING.md` §8 r52 row.
+
+**Cost**: \$0 (CPU; reuses r51 scoring artifacts).
+**GA UNCHANGED**: r39 v3-t3patch.
+**dancinlab/\* repos LIVE: 42** (unchanged — measurement-only round).
+
 
 
 

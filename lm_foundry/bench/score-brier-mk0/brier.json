@@ -1,0 +1,84 @@
+{
+  "input": "bench/score-orchestration-mk0-r51/per_task_orchestration.jsonl",
+  "n_tasks_scored": 300,
+  "n_correct": 295,
+  "overall_accuracy": 0.9833,
+  "overall_avg_confidence": 0.8272,
+  "calibration_gap_overall": -0.1561,
+  "brier_score": 0.092,
+  "ece_n_bins": 10,
+  "ece": 0.165,
+  "per_bin": [
+    {
+      "bin": "[0.30, 0.40)",
+      "n": 19,
+      "avg_confidence": 0.3035,
+      "avg_accuracy": 1.0,
+      "gap": -0.6965
+    },
+    {
+      "bin": "[0.50, 0.60)",
+      "n": 51,
+      "avg_confidence": 0.5,
+      "avg_accuracy": 1.0,
+      "gap": -0.5
+    },
+    {
+      "bin": "[0.60, 0.70)",
+      "n": 2,
+      "avg_confidence": 0.6667,
+      "avg_accuracy": 0.0,
+      "gap": 0.6667
+    },
+    {
+      "bin": "[0.70, 0.80)",
+      "n": 37,
+      "avg_confidence": 0.7,
+      "avg_accuracy": 0.9189,
+      "gap": -0.2189
+    },
+    {
+      "bin": "[0.80, 0.90)",
+      "n": 8,
+      "avg_confidence": 0.8333,
+      "avg_accuracy": 1.0,
+      "gap": -0.1667
+    },
+    {
+      "bin": "[0.90, 1.00)",
+      "n": 183,
+      "avg_confidence": 1.0,
+      "avg_accuracy": 1.0,
+      "gap": 0.0
+    }
+  ],
+  "per_label": {
+    "hexa": {
+      "n": 139,
+      "accuracy": 0.964,
+      "avg_confidence": 0.9153,
+      "brier_score": 0.039
+    },
+    "ood": {
+      "n": 136,
+      "accuracy": 1.0,
+      "avg_confidence": 0.7054,
+      "brier_score": 0.1632
+    },
+    "refuse": {
+      "n": 25,
+      "accuracy": 1.0,
+      "avg_confidence": 1.0,
+      "brier_score": 0.0
+    }
+  },
+  "interpretation": [
+    "Brier 0.0920: GOOD calibration \u2014 confidence is predictive.",
+    "ECE 0.1650: classifier confidence is poorly calibrated; avoid using it as a probability in downstream logic.",
+    "Overall gap -0.1561: classifier is UNDERCONFIDENT (hedges more than needed).",
+    "",
+    "PRACTICAL USE: production code SHOULD NOT use confidence as a true probability",
+    "(e.g. for cost-sensitive cutoffs or expected-utility decisions) unless ECE < 0.05.",
+    "For routing decisions, the label is what matters; confidence is a tier-band signal."
+  ]
+}
