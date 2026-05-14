@@ -5994,6 +5994,163 @@ process exit; SQLite WAL is designed for unclean shutdowns.
 deployment patterns** — JSONL for single-process simplicity, SQLite WAL
 for production behind a load balancer.
 
+### 2026-05-14 ~19:30 KST — round 62: v0.5.14 — production maturity bundle (3 features in one round); 18/18 forge smoke + forge_vacuum smoke; no regression
+
+User requested "전부 한번에 bg go" — execute the remaining software-only
+v0.6.0+ candidates in one bundle. Three features land together:
+
+#### 62.A — Anthropic cross-turn upstream prompt-cache (`_anthropic_cache_mark`)
+
+r59 introduced vendor-native messages threading. r62 leverages it: when
+a multi-turn conversation is dispatched to anthropic with `messages` set
+AND has ≥2 entries, the SECOND-TO-LAST message gets `cache_control:
+{type: 'ephemeral'}` so anthropic caches the conversation prefix
+(`system + turn1 + turn1.answer + ... + turnN-1.answer`). The next turn
+in the same conv within 5-min TTL pays input tokens only for the NEWEST
+user message.
+
+**Implementation** (`tool/forge_runtime.py`):
+- NEW free function `_anthropic_cache_mark(msgs: list[dict]) → list[dict]`
+- Converts the second-to-last message's content from raw string to
+  anthropic's content-block form: `[{type:'text', text:..., cache_control:...}]`
+- Already-content-block content: marks the LAST block of the second-to-
+  last message
+- Returns a NEW list (does not mutate input)
+- `_anthropic_call` invokes the helper only when `messages` is set AND
+  `len(msgs) >= 2` — single-turn calls keep the legacy behavior (only
+  system cached)
+
+**Smoke case [17]** verifies:
+- 3-msg input `[u, a, u]` → output has `cache_control` on the assistant (idx 1)
+- Last user msg (the current turn / new data) is NOT marked
+- Single-turn input `[u]` is unchanged (no `len >= 2`)
+- Input list NOT mutated (returns a fresh list)
+
+#### 62.B — SQLite schema versioning (`SCHEMA_VERSION = 1`)
+
+r61 shipped SQLite WAL backend but no version tracking. r62 adds a class
+constant `SCHEMA_VERSION = 1` and uses SQLite's `PRAGMA user_version` to
+store it per-DB.
+
+**Behavior on `_db_open`**:
+- Brand-new DB (`user_version=0`): sets to current `SCHEMA_VERSION`
+- DB newer than runtime: stderr warning "newer schema detected — runtime
+  proceeds in best-effort backward-read mode; columns added in later
+  versions will be ignored"
+- DB older than runtime: stderr warning "older schema detected — no
+  auto-migration in v0.5.x; calling code should run a migration script
+  or use a fresh DB path"
+
+**Smoke case [18]** verifies fresh DB user_version equals `SCHEMA_VERSION`.
+
+**Why versioning matters now**: r61 used `CREATE TABLE IF NOT EXISTS`
+which silently no-ops on existing DBs. Without version tracking,
+adding a column in v0.6+ to a runtime-created DB would NOT show up.
+r62 explicitly tracks schema state so future migrations are detectable.
+
+#### 62.C — `tool/forge_vacuum.py` cron CLI (NEW)
+
+r61's caveat: "cache eviction in DB is LAZY (no immediate DELETE on
+LRU evict to avoid write amplification; periodic VACUUM = v0.6.x
+candidate)". r62 ships that VACUUM.
+
+**Pipeline** (`vacuum_db(db_path, keep_recent, conv_days, dry_run)`):
+1. `DELETE FROM vendor_cache WHERE expires <= now()` — expired entries
+2. `DELETE FROM vendor_cache WHERE cache_key IN (oldest N by inserted_at)`
+   when `--keep-recent N` cap exceeded
+3. `DELETE FROM conv_turns WHERE recorded_at < (now - conv_days*86400)`
+   for conversation retention
+4. `VACUUM` — reclaim disk space from freelist pages
+5. `PRAGMA optimize` — refresh query planner stats
+
+**CLI flags**:
+- `--db PATH` — forge_db_path target
+- `--keep-recent N` — vendor_cache row cap (LRU drop oldest)
+- `--conv-days N` — conv_turns retention in days
+- `--dry-run` — report counts only, no DELETE/VACUUM
+- `--smoke` — inline self-test on synthetic temp DB
+
+**Smoke case** (inside `forge_vacuum --smoke`):
+- Build temp DB matching r61 schema with 5 expired + 10 fresh cache rows
+  + 3 recent + 7 old (>35 days) conv rows
+- Dry-run: report `expired=5, lru_excess=7, old_conv=7`, but verify DB unchanged
+- Real run with `keep_recent=8, conv_days=30`: removes 5 expired + 2 LRU-
+  excess + 7 old-conv; runs VACUUM + optimize
+- Verify final state: 8 cache rows, 3 conv rows
+- Idempotent re-run: 0 rows to remove
+
+**Production cron pattern**:
+```bash
+# /etc/cron.d/forge — daily 03:00
+0 3 * * * forge python3 /opt/forge/tool/forge_vacuum.py \
+    --db /var/lib/forge/forge.sqlite3 \
+    --keep-recent 4096 \
+    --conv-days 30
+```
+
+#### Combined results
+
+**18/18 forge_runtime smoke** (was 16/16; +2 = cases 17 + 18).
+**forge_vacuum.py `--smoke` PASSED** (4 internal assertions).
+**Zero regression on existing tests**:
+- classify_prompt: 21/21 (unchanged)
+- select_vendor_tier: 14/14 (unchanged)
+- forge_audit `--smoke`: PASSED (unchanged)
+- DLG-mk0: 0.9833 / tier_match 1.000 / tool_match 0.9926 (unchanged)
+- Brier 0.0242 / ECE 0.0461 (unchanged)
+
+**Total runtime feature matrix (v0.5.x complete)**:
+
+| Category | Features |
+|---|---|
+| Routing | Pre-7B classify · per-vendor tier select · reason-deep/algo split |
+| Vendor SDKs | anthropic real · openai real (key gated) · gemini real |
+| Error handling | auth_fail · upstream_timeout · upstream_5xx · upstream_quota · schema_violation · redaction_block |
+| Cache | per-prompt SHA256 · LRU evict · 5-min TTL · file-backed JSONL · SQLite WAL multi-process · cron VACUUM |
+| Conv memory | per-conv buffer · max_turns cap · auto-prepend string · auto-prepend native-messages · file-backed JSONL · SQLite WAL |
+| Anthropic cache | system cache_control · **cross-turn cache_control (r62)** |
+| Observability | per-turn telemetry JSONL · audit CLI · health gates · time-window filter |
+| Schema | `vendor_cache` + `conv_turns` tables · **user_version tracking (r62)** |
+| Confidence | calibrated `_emit_conf` floors · Brier 0.0242 EXCELLENT · ECE 0.0461 GOOD |
+
+**Honesty caveats**:
+
+- The anthropic cross-turn cache_control is **not yet measured**. The
+  feature shipped per the SDK docs but ROI (input-token savings on
+  long conversations) needs production telemetry to confirm. r58
+  forge_audit already captures `cached_tokens` per call; a follow-up
+  measurement round can compare cached-token-ratio before/after.
+- Schema versioning is **detection-only** — there's no migration code.
+  A future schema change requires either a fresh DB path or a manual
+  migration script.
+- `forge_vacuum` requires the runtime to be **idle** during VACUUM
+  (acquires exclusive lock). For multi-process production, schedule
+  the cron during a low-traffic window OR use SQLite's `incremental`
+  vacuum (would require enabling `auto_vacuum=INCREMENTAL` at DB
+  creation; a v0.6.x candidate that requires schema migration).
+
+**Round 62 commits:** this ROADMAP entry · `tool/forge_runtime.py`
+(NEW `_anthropic_cache_mark` helper + cross-turn cache integration in
+`_anthropic_call` + `SCHEMA_VERSION` class const + user_version pragma
+in `_db_open` + smoke cases [17] + [18]) · `tool/forge_vacuum.py` NEW
+(~280 LOC including `--smoke`) · `LEARNING_PROGRAMMING.md` §8 r62 row.
+
+**Cost**: \$0 (CPU; smoke only).
+**GA UNCHANGED**: r39 v3-t3patch (94.29% Mk.I strict).
+**dancinlab/\* repos LIVE: 42** (unchanged — software-only round).
+
+**v0.5.x line conclusion**: 23 rounds since GA (r39 → r62), all
+software-only except r53 ($0.43 production smoke). Total spend
+unchanged at **~\$18.27** including r43 zombie. Specialist weights
+frozen by design; orchestration stack is GA-quality across single-
+process AND multi-process deployments with production observability,
+quota-aware error handling, persistent cache + conv memory, native
+vendor message threading, cross-turn upstream caching, schema
+versioning, and a cron-friendly maintenance CLI. **v0.6.0+ scope
+narrows to GPU-bound items** (specialist ceiling via Lever 5+ /
+routing-LoRA) and **user-action items** (OpenAI key / Gemini paid
+tier provisioning).
+
 
 
 

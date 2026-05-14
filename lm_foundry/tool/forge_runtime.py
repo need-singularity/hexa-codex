@@ -369,6 +369,50 @@ _ANTHROPIC_PRICING_USD_PER_MTOK = {
 }
 
 
+def _anthropic_cache_mark(msgs: list[dict]) -> list[dict]:
+    """r62 (v0.5.14): anthropic cross-turn prompt-cache helper.
+
+    Anthropic supports `cache_control: {type: 'ephemeral'}` on content
+    blocks to mark a cache breakpoint. The model caches everything UP TO
+    AND INCLUDING that block, with a 5-min TTL. Putting the marker on
+    the LAST prior assistant message (before the current user turn)
+    causes the model to cache `system + turn1.user + turn1.assistant +
+    ... + turnN-1.assistant` so the next turn in the same conversation
+    pays input tokens only for the newest user message.
+
+    Input: `[{role: 'user'|'assistant', content: str}, ...]`
+    Output: same list but with the second-to-last message's content
+    re-wrapped as `[{type: 'text', text: ..., cache_control: ...}]`
+    (a content-block list, not a bare string — anthropic accepts either).
+
+    Returns a new list (does not mutate the input).
+    """
+    if len(msgs) < 2:
+        return list(msgs)
+    # Mark the message immediately before the last (which is the current user
+    # turn). For a 3-message conversation [u, a, u], we mark the assistant.
+    out = list(msgs)
+    mark_idx = len(out) - 2
+    target = dict(out[mark_idx])  # copy
+    raw = target.get("content", "")
+    if isinstance(raw, str):
+        target["content"] = [{
+            "type": "text",
+            "text": raw,
+            "cache_control": {"type": "ephemeral"},
+        }]
+    elif isinstance(raw, list):
+        # Already content-block form; mark the LAST block.
+        new_blocks = [dict(b) for b in raw]
+        if new_blocks:
+            last = new_blocks[-1]
+            if last.get("type") == "text":
+                last["cache_control"] = {"type": "ephemeral"}
+        target["content"] = new_blocks
+    out[mark_idx] = target
+    return out
+
+
 def _anthropic_call(model: str, prompt: str, max_tokens: int,
                     cfg: ForgeRuntimeConfig, *,
                     messages: list[dict] | None = None) -> tuple[bool, str, dict, str | None]:
@@ -401,6 +445,14 @@ def _anthropic_call(model: str, prompt: str, max_tokens: int,
         )
         # r59: use native messages list if provided; otherwise wrap prompt.
         msgs = messages if messages is not None else [{"role": "user", "content": prompt}]
+        # r62 (v0.5.14): cross-turn upstream prompt-cache. When `messages` is
+        # set AND has ≥2 turns, mark the boundary BEFORE the latest user
+        # message with `cache_control` so anthropic caches the conversation
+        # prefix (system + earlier turns). The next turn in the same conv
+        # within the 5-min TTL hits anthropic's cache, saving input tokens.
+        # Single-turn calls keep the legacy behavior (only system cached).
+        if messages is not None and len(msgs) >= 2:
+            msgs = _anthropic_cache_mark(msgs)
         resp = client.messages.create(
             model=model,
             max_tokens=int(max_tokens),
@@ -1582,9 +1634,24 @@ class ForgeRuntime:
 
     # ---- v0.5.13 (r61) unified SQLite WAL backend ----
 
+    # r62 (v0.5.14): schema version. Bumped only on incompatible changes
+    # (column drops/renames, type changes). Adding nullable columns is
+    # backward-compatible via `CREATE TABLE IF NOT EXISTS` and doesn't
+    # require a bump. SQLite's `user_version` pragma stores this per-DB.
+    SCHEMA_VERSION = 1
+
     def _db_open(self) -> None:
         """Open the SQLite connection (WAL mode) and create tables if needed.
-        Idempotent — calling twice is a no-op after the first."""
+        Idempotent — calling twice is a no-op after the first.
+
+        r62: also checks the DB's `user_version` pragma against
+        `SCHEMA_VERSION`. If the DB version is NEWER than the runtime
+        knows about, logs a stderr warning (forward-compat: runtime
+        proceeds, but newer-version fields may be ignored). If OLDER,
+        logs a different warning (calling code should run a migration —
+        no auto-migration in v0.5.x). On a brand-new DB, sets user_version
+        to current.
+        """
         if self._db is not None:
             return
         path = self.cfg.forge_db_path
@@ -1599,6 +1666,26 @@ class ForgeRuntime:
         # cache + conv-memory use case. NORMAL sync = good perf/safety trade.
         self._db.execute("PRAGMA journal_mode=WAL")
         self._db.execute("PRAGMA synchronous=NORMAL")
+        # r62: schema versioning. user_version starts at 0 on a fresh DB.
+        cur_ver = self._db.execute("PRAGMA user_version").fetchone()[0]
+        if cur_ver == 0:
+            self._db.execute(f"PRAGMA user_version = {self.SCHEMA_VERSION}")
+        elif cur_ver > self.SCHEMA_VERSION:
+            print(
+                f"[forge_runtime] SQLite db has user_version={cur_ver} but "
+                f"runtime SCHEMA_VERSION={self.SCHEMA_VERSION}. Newer schema "
+                f"detected — runtime proceeds in best-effort backward-read "
+                f"mode; columns added in later versions will be ignored.",
+                file=_sys.stderr,
+            )
+        elif cur_ver < self.SCHEMA_VERSION:
+            print(
+                f"[forge_runtime] SQLite db has user_version={cur_ver} but "
+                f"runtime SCHEMA_VERSION={self.SCHEMA_VERSION}. Older schema "
+                f"detected — no auto-migration in v0.5.x; calling code should "
+                f"run a migration script or use a fresh DB path.",
+                file=_sys.stderr,
+            )
         self._db.execute("""
             CREATE TABLE IF NOT EXISTS vendor_cache (
                 cache_key   TEXT PRIMARY KEY,
@@ -2440,6 +2527,70 @@ def _smoke_test() -> int:
             _self_mod._vendor_call = _orig_vendor_call
             for p in (db_file, db_file.with_suffix(".sqlite3-wal"),
                       db_file.with_suffix(".sqlite3-shm")):
+                if p.exists():
+                    p.unlink()
+
+        # Case 17: r62 (v0.5.14) anthropic cache_mark helper unit test.
+        # Verifies cross-turn cache_control insertion on the second-to-last
+        # message of a conversation. The runtime helper transforms a plain
+        # messages list into anthropic content-block form with cache_control.
+        msgs_in = [
+            {"role": "user", "content": "First question."},
+            {"role": "assistant", "content": "First answer."},
+            {"role": "user", "content": "Follow-up."},
+        ]
+        msgs_marked = _anthropic_cache_mark(msgs_in)
+        assert len(msgs_marked) == 3
+        # First user msg unchanged (still string content)
+        assert msgs_marked[0]["content"] == "First question."
+        # Assistant msg (index 1, second-to-last) should be content-block form
+        assistant = msgs_marked[1]
+        assert isinstance(assistant["content"], list), (
+            f"assistant content should be list, got {type(assistant['content'])}"
+        )
+        assert assistant["content"][0]["type"] == "text"
+        assert assistant["content"][0]["text"] == "First answer."
+        assert assistant["content"][0]["cache_control"] == {"type": "ephemeral"}, (
+            f"expected cache_control marker, got {assistant['content'][0]}"
+        )
+        # Last user msg unchanged (current turn isn't cached — it's the new data)
+        assert msgs_marked[2]["content"] == "Follow-up."
+        # Original input not mutated
+        assert msgs_in[1]["content"] == "First answer.", "input list should not be mutated"
+        # Single-turn → no marking
+        single = [{"role": "user", "content": "Solo."}]
+        marked_single = _anthropic_cache_mark(single)
+        assert len(marked_single) == 1
+        assert marked_single[0]["content"] == "Solo."  # unchanged
+        print(f"[17] anthropic cache_mark (r62): cross-turn cache_control on "
+              f"second-to-last msg; single-turn unchanged; input not mutated")
+
+        # Case 18: r62 SQLite schema_version PRAGMA. Open a fresh DB,
+        # verify user_version is set to SCHEMA_VERSION (1).
+        db_ver_file = Path("/tmp/forge_runtime_smoke_db_ver.sqlite3")
+        for p in (db_ver_file, db_ver_file.with_suffix(".sqlite3-wal"),
+                  db_ver_file.with_suffix(".sqlite3-shm")):
+            if p.exists():
+                p.unlink()
+        try:
+            cfg_ver = ForgeRuntimeConfig(
+                anthropic_api_key="stub", openai_api_key="stub", gemini_api_key="stub",
+                telemetry_path=Path("/tmp/forge_runtime_smoke_db_ver.jsonl"),
+                use_orchestration=True,
+                vendor_cache_enabled=True,
+                forge_db_path=db_ver_file,
+            )
+            rt_ver = ForgeRuntime(cfg_ver)
+            user_ver = rt_ver._db.execute("PRAGMA user_version").fetchone()[0]
+            assert user_ver == ForgeRuntime.SCHEMA_VERSION, (
+                f"expected user_version={ForgeRuntime.SCHEMA_VERSION}, got {user_ver}"
+            )
+            print(f"[18] schema versioning (r62): user_version={user_ver} matches "
+                  f"SCHEMA_VERSION={ForgeRuntime.SCHEMA_VERSION}")
+            rt_ver.close()
+        finally:
+            for p in (db_ver_file, db_ver_file.with_suffix(".sqlite3-wal"),
+                      db_ver_file.with_suffix(".sqlite3-shm")):
                 if p.exists():
                     p.unlink()
 
