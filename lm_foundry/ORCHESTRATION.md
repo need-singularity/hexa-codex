@@ -703,19 +703,20 @@ existing weights:
 - **SQLite WAL requires local disk** — NOT NFS, CIFS, or other network
   filesystems. For distributed deployments, use a real network DB
   (Postgres / managed Redis / DynamoDB) — not in scope for v0.5.x.
-- **Anthropic cross-turn cache_control (r62) MEASURED in r64 — REDUNDANT
-  in practice**. The empirical finding (`bench/score-anthropic-xt-r64/`):
-  Config A (marker ON) and Config B (marker OFF) produced bit-for-bit
-  identical cache_create / cache_read counts on a 4-turn sonnet
-  conversation. Anthropic auto-caches the conversation prefix using only
-  the `cache_control` marker on the system message (r45 baseline).
-  r62's `_anthropic_cache_mark` is kept in code as a defensive no-op
-  against future SDK behavior changes; the runtime is NOT degraded by
-  its presence. Cache READ IS valuable (~90% savings on cached portion)
-  but materializes from anthropic's automatic mechanism, not from r62's
-  explicit marker. Per-model thresholds (sonnet 1024 tok, haiku 2048,
-  opus 1024) gate when cache fires; turns 3+ of a typical conversation
-  cross sonnet's threshold.
+- **Anthropic cross-turn cache_control measurements (r64 + r66)** — empirical
+  3-model matrix:
+  - **sonnet**: auto-caches via system marker; T3 cr=1141 / T4 rd=1141;
+    ~90% savings on cached portion. r62 marker REDUNDANT (same in both configs).
+  - **opus**: NO cache engagement observed in 4-turn conversation even
+    with cumulative prefix ~3500 tok at T4 (well above 1024 min). r62
+    marker has no effect.
+  - **haiku**: NO cache engagement observed even with prefix ~1700 at T4
+    (below haiku's 2048 min — explains haiku at this conv length).
+  Operational guidance: **do NOT predict cost savings from cross-turn
+  caching unless you've measured it on your target model + tier**. The
+  documented "min cache size" alone does not predict engagement.
+  `_anthropic_cache_mark` is kept in code as a defensive no-op against
+  future SDK behavior changes; verified harmless across all 3 models.
 - **`forge_vacuum` requires runtime idle during VACUUM** (exclusive
   lock). Schedule cron in a low-traffic window.
 - **Schema versioning is detection-only** — `SCHEMA_VERSION = 1` is

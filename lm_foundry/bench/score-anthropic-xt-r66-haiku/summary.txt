@@ -1,0 +1,34 @@
+================================================================================================
+ANTHROPIC CROSS-TURN PROMPT-CACHE ROI (r64 v2) — model: claude-haiku-4-5-20251001
+================================================================================================
+Config A = cache marker ON  (anthropic_cross_turn_cache_enabled=True, r62 default)
+Config B = cache marker OFF (anthropic_cross_turn_cache_enabled=False)
+Direct `_anthropic_call` (bypass classifier+selector) ensures uniform model namespace.
+
+turn  cfg    fresh    cr+    rd+   out    cost USD  lat ms
+------------------------------------------------------------------------------------------------
+1     A         96      0      0   512    0.002125   10945
+1     B         96      0      0   512    0.002125    4801
+
+2     A        629      0      0   511    0.002547    7052
+2     B        629      0      0   512    0.002551    6359
+
+3     A       1165      0      0   512    0.002980    5692
+3     B       1166      0      0   512    0.002981    7312
+
+4     A       1697      0      0   184    0.002094    3379
+4     B       1698      0      0   204    0.002174    3546
+================================================================================================
+AGGREGATES
+================================================================================================
+metric                                            config A        config B          delta     A vs B
+------------------------------------------------------------------------------------------------
+fresh input tokens                                    3587            3589             -2      -0.1%
+cache CREATE tokens (first write premium)                0               0             +0      (B=0)
+cache READ tokens (savings)                              0               0             +0      (B=0)
+output tokens                                         1719            1740            -21      -1.2%
+total cost USD                                   $0.009746       $0.009831     $-0.000085      -0.9%
+
+VERDICT: No cache activity in Config A. Likely cause:
+         - Prefix below model's minimum cache size (1024 sonnet/opus, 2048 haiku)
+         - Pause between turns exceeded 5-min TTL (unlikely with current pause)

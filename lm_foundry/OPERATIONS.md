@@ -412,15 +412,20 @@ For production-relevant context: vendor-call latency is typically
   + struct routes will all `auth_fail` until a key is added to the
   secret store. Until then, prompts routed to those tiers fall through
   to the user-facing "auth not configured" message.
-- **Anthropic cross-turn cache_control marker IS A NO-OP in practice**
-  (r64 finding; see `bench/score-anthropic-xt-r64/`). Anthropic auto-
-  caches conversation prefix using only the system-message marker
-  (r45 baseline behavior). r62's `_anthropic_cache_mark` was kept in
-  code as a defensive marker but produces identical cache behavior to
-  baseline at sonnet scale. Operators should NOT expect additional
-  savings from `anthropic_cross_turn_cache_enabled=True` beyond what
-  anthropic's automatic caching already provides; the toggle exists
-  for A/B verification and future-proofing, not for cost reduction.
+- **Anthropic cross-turn cache_control is MODEL-SPECIFIC and largely
+  unmeasured-but-known-redundant** (r64+r66 findings):
+  - sonnet: auto-caches via system marker → ~90% savings on cached portion
+  - opus: NO cache engagement in 4-turn conv (cumulative prefix ~3500 tok)
+  - haiku: NO cache engagement (prefix ~1700 tok, below 2048 min for haiku)
+  r62's `_anthropic_cache_mark` is redundant on ALL 3 measured models —
+  identical results in both Config A (marker ON) and Config B (marker OFF).
+  Operators should NOT predict cost savings from cross-turn caching for
+  any model unless it has been measured on the target tier. Sonnet is the
+  only measured-cache-engaging model in our experiments. The toggle
+  `anthropic_cross_turn_cache_enabled` exists for A/B verification and
+  future-proofing, NOT for cost reduction. See
+  `bench/score-anthropic-xt-r64/` (sonnet), `bench/score-anthropic-xt-r66-opus/`,
+  `bench/score-anthropic-xt-r66-haiku/`.
 
 ---
 

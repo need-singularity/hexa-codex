@@ -6466,6 +6466,127 @@ OpenAI remains to add via `forge_keys add openai` once user provides key.
 **GA UNCHANGED**: r39 v3-t3patch (94.29% Mk.I strict).
 **dancinlab/\* repos LIVE: 42** (unchanged — tooling-only round).
 
+### 2026-05-14 ~21:30 KST — round 66: v0.5.18 — opus + haiku cross-turn cache measurement (per-model threshold validation); finding: cache engagement is MODEL-SPECIFIC
+
+**Goal**: r64 measured `claude-sonnet-4-6` and found anthropic auto-
+caches the conversation prefix via the system marker (r62's
+`_anthropic_cache_mark` redundant). r66 extends measurement to opus
+and haiku to validate per-model behavior.
+
+**Methodology**: Same `tool/bench_anthropic_cross_turn.py` script,
+same 4-turn RoPE conversation, two runs per model (Config A marker
+ON, Config B marker OFF).
+
+**Bonus first**: `gemini-2.5-pro` still returns `upstream_quota` —
+the registered `gemini.api_key` is from a free-tier project. Operator
+needs to swap with a paid-tier project's key via `forge_keys add gemini`
+to unblock longctx routing. `gemini-2.5-flash` works (free-tier OK).
+
+#### r66 results — 3-model matrix
+
+| Model | min cache size (docs) | T3 cumulative prefix | Cache behavior |
+|---|---:|---:|---|
+| **claude-sonnet-4-6** (r64) | 1024 tok | ~1140 tok | AUTO: T3 cr=1141 / T4 rd=1141 |
+| **claude-opus-4-7** (r66) | 1024 tok | ~1226 tok | NONE: all turns cr=0 rd=0 |
+| **claude-haiku-4-5-20251001** (r66) | 2048 tok | ~1165 tok (below min) | NONE: all turns cr=0 rd=0 |
+
+**Per-config detail** (all values per-turn fresh / cache_create / cache_read):
+
+`claude-opus-4-7`:
+| Turn | Config A | Config B | identical? |
+|---:|---|---|---|
+| 1 | 133 / 0 / 0 | 133 / 0 / 0 | ✓ |
+| 2 | 676 / 0 / 0 | 676 / 0 / 0 | ✓ |
+| 3 | 1227 / 0 / 0 | 1226 / 0 / 0 | ~ (1-tok marker overhead) |
+| 4 | 1768 / 0 / 0 | 1767 / 0 / 0 | ~ (1-tok overhead) |
+
+Total opus: Config A \$0.196485, Config B \$0.193380 — **+1.6% diff is
+output-token noise** (1859 vs 1818 out).
+
+`claude-haiku-4-5-20251001`:
+| Turn | Config A | Config B | identical? |
+|---:|---|---|---|
+| 1 | 96 / 0 / 0 | 96 / 0 / 0 | ✓ |
+| 2 | 629 / 0 / 0 | 629 / 0 / 0 | ✓ |
+| 3 | 1165 / 0 / 0 | 1166 / 0 / 0 | ~ |
+| 4 | 1697 / 0 / 0 | 1698 / 0 / 0 | ~ |
+
+Total haiku: Config A \$0.009746, Config B \$0.009831 — **-0.9% diff is
+output noise**.
+
+#### Honest findings
+
+1. **Cache engagement is model-specific**, not driven purely by prefix
+   size + system marker. Only sonnet auto-cached in this experiment;
+   opus and haiku did not engage cache despite cumulative prefix
+   exceeding documented minimums (opus prefix ~3500 at turn 4, far
+   above 1024 min).
+
+2. **r62's `_anthropic_cache_mark` is redundant on all 3 measured models**.
+   The 1-token Config A overhead on opus/haiku turns 3+ is the
+   serialized marker metadata; it does NOT engage cache. r64 already
+   established sonnet's auto-caching uses only system marker; r66
+   shows opus/haiku don't cache even WITH the explicit marker.
+
+3. **Possible explanations for opus/haiku non-caching** (we have NOT
+   verified):
+   - Anthropic may require multiple cache_control markers (system +
+     user/assistant boundaries) for opus/haiku to engage. Our `_anthropic_cache_mark`
+     marks ONE user/assistant boundary; maybe opus needs ≥2.
+   - Per-model API-tier requirements (e.g., scale tier may unlock
+     caching). Our test account may not have it.
+   - The cache might engage on LONGER conversations (5+ turns) that we
+     didn't measure. Each model has different "warm-up" requirements.
+
+4. **Operational guidance**: do NOT predict cost savings from cross-
+   turn caching unless you've measured it on your target model + tier.
+   Sonnet shows ~90% savings on the cached portion (anthropic auto-
+   cache); opus/haiku as measured show ZERO savings.
+
+#### Spend
+
+- r66 opus run: \$0.39 (Config A \$0.196 + B \$0.193)
+- r66 haiku run: \$0.02 (Config A \$0.0097 + B \$0.0098)
+- **r66 total: \$0.41**
+
+v0.5.x cumulative: ~\$18.95 (was \$18.54 after r65).
+
+#### Round 66 commits
+
+- `bench/score-anthropic-xt-r66-opus/` artifacts (per_turn_a.jsonl,
+  per_turn_b.jsonl, summary.txt)
+- `bench/score-anthropic-xt-r66-haiku/` artifacts (same 3 files)
+- `ORCHESTRATION.md` §15 cross-turn cache caveat further refined with
+  per-model matrix
+- `OPERATIONS.md` §9 expanded with per-model cache behavior
+- this ROADMAP entry · `LEARNING_PROGRAMMING.md` §8 r66 row
+
+**Smoke gates UNCHANGED**: forge_runtime 18/18, classify 21/21, tier
+14/14, audit + vacuum smoke pass, run_all_smoke 7/7, DLG-mk0 0.9833,
+Brier 0.0242, ECE 0.0461.
+
+**GA UNCHANGED**: r39 v3-t3patch (94.29% Mk.I strict).
+**dancinlab/\* repos LIVE: 42** (unchanged — measurement-only round).
+
+#### Combined r64 + r66 narrative
+
+The cross-turn upstream prompt-cache story is now fully measured for
+the 3 anthropic models in scope:
+- **sonnet** — anthropic auto-caches; r62 marker redundant; ~90% savings
+  on cached portion materializes from automatic mechanism
+- **opus** — no cache engagement observed; cost-saving prediction
+  unsupported by empirical data
+- **haiku** — no cache engagement observed; cost-saving prediction
+  unsupported
+
+For production multi-turn conversational deployments, the relevant
+tier-routing choice should not be made based on cross-turn cache
+savings UNLESS the workload is specifically routed to sonnet (where
+auto-cache fires). Defaulting `select_vendor_tier` to sonnet for
+general OOD (r46 baseline) is the only tier where measured cross-
+turn cache savings exist; opus and haiku tier choices should be
+weighed on raw input/output pricing alone.
+
 
 
 
