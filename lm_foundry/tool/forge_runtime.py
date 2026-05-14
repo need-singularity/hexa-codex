@@ -34,6 +34,7 @@ _sys.path[:] = [p for p in _sys.path if _os.path.abspath(p) != _THIS_DIR]
 import hashlib
 import json
 import sqlite3  # v0.5.13 (r61): unified WAL-backed cache + conv memory
+import random  # v0.6.2 (r69): retry jitter
 import re
 import subprocess
 import time
@@ -235,6 +236,30 @@ class ForgeRuntimeConfig:
     # Effect when False: `_anthropic_call` skips the cache_control marker
     # on the second-to-last message; only the system prefix is cached.
     anthropic_cross_turn_cache_enabled: bool = True
+    # v0.6.2 (r69): auto-retry with exponential backoff for transient
+    # vendor errors. Closes the V0_6_0_GA.md §6 v0.7 candidate.
+    #
+    # RETRYABLE (whitelist):
+    #   - upstream_timeout (request exceeded SDK timeout)
+    #   - upstream_5xx    (vendor returned 5xx server error)
+    #
+    # NOT RETRYABLE (deterministic / wait-needed failures):
+    #   - upstream_quota  (rate-limit; immediate retry would just re-hit;
+    #                      caller should wait or upgrade tier)
+    #   - auth_fail       (deterministic; retry won't help)
+    #   - schema_violation (config error; retry won't help)
+    #   - redaction_block  (the prompt has secrets; user must rephrase)
+    #
+    # Default OFF (`retry_on_transient=False`) preserves r48 behavior:
+    # error code surfaces directly to user-facing text and calling code
+    # implements its own retry loop. When True, the runtime retries up
+    # to `retry_max_attempts` times with exponential backoff
+    # (`retry_base_delay_s * 2^attempt`) plus ±`retry_jitter_pct` jitter
+    # to avoid thundering herd on coordinated retries from multiple processes.
+    retry_on_transient:   bool   = False
+    retry_max_attempts:   int    = 3
+    retry_base_delay_s:   float  = 1.0
+    retry_jitter_pct:     float  = 0.25
     # v0.5.12 (r60): optional file-backed conversation memory for
     # cross-process restart-persistence. Default None = in-memory only
     # (process-local, matches r57 behavior). When set, loads existing
@@ -324,6 +349,10 @@ class DelegationCall:
     # v0.5.4: True iff the response was served from the per-prompt vendor cache
     # (no upstream call made; cost_usd=0; latency_ms = local cache lookup time).
     cache_hit: bool = False
+    # v0.6.2 (r69): number of upstream attempts spent on this turn.
+    # 1 = first attempt succeeded OR retries disabled. >1 = retry fired.
+    # latency_ms includes time spent in retry backoff.
+    retry_attempts: int = 1
     timestamp_utc: str = field(default_factory=lambda: time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()))
 
 
@@ -755,6 +784,61 @@ def _pick_filler(reason: str, cfg: ForgeRuntimeConfig) -> str:
     return cfg.filler_general
 
 
+# v0.6.2 (r69): retryable error code whitelist. These represent transient
+# failures where an immediate-with-backoff retry has a reasonable chance
+# of succeeding (vendor server-side error or timeout). Quota / auth /
+# schema / redaction are NOT retryable — see config docstring.
+_RETRYABLE_ERRORS: frozenset[str] = frozenset({"upstream_5xx", "upstream_timeout"})
+
+
+def _vendor_call_with_retry(tool: str, model: str, prompt: str, max_tokens: int,
+                              cfg: ForgeRuntimeConfig, *,
+                              messages: list[dict] | None = None
+                              ) -> tuple[bool, str, dict, str | None, int]:
+    """r69 auto-retry wrapper around `_vendor_call`.
+
+    Returns `(ok, text, usage, error, attempts)` — same as `_vendor_call`
+    plus the attempt count (1 if no retry, >1 if retried).
+
+    Behavior:
+      - If `cfg.retry_on_transient=False` → single call, attempts=1 always.
+      - If True → up to `cfg.retry_max_attempts` calls total, retrying
+        only on error codes in `_RETRYABLE_ERRORS`.
+      - Backoff: `cfg.retry_base_delay_s * 2^attempt_idx`, plus
+        ±`cfg.retry_jitter_pct` jitter (e.g. ±25% randomization to
+        prevent thundering herd from coordinated multi-process retries).
+      - On final-attempt failure, the LAST error is returned (whether
+        transient or not).
+    """
+    if not getattr(cfg, "retry_on_transient", False):
+        ok, text, usage, err = _vendor_call(tool, model, prompt, max_tokens,
+                                              cfg, messages=messages)
+        return ok, text, usage, err, 1
+
+    max_attempts = max(1, int(getattr(cfg, "retry_max_attempts", 3)))
+    base_delay   = max(0.0, float(getattr(cfg, "retry_base_delay_s", 1.0)))
+    jitter_pct   = max(0.0, min(1.0, float(getattr(cfg, "retry_jitter_pct", 0.25))))
+
+    last_ok, last_text, last_usage, last_err = False, "", {}, "no_attempt"
+    for attempt_idx in range(max_attempts):
+        last_ok, last_text, last_usage, last_err = _vendor_call(
+            tool, model, prompt, max_tokens, cfg, messages=messages,
+        )
+        if last_ok:
+            return last_ok, last_text, last_usage, last_err, attempt_idx + 1
+        if last_err not in _RETRYABLE_ERRORS:
+            return last_ok, last_text, last_usage, last_err, attempt_idx + 1
+        if attempt_idx == max_attempts - 1:
+            # Exhausted retries — return last result
+            return last_ok, last_text, last_usage, last_err, attempt_idx + 1
+        # Exponential backoff with jitter
+        delay = base_delay * (2 ** attempt_idx)
+        if jitter_pct > 0:
+            delay *= (1.0 + random.uniform(-jitter_pct, jitter_pct))
+        time.sleep(delay)
+    return last_ok, last_text, last_usage, last_err, max_attempts
+
+
 # ============================================================================
 # Main runtime
 # ============================================================================
@@ -1148,6 +1232,7 @@ class ForgeRuntime:
             cache_key = self._vendor_cache_key(tool, model, max_tokens, redacted_prompt)
         cache_hit = False
         cached = self._vendor_cache_get(cache_key) if self.cfg.vendor_cache_enabled else None
+        retry_attempts = 1  # r69: track # of upstream attempts for telemetry
         if cached is not None:
             text, usage, _expires = cached
             ok, err = True, None
@@ -1164,9 +1249,11 @@ class ForgeRuntime:
             t0 = time.monotonic()
             # r59: pass `messages` if native threading was requested; else
             # the legacy single-prompt path is used (identical results).
-            ok, text, usage, err = _vendor_call(tool, model, redacted_prompt,
-                                                  max_tokens, self.cfg,
-                                                  messages=messages)
+            # r69: wrap with retry-on-transient when enabled.
+            ok, text, usage, err, retry_attempts = _vendor_call_with_retry(
+                tool, model, redacted_prompt, max_tokens, self.cfg,
+                messages=messages,
+            )
             latency_ms = int((time.monotonic() - t0) * 1000)
             # Cache successful responses only — failures should be retried.
             if ok and self.cfg.vendor_cache_enabled and self.cfg.vendor_cache_ttl_s > 0:
@@ -1189,6 +1276,7 @@ class ForgeRuntime:
             cost_usd=cost, latency_ms=latency_ms,
             filler_emitted=(emit_filler_fn is not None) and not cache_hit,
             cache_hit=cache_hit,
+            retry_attempts=retry_attempts,  # r69
         )
         self._append_telemetry(call)
 
@@ -2608,6 +2696,96 @@ def _smoke_test() -> int:
                       db_ver_file.with_suffix(".sqlite3-shm")):
                 if p.exists():
                     p.unlink()
+
+        # Case 19: r69 auto-retry with exponential backoff.
+        # Three scenarios:
+        #  (a) retry_on_transient=False → single attempt, retry_attempts=1
+        #  (b) retry_on_transient=True + transient error first 2 calls,
+        #      then success on 3rd → retry_attempts=3
+        #  (c) retry_on_transient=True + permanent error → no retry,
+        #      retry_attempts=1
+        _self_mod._vendor_call = _orig_vendor_call  # reset before patching
+        call_count = [0]
+        next_responses: list[tuple] = []
+
+        def _seq_call(tool, model, prompt, max_tokens, cfg, *, messages=None):
+            call_count[0] += 1
+            if next_responses:
+                return next_responses.pop(0)
+            return True, "default-ok", {"input_tokens": 1, "output_tokens": 1,
+                                          "cached_tokens": 0, "cost_usd": 0.0}, None
+
+        _self_mod._vendor_call = _seq_call
+        try:
+            # Scenario (a): retry OFF, immediate success
+            cfg_no_retry = ForgeRuntimeConfig(
+                anthropic_api_key="stub", openai_api_key="stub", gemini_api_key="stub",
+                telemetry_path=Path("/tmp/forge_smoke_retry_a.jsonl"),
+                use_orchestration=True, vendor_cache_enabled=False,
+                retry_on_transient=False,
+            )
+            rt_a = ForgeRuntime(cfg_no_retry)
+            call_count[0] = 0
+            next_responses.clear()
+            r = rt_a.run_turn(
+                "Write a Rust async server using tokio that listens on TCP 8080.",
+                gen_fn=lambda _: "",
+            )
+            assert r.delegations[0].ok is True
+            assert r.delegations[0].retry_attempts == 1, (
+                f"retry OFF should attempt once; got {r.delegations[0].retry_attempts}"
+            )
+            assert call_count[0] == 1
+
+            # Scenario (b): retry ON, 2 transient failures then success
+            cfg_retry = ForgeRuntimeConfig(
+                anthropic_api_key="stub", openai_api_key="stub", gemini_api_key="stub",
+                telemetry_path=Path("/tmp/forge_smoke_retry_b.jsonl"),
+                use_orchestration=True, vendor_cache_enabled=False,
+                retry_on_transient=True,
+                retry_max_attempts=3,
+                retry_base_delay_s=0.01,  # fast for test
+                retry_jitter_pct=0.0,
+            )
+            rt_b = ForgeRuntime(cfg_retry)
+            call_count[0] = 0
+            next_responses.clear()
+            next_responses.append((False, "", {}, "upstream_5xx"))
+            next_responses.append((False, "", {}, "upstream_timeout"))
+            next_responses.append((True, "recovered", {
+                "input_tokens": 1, "output_tokens": 1,
+                "cached_tokens": 0, "cost_usd": 0.0001,
+            }, None))
+            r = rt_b.run_turn(
+                "Write a Rust async server using tokio that listens on TCP 8080.",
+                gen_fn=lambda _: "",
+            )
+            assert r.delegations[0].ok is True
+            assert r.delegations[0].retry_attempts == 3, (
+                f"expected 3 attempts, got {r.delegations[0].retry_attempts}"
+            )
+            assert call_count[0] == 3
+            assert r.delegations[0].text.startswith("recovered")
+
+            # Scenario (c): retry ON, but auth_fail (non-retryable) — no retry
+            rt_c = ForgeRuntime(cfg_retry)
+            call_count[0] = 0
+            next_responses.clear()
+            next_responses.append((False, "", {}, "auth_fail"))
+            r = rt_c.run_turn(
+                "Write a Rust async server using tokio that listens on TCP 8080.",
+                gen_fn=lambda _: "",
+            )
+            assert r.delegations[0].ok is False
+            assert r.delegations[0].error == "auth_fail"
+            assert r.delegations[0].retry_attempts == 1, (
+                f"non-retryable error should not retry; got {r.delegations[0].retry_attempts}"
+            )
+            assert call_count[0] == 1
+            print(f"[19] r69 auto-retry: OFF=1 attempt, ON+transient×2+ok=3 attempts, "
+                  f"ON+auth_fail=1 attempt (non-retryable)")
+        finally:
+            _self_mod._vendor_call = _orig_vendor_call
 
     print("\n=== SMOKE TESTS PASSED ===")
     return 0

@@ -6738,6 +6738,95 @@ touch the runtime). All r66 gates green.
 **GA UNCHANGED**: r39 v3-t3patch (94.29% Mk.I strict).
 **dancinlab/\* repos LIVE: 42** (unchanged — tooling-only round).
 
+### 2026-05-14 ~23:00 KST — round 69: v0.6.2 — auto-retry with exponential backoff (closes V0_6_0_GA.md §6 v0.7 candidate)
+
+**Goal**: V0_6_0_GA.md §6 listed "auto-retry with exponential backoff"
+as a v0.7+ candidate. r69 ships it as the v0.6.2 patch — software-only,
+backward-compat (default OFF), small surface.
+
+**`tool/forge_runtime.py` extensions**:
+
+1. **4 new config fields** on `ForgeRuntimeConfig`:
+   - `retry_on_transient: bool = False` (default OFF; preserves r48 behavior)
+   - `retry_max_attempts: int = 3`
+   - `retry_base_delay_s: float = 1.0`
+   - `retry_jitter_pct: float = 0.25`
+
+2. **NEW `_RETRYABLE_ERRORS` frozenset** = `{"upstream_5xx", "upstream_timeout"}`.
+   - NOT included: `upstream_quota` (rate-limit; immediate retry just re-hits)
+   - NOT included: `auth_fail` / `schema_violation` / `redaction_block` (deterministic)
+
+3. **NEW `_vendor_call_with_retry(...)`** wrapper around `_vendor_call`:
+   - Single-call passthrough when `retry_on_transient=False`
+   - Up to `retry_max_attempts` total calls when True
+   - Exponential backoff: `base_delay * 2^attempt_idx` + ±jitter_pct
+   - Returns 5-tuple: `(ok, text, usage, error, attempts)` — same as
+     `_vendor_call` plus the attempt count for telemetry
+   - On non-retryable error: returns immediately (no useless wait)
+
+4. **`DelegationCall.retry_attempts: int = 1`** NEW field — captures
+   the upstream attempt count for the audit pipeline (1 = no retry,
+   >1 = retry fired). `latency_ms` includes time spent in retry backoff.
+
+5. **`_run_turn_orchestrated`** now calls `_vendor_call_with_retry`
+   instead of `_vendor_call`; `retry_attempts` threaded into the
+   DelegationCall record.
+
+6. **`import random`** for jitter (stdlib).
+
+**Smoke case [19]** verifies 3 scenarios:
+- (a) retry OFF + immediate success → 1 attempt
+- (b) retry ON + 2 transient (upstream_5xx, upstream_timeout) then success
+       → 3 attempts, text='recovered'
+- (c) retry ON + auth_fail (non-retryable) → 1 attempt, no useless retry
+
+All 19/19 forge smoke pass.
+
+**Zero regression**:
+- forge_runtime smoke: **19/19** (was 18/18; +1 = case 19 retry)
+- classify_prompt: 21/21 (unchanged)
+- select_vendor_tier: 14/14 (unchanged)
+- forge_audit `--smoke`: PASSED
+- forge_vacuum `--smoke`: PASSED
+- `run_all_smoke`: **7/7 ALL GREEN in 7.54s**
+- DLG-mk0: 0.9833 / tier_match 1.000 / tool_match 0.9926 (unchanged)
+- Brier 0.0242 / ECE 0.0461 (unchanged)
+
+**Production usage** (opt-in):
+```python
+cfg = ForgeRuntimeConfig.from_env(
+    retry_on_transient=True,
+    retry_max_attempts=3,      # default
+    retry_base_delay_s=1.0,    # default
+    retry_jitter_pct=0.25,     # default ±25%
+)
+```
+
+With these settings, transient `upstream_5xx` / `upstream_timeout`
+errors auto-retry up to 3 times (1s, 2s, 4s delays + jitter). `forge_audit`
+will surface `retry_attempts > 1` cases in the telemetry stream for
+production monitoring.
+
+**Honesty caveats**:
+- Retry adds to `latency_ms` (which now includes backoff time).
+  Operators tracking p95 should be aware: a retry can extend a
+  single-call's measured latency by 1-7+ seconds.
+- `upstream_quota` is deliberately NOT retried — anthropic /
+  openai /gemini quota windows are typically minutes-to-hours, and
+  busy-retry just adds to upstream pressure. Calling code should
+  surface this to the user and wait.
+- Default is OFF for backward compat. r48-r68 behavior unchanged
+  unless `retry_on_transient` is set.
+
+**Round 69 commits:** this ROADMAP entry · `tool/forge_runtime.py`
+(4 config fields + `_RETRYABLE_ERRORS` + `_vendor_call_with_retry` +
+`DelegationCall.retry_attempts` + dispatch in `_run_turn_orchestrated`
++ smoke case [19]) · `LEARNING_PROGRAMMING.md` §8 r69 row.
+
+**Cost**: \$0 (CPU; smoke only).
+**GA UNCHANGED**: r39 v3-t3patch (94.29% Mk.I strict).
+**dancinlab/\* repos LIVE: 42** (unchanged — software-only round).
+
 
 
 
