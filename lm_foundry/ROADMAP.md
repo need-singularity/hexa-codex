@@ -5377,6 +5377,138 @@ smoke case [11]) · `LEARNING_PROGRAMMING.md` §8 r56 row.
 **GA UNCHANGED**: r39 v3-t3patch (94.29% Mk.I strict).
 **dancinlab/\* repos LIVE: 42** (unchanged — software-only round).
 
+### 2026-05-14 ~17:00 KST — round 57: v0.5.9 — multi-turn delegation memory (per-conv buffer + optional auto-prepend); 12/12 smoke pass; no regression
+
+**Goal**: deliver conversation-context awareness for forge runtime.
+The r48 per-prompt cache only de-duplicates identical prompts; r57 adds
+the *infrastructure* for stateful conversational flows where turn N
+needs to know about turn 1.
+
+**Design — two layers, both opt-in**:
+
+1. **Storage layer** (`multi_turn_memory_enabled: bool = False`):
+   - `ConversationTurn` dataclass: `(turn_id, timestamp_utc, user_prompt, assistant_text, classifier_label, tool, model)`
+   - Per-`conv_id` buffer capped at `multi_turn_memory_max_turns` (default 5)
+   - Public API: `get_conversation_history(conv_id) → list[ConversationTurn]` (returns a copy; safe to inspect), `clear_conversation(conv_id)` (drops the buffer)
+   - Recorded ONLY on successful turns (`final_error is None`); error turns leave the buffer unchanged so users can retry without polluting context
+   - Recorded ONLY on orchestrated path (legacy v0.4.0 path doesn't get memory; opt-in feature)
+
+2. **Auto-prepend layer** (`multi_turn_memory_auto_prepend: bool = False`):
+   - REQUIRES `multi_turn_memory_enabled=True`
+   - Before classification + dispatch, the OOD path prepends prior turns to the prompt:
+     ```
+     Previous conversation:
+     User: <turn N-2 prompt>
+     Assistant: <turn N-2 response>
+
+     User: <turn N-1 prompt>
+     Assistant: <turn N-1 response>
+
+     Current question:
+     <current prompt>
+     ```
+   - Trimmed from OLDEST if total chars exceed `multi_turn_memory_max_chars` (default 8000)
+   - The ORIGINAL prompt is preserved for buffer recording (so history doesn't accumulate auto-prepended preambles)
+   - **CAVEAT (documented in code + spec)**: auto-prepend changes the per-prompt-cache key on every turn (different SHA256 hash as context grows), so caching is effectively single-turn for conversational flows. Production code should choose: cache or memory, not both for conversational UX.
+
+**`ForgeRuntimeConfig` new fields** (all default OFF — backward-compat):
+```python
+multi_turn_memory_enabled:      bool = False
+multi_turn_memory_max_turns:    int  = 5
+multi_turn_memory_max_chars:    int  = 8000
+multi_turn_memory_auto_prepend: bool = False
+```
+
+**Implementation surface**:
+
+- `tool/forge_runtime.py`:
+  - NEW `@dataclass ConversationTurn` (alongside `DelegationCall` + `TurnResult`)
+  - `ForgeRuntime.__init__` adds `self._conv_history: dict[str, list[ConversationTurn]] = {}`
+  - `run_turn()` auto-prepend hook at entry (when `auto_prepend=True`); recording hook at exit (when `enabled=True`)
+  - NEW `get_conversation_history()` + `clear_conversation()` public APIs
+  - NEW private helpers: `_record_conversation_turn()` + `_build_prompt_with_history()`
+
+**Smoke test extension — Case [12]**:
+- Monkey-patch `_vendor_call` with a fake that CAPTURES the upstream prompt
+- 4 sequential turns through same conv_id with auto-prepend ON
+- Assert turn 2's upstream prompt contains `Previous conversation:` preamble + turn-1 user text + turn-1 assistant text
+- Assert turn 4 buffer has only 3 turns (oldest evicted per cap=3)
+- Assert buffer records ORIGINAL prompt, not auto-prepended preamble
+- Assert `clear_conversation()` drops the buffer
+
+All 12/12 forge_runtime smoke pass.
+
+**No code-path regression**:
+- forge_runtime smoke: **12/12** (was 11/11; +1 = case 12 multi-turn)
+- classify_prompt smoke: 21/21 (unchanged)
+- select_vendor_tier smoke: 14/14 (unchanged)
+- DLG-mk0: classifier overall 0.9833 / tier_match 1.000 / tool_match 0.9926 (all unchanged)
+
+**Use cases**:
+
+1. **Calling code reads history** (`enabled=True, auto_prepend=False`):
+   ```python
+   cfg = ForgeRuntimeConfig.from_env(multi_turn_memory_enabled=True)
+   rt = ForgeRuntime(cfg)
+   rt.run_turn("How does RoPE work?", gen_fn, conv_id="user-123")
+   rt.run_turn("Why is 1/√d_k there?", gen_fn, conv_id="user-123")
+   # Calling code can now query:
+   history = rt.get_conversation_history("user-123")
+   # Render UX, summarize prior turns, etc.
+   ```
+
+2. **Runtime auto-prepends** (`enabled=True, auto_prepend=True`):
+   ```python
+   cfg = ForgeRuntimeConfig.from_env(
+       multi_turn_memory_enabled=True,
+       multi_turn_memory_auto_prepend=True,
+   )
+   rt = ForgeRuntime(cfg)
+   rt.run_turn("How does RoPE work?", gen_fn, conv_id="user-123")
+   # Turn 2's vendor call receives "Previous conversation:\nUser:...\nAssistant:...\n\nCurrent question:..."
+   rt.run_turn("Why is 1/√d_k there?", gen_fn, conv_id="user-123")
+   ```
+
+**Honesty caveats**:
+
+- The buffer is **in-memory only** — process restart loses it. r56's
+  file-backed cache is per-prompt-keyed and doesn't extend to conversation
+  state. Persistent conversation memory across restarts is v0.6.0+ scope.
+- Auto-prepend is **simple string concat**, not vendor-native message-list
+  threading (anthropic `messages=[...]` / openai `messages=[...]` /
+  gemini `contents=[...]`). Vendors handle the string-form preamble fine
+  but the native format is more cache-friendly upstream. Native message-list
+  is v0.6.0+ scope when refactoring `_vendor_call` to accept `messages`.
+- Auto-prepend **inflates token cost** on each turn (context grows). For
+  high-turn-count conversations, calling code should cap aggressively or
+  use external summarization. The `multi_turn_memory_max_chars` knob is
+  a hard limit (8K default), not a smart summarizer.
+- Auto-prepend **prepends raw user_prompt** (PRE-redaction). Redaction
+  happens AFTER auto-prepend in `_run_turn_orchestrated`, so secrets in
+  prior turns flow through the redactor too. But: if a redactor change
+  introduces new PII classes after a session started, prior turns'
+  preambles are already in `_conv_history` raw — there's no retroactive
+  redaction. Production code should call `clear_conversation()` on
+  redactor changes or on session reset.
+
+**Round 57 commits:** this ROADMAP entry · `tool/forge_runtime.py`
+(NEW `ConversationTurn` dataclass + 4 new config fields + `_conv_history`
+init + `run_turn` auto-prepend + record hooks + 2 new public methods +
+2 new private helpers + smoke case [12]) · `LEARNING_PROGRAMMING.md` §8 r57 row.
+
+**Cost**: \$0 GPU (CPU; smoke only).
+**GA UNCHANGED**: r39 v3-t3patch (94.29% Mk.I strict).
+**dancinlab/\* repos LIVE: 42** (unchanged — software-only round).
+
+**v0.5.x line: features-complete through r57**. The "all 4 directions"
+sequence (r50-r53) + post-r53 candidates (r54 calibration / r55 coverage /
+r56 file cache / r57 multi-turn) closes every v0.5.x+ item that doesn't
+require user-action (OpenAI key) or paid-tier (Gemini long-doc). Per
+ORCHESTRATION.md §12, v0.6.0+ candidates remain: native vendor message-
+list threading, persistent conversation memory across restarts, real
+multi-process cache (Redis/SQLite), specialist ceiling (Lever 5+ full-FT
+or routing-LoRA architectural alternative).
+
 
 
 

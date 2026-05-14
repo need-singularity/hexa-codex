@@ -205,6 +205,21 @@ class ForgeRuntimeConfig:
     # persistence only. Multi-process shared cache (Redis / SQLite WAL) is v0.6.0+.
     vendor_cache_path:         Path | None = None
 
+    # v0.5.9 (r57): multi-turn delegation memory.
+    # When `multi_turn_memory_enabled=True`, runtime stores a per-conv_id
+    # buffer of `ConversationTurn` records. Calling code can query via
+    # `get_conversation_history(conv_id)` to render UX context.
+    # When `multi_turn_memory_auto_prepend=True` (REQUIRES enabled=True),
+    # the OOD path automatically prepends recent turns to the prompt as a
+    # `Previous conversation:` preamble before redaction + dispatch.
+    # CAVEAT: auto-prepend changes the per-prompt-cache key on every turn
+    # (different SHA256 hash each time as context grows), so caching is
+    # effectively single-turn. Use selectively for conversational flows.
+    multi_turn_memory_enabled:      bool = False
+    multi_turn_memory_max_turns:    int  = 5
+    multi_turn_memory_max_chars:    int  = 8000
+    multi_turn_memory_auto_prepend: bool = False
+
     @classmethod
     def from_env(cls, **overrides) -> "ForgeRuntimeConfig":
         """Construct config; pull keys from secret-CLI lazily — see `_load_key`."""
@@ -273,6 +288,25 @@ class DelegationCall:
     # (no upstream call made; cost_usd=0; latency_ms = local cache lookup time).
     cache_hit: bool = False
     timestamp_utc: str = field(default_factory=lambda: time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()))
+
+
+@dataclass
+class ConversationTurn:
+    """v0.5.9 (r57) multi-turn delegation memory — one stored turn per conv_id.
+
+    Recorded after run_turn completes. The buffer is per `conv_id` and capped
+    by `multi_turn_memory_max_turns`. Used either (a) by calling code that
+    queries `get_conversation_history()` to render UX context, OR (b) by the
+    runtime's optional auto-prepend mode which feeds the previous turns into
+    the next OOD prompt as a `Previous conversation:` preamble.
+    """
+    turn_id: str
+    timestamp_utc: str
+    user_prompt: str          # post-redaction, what the runtime actually saw
+    assistant_text: str        # what was returned to the user
+    classifier_label: str      # "hexa" | "ood" | "refuse"
+    tool: str | None           # vendor tool if ood, else None
+    model: str | None          # vendor model id if ood, else None
 
 
 @dataclass
@@ -599,6 +633,8 @@ class ForgeRuntime:
         # in-memory dict. Capped at vendor_cache_max_entries (most-recent kept).
         if cfg.vendor_cache_enabled and cfg.vendor_cache_path is not None:
             self._vendor_cache_load_from_file()
+        # v0.5.9 (r57): multi-turn conversation memory.
+        self._conv_history: dict[str, list[ConversationTurn]] = {}
 
     # ---- public entry point ----
 
@@ -625,11 +661,28 @@ class ForgeRuntime:
         conv_id = conv_id or str(uuid.uuid4())
         turn_id = str(uuid.uuid4())
 
+        # v0.5.9 (r57): multi-turn memory auto-prepend. When enabled, prior
+        # conversation turns get prepended to the prompt as a 'Previous
+        # conversation:' preamble BEFORE classification + dispatch. This
+        # changes the cache key on every turn (different prompt hash each
+        # time), so caching is effectively single-turn for conversational
+        # flows. The original `user_prompt` is preserved for recording.
+        effective_prompt = user_prompt
+        if (self.cfg.multi_turn_memory_enabled
+                and self.cfg.multi_turn_memory_auto_prepend
+                and self._conv_history.get(conv_id)):
+            effective_prompt = self._build_prompt_with_history(conv_id, user_prompt)
+
         # v0.5.0 orchestration: classify BEFORE the 7B sees anything.
         if self.cfg.use_orchestration and _HAS_CLASSIFIER:
-            return self._run_turn_orchestrated(user_prompt, gen_fn,
-                                                 conv_id=conv_id, turn_id=turn_id,
-                                                 emit_filler_fn=emit_filler_fn)
+            result = self._run_turn_orchestrated(effective_prompt, gen_fn,
+                                                  conv_id=conv_id, turn_id=turn_id,
+                                                  emit_filler_fn=emit_filler_fn)
+            # r57: record this turn for future context (use ORIGINAL prompt,
+            # NOT the auto-prepended one, so the buffer stays clean).
+            if self.cfg.multi_turn_memory_enabled:
+                self._record_conversation_turn(conv_id, turn_id, user_prompt, result)
+            return result
 
         # v0.4.0 legacy in-weight path — kept for backward compatibility.
         # Step 1: generate.
@@ -1171,6 +1224,77 @@ class ForgeRuntime:
             print(f"[forge_runtime] cache append failed (in-memory only): {e!r}",
                   file=_sys.stderr)
 
+    # ---- v0.5.9 (r57) multi-turn delegation memory ----
+
+    def get_conversation_history(self, conv_id: str) -> list[ConversationTurn]:
+        """Return the recorded turn buffer for `conv_id` (oldest first).
+        Returns empty list if no history exists. The buffer is a live
+        reference — callers should not mutate it; use `clear_conversation()`."""
+        return list(self._conv_history.get(conv_id, []))
+
+    def clear_conversation(self, conv_id: str) -> None:
+        """Drop the conversation buffer for `conv_id`. Useful when a session
+        ends, when the user explicitly resets, or to bound long-running
+        conv memory."""
+        self._conv_history.pop(conv_id, None)
+
+    def _record_conversation_turn(self, conv_id: str, turn_id: str,
+                                    user_prompt: str, result: "TurnResult") -> None:
+        """Append a `ConversationTurn` to the per-conv buffer. Capped at
+        `multi_turn_memory_max_turns` (oldest dropped on overflow). Records
+        the ORIGINAL user_prompt (not auto-prepended) and the user-facing
+        text from `result`."""
+        if not self.cfg.multi_turn_memory_enabled:
+            return
+        # Only record successful turns — errors leave the buffer unchanged so
+        # users can retry without polluting context.
+        if result.final_error is not None:
+            return
+        # The classifier_label is set by orchestration path; for legacy path
+        # it's None — skip recording (multi-turn is v0.5.x+ feature).
+        if result.classifier_label is None:
+            return
+        delegation = result.delegations[0] if result.delegations else None
+        turn = ConversationTurn(
+            turn_id=turn_id,
+            timestamp_utc=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+            user_prompt=user_prompt,
+            assistant_text=result.user_facing_text,
+            classifier_label=result.classifier_label,
+            tool=delegation.tool if delegation else None,
+            model=delegation.model if delegation else None,
+        )
+        buf = self._conv_history.setdefault(conv_id, [])
+        buf.append(turn)
+        # Cap to max_turns — drop oldest.
+        max_n = self.cfg.multi_turn_memory_max_turns
+        if len(buf) > max_n:
+            del buf[: len(buf) - max_n]
+
+    def _build_prompt_with_history(self, conv_id: str, user_prompt: str) -> str:
+        """Construct an auto-prepended prompt: prior turns rendered as a
+        'Previous conversation:' preamble + the current question. Trimmed
+        from oldest if total chars exceed `multi_turn_memory_max_chars`."""
+        history = self._conv_history.get(conv_id, [])
+        if not history:
+            return user_prompt
+        max_chars = self.cfg.multi_turn_memory_max_chars
+        # Build preamble newest-first then reverse so oldest comes first in
+        # the final string (chronological reading order for the vendor).
+        rendered: list[str] = []
+        char_budget = max_chars
+        for turn in reversed(history):
+            block = f"User: {turn.user_prompt}\nAssistant: {turn.assistant_text}"
+            if char_budget - len(block) - 2 < 0:
+                break
+            rendered.append(block)
+            char_budget -= len(block) + 2  # +2 for the joining \n\n
+        if not rendered:
+            return user_prompt
+        preamble = "\n\n".join(reversed(rendered))
+        return (f"Previous conversation:\n{preamble}\n\n"
+                f"Current question:\n{user_prompt}")
+
     def _vendor_cache_compact_file(self) -> None:
         """Rewrite the cache file from current in-memory state. Called after
         an LRU eviction so the file doesn't grow with stale records."""
@@ -1446,6 +1570,89 @@ def _smoke_test() -> int:
             _self_mod._vendor_call = _orig_vendor_call
             if cache_file.exists():
                 cache_file.unlink()
+
+        # Case 12: v0.5.9 (r57) multi-turn delegation memory.
+        # Verifies (a) ConversationTurn buffer per conv_id with cap; (b)
+        # public API get/clear; (c) auto-prepend mode constructs prompt with
+        # `Previous conversation:` preamble.
+        _self_mod._vendor_call = _fake_call
+        _call_count[0] = 0  # reset
+        captured_prompts: list[str] = []  # what the (fake) vendor saw
+        def _fake_call_capture(tool, model, prompt, max_tokens, cfg):
+            captured_prompts.append(prompt)
+            _call_count[0] += 1
+            return True, f"answer-{_call_count[0]}", {
+                "input_tokens": 100, "output_tokens": 50,
+                "cached_tokens": 0, "cost_usd": 0.001,
+            }, None
+        _self_mod._vendor_call = _fake_call_capture
+        try:
+            cfg_mem = ForgeRuntimeConfig(
+                anthropic_api_key="stub", openai_api_key="stub", gemini_api_key="stub",
+                telemetry_path=Path("/tmp/forge_runtime_smoke_mem.jsonl"),
+                use_orchestration=True,
+                vendor_cache_enabled=False,    # disable cache so each call hits vendor
+                multi_turn_memory_enabled=True,
+                multi_turn_memory_max_turns=3,
+                multi_turn_memory_auto_prepend=True,
+                multi_turn_memory_max_chars=2000,
+            )
+            rt_mem = ForgeRuntime(cfg_mem)
+            conv_id = "smoke-conv-12"
+            # Turn 1 — empty history; effective_prompt == user_prompt
+            r1 = rt_mem.run_turn(
+                "Write a Python decorator that retries on failure.",
+                gen_fn=lambda _: "",  # unused for ood path
+                conv_id=conv_id,
+            )
+            assert r1.delegations[0].ok is True
+            assert r1.classifier_label == "ood"
+            hist1 = rt_mem.get_conversation_history(conv_id)
+            assert len(hist1) == 1, f"expected 1 stored turn, got {len(hist1)}"
+            assert hist1[0].user_prompt == "Write a Python decorator that retries on failure."
+            assert hist1[0].assistant_text == "answer-1"
+            assert hist1[0].tool == "claude-api"
+
+            # Turn 2 — should auto-prepend turn 1
+            r2 = rt_mem.run_turn(
+                "Now show the same thing in TypeScript.",
+                gen_fn=lambda _: "",
+                conv_id=conv_id,
+            )
+            assert r2.delegations[0].ok is True
+            # Check captured upstream prompt for turn 2 contains turn-1 context
+            assert "Previous conversation:" in captured_prompts[1], (
+                f"turn 2 should have preamble; got:\n{captured_prompts[1][:300]}"
+            )
+            assert "Python decorator" in captured_prompts[1], (
+                "turn 2 preamble should include turn-1 user prompt"
+            )
+            assert "answer-1" in captured_prompts[1], (
+                "turn 2 preamble should include turn-1 assistant text"
+            )
+            # Verify storage records the ORIGINAL prompt (not the auto-prepended one)
+            hist2 = rt_mem.get_conversation_history(conv_id)
+            assert len(hist2) == 2
+            assert hist2[1].user_prompt == "Now show the same thing in TypeScript."
+
+            # Turns 3 + 4 — verify cap (max_turns=3 → only keep last 3)
+            rt_mem.run_turn("Now in Rust.", gen_fn=lambda _: "", conv_id=conv_id)
+            rt_mem.run_turn("Now in Go.", gen_fn=lambda _: "", conv_id=conv_id)
+            hist4 = rt_mem.get_conversation_history(conv_id)
+            assert len(hist4) == 3, f"buffer cap is 3, got {len(hist4)}"
+            # Oldest (Python) should have been dropped
+            user_prompts = [t.user_prompt for t in hist4]
+            assert "Python" not in " ".join(user_prompts), (
+                f"oldest turn should be evicted; buffer={user_prompts}"
+            )
+
+            # clear_conversation drops the buffer
+            rt_mem.clear_conversation(conv_id)
+            assert rt_mem.get_conversation_history(conv_id) == []
+            print(f"[12] ORCH multi-turn memory: stored {len(hist4)} turns (cap 3); "
+                  f"auto-prepend verified in turn 2 prompt")
+        finally:
+            _self_mod._vendor_call = _orig_vendor_call
 
     print("\n=== SMOKE TESTS PASSED ===")
     return 0
