@@ -46,7 +46,7 @@
 @I id001 := "hexa-codex" :: identity-claim [d=2026-05-14 active]
   kind = "HEXA-Codex family — codified theorems"
   brief = "HEXA-Codex family · codified theorems"
-  parent = "dancinlab/echoes"
+  parent = "dancinlab"
 
 @L l1 := "repo-layout" :: structure [active]
   .roadmap.hexa_codex -> "file"
