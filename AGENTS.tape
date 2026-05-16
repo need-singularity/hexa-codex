@@ -129,10 +129,20 @@
   authority = "[@x_tape_spec] §Domain-tape sibling §Architecture-vs-history split"
   @> AGENTS.md
 
+@D g5 := "public-artifacts-english" :: governance [recommended d=2026-05-16 active]
+  rule = "Public-facing artifacts — GROWTH/*.md · HF model cards · repo & collection descriptions · code/prompt samples — are English-only. Conversational replies to the user stay Korean."
+  why = "GROWTH and shipped artifacts target global HuggingFace / open-source discovery; English maximizes SEO and reach. A Korean prompt sample in a model card is a discoverability leak. Reply language is a separate concern (user preference: Korean)."
+  @> AGENTS.md
+
 
 @F f1 := "lattice-fit-on-external-entity" :: governance [required deny:write]
   pattern = "applying n=6 lattice as derivation rule to TSMC · ASML · IPCC · NASA · SpaceX · CERN · DeepMind · NIST · or any external vendor"
   exception = "values may coincidentally match — observation OK, derivation NOT OK"
+
+@N n_artifact_mirror := "off-host mirror before sole-copy" :: note [d=2026-05-16 active]
+  rule = "Any build artifact that costs >10 min to regenerate is pushed to a second host the moment it exists — not after the batch finishes."
+  why = "2026-05-16: Mac \`~/scratch\` was wiped mid-session. GGUF survived only via a pre-existing rsync copy on ubu1; MLX (Mac-only, never mirrored) was lost and needed a full rebuild."
+  see = "ship self-contained scripts via scp + run; never drive multi-step pod/host work through inline ssh quoting (rm-disaster rule). Large HF uploads: one file per \`hf upload\`, host-side flag-file polling — long-held SSH monitors die."
 
 @X x_lattice_policy := "echoes/LATTICE_POLICY.md" :: policy [d=2026-05-12 active]
   url = "https://github.com/dancinlab/echoes/blob/main/LATTICE_POLICY.md"
