@@ -19,7 +19,7 @@ HuggingFace에서 **공개 배포**하는 운영 폴더. 목표는 공개 컬렉
 ## 공개 컬렉션 — `dancinlab/uncensored`
 
 - 컬렉션: `https://huggingface.co/collections/dancinlab/uncensored-6a080743e6774450ba77a427`
-- 현재 항목 1개 · 다운로드 0 — **성장 시작점** (전략은 `../GROWTH/README.md` §3.1)
+- 현재 항목 1개 · 다운로드 0 — **성장 시작점** (전략은 `../GROWTH/04-uncensored.md`)
 
 | 리포 | 포맷 | 용량 | 상태 |
 |---|---|---|---|
@@ -63,7 +63,7 @@ wilson --uncensored          # = wilson -U
 |---|---|
 | `README.md` | 이 인덱스 |
 | `MIRROR.md` | 비공개 아카이브 미러 기록 (별개 트랙) |
-| `../GROWTH/README.md` | 채택·성장 브레인스토밍 허브 — uncensored 전략은 §3.1 |
+| `../GROWTH/` | 채택·성장 브레인스토밍 허브 (6개 문서) — uncensored 전략은 `04-uncensored.md` |
 
 ## 정리 이력 (2026-05-16)
 
