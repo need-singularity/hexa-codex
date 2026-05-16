@@ -14,12 +14,12 @@ HuggingFace에서 **공개 배포**하는 운영 폴더. 목표는 공개 컬렉
 | HF 컬렉션 | **`dancinlab/uncensored`** (public) | `supergemma4-private-mirror-…` (private) |
 | 들어있는 것 | 자체 변환 public GGUF | Jiunsong 원본 리포 백업 미러 3개 |
 | 목적 | **바이럴 · 다운로드 · 채택** | 원본 소실 대비 사내 백업 |
-| 문서 | 이 `README.md` · `GROWTH.md` | `MIRROR.md` |
+| 문서 | 이 `README.md` · `../GROWTH/` | `MIRROR.md` |
 
 ## 공개 컬렉션 — `dancinlab/uncensored`
 
 - 컬렉션: `https://huggingface.co/collections/dancinlab/uncensored-6a080743e6774450ba77a427`
-- 현재 항목 1개 · 다운로드 0 — **성장 시작점** (전략은 `GROWTH.md`)
+- 현재 항목 1개 · 다운로드 0 — **성장 시작점** (전략은 `../GROWTH/README.md` §3.1)
 
 | 리포 | 포맷 | 용량 | 상태 |
 |---|---|---|---|
@@ -62,8 +62,8 @@ wilson --uncensored          # = wilson -U
 | 파일 | 내용 |
 |---|---|
 | `README.md` | 이 인덱스 |
-| `GROWTH.md` | `dancinlab/uncensored` 바이럴/채택 전략 — 우선순위 래더 + 아이디어 뱅크 |
 | `MIRROR.md` | 비공개 아카이브 미러 기록 (별개 트랙) |
+| `../GROWTH/README.md` | 채택·성장 브레인스토밍 허브 — uncensored 전략은 §3.1 |
 
 ## 정리 이력 (2026-05-16)
 
