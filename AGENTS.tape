@@ -130,9 +130,10 @@
   @> AGENTS.md
 
 @D g5 := "public-artifacts-english" :: governance [recommended d=2026-05-16 active]
-  rule = "Public-facing artifacts — GROWTH/*.md · HF model cards · repo & collection descriptions · code/prompt samples — are English-only. Conversational replies to the user stay Korean."
-  why = "GROWTH and shipped artifacts target global HuggingFace / open-source discovery; English maximizes SEO and reach. A Korean prompt sample in a model card is a discoverability leak. Reply language is a separate concern (user preference: Korean)."
+  rule = "Public-facing artifacts — HF model cards · repo & collection descriptions · code/prompt samples — are English-only. Conversational replies to the user stay Korean."
+  why = "Shipped artifacts target global HuggingFace / open-source discovery; English maximizes SEO and reach. A Korean prompt sample in a model card is a discoverability leak. Reply language is a separate concern (user preference: Korean)."
   @> AGENTS.md
+  note = "2026-05-17: removed `GROWTH/*.md` example — GROWTH/ promoted to standalone private `dancinlab/growth` repo, so it no longer counts as public-facing artifact."
 
 
 @F f1 := "lattice-fit-on-external-entity" :: governance [required deny:write]
